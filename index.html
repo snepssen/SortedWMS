@@ -435,10 +435,10 @@ td .acts { display: flex; gap: 4px; }
             <label>Show locations as<small>Both barcodes scan, so racks can be relabelled one aisle at a time</small></label>
             <span class="seg" role="group" aria-label="Location names" id="naming">
               <button type="button" data-naming="current" aria-pressed="true">38-02-0-10</button>
-              <button type="button" data-naming="row" aria-pressed="false">AP-01-01-A</button>
+              <button type="button" data-naming="row" aria-pressed="false">AP01A1</button>
             </span>
           </div>
-          <p class="hint" style="margin:0">Proposed: cell letter + rack row letter, bays 01–10 along the row (no odd/even), position 01–03 left to right, height A (ground) to E. Facing rows have the same bay number.</p>
+          <p class="hint" style="margin:0">Proposed: <b>AA03C2</b> = cell A, rack A, bay 03, level C, position 2. Bays count 01–10 front to back on every rack, so facing racks share bay numbers. Level A is the ground; positions 1–3 run left to right. On the floor it's said “A3C2”, and a driver can type that: the cell is the one the truck is in.</p>
           <div class="scroll"><table><thead><tr><th>On the racks now</th><th>Proposed</th></tr></thead><tbody id="relabel"></tbody></table></div>
           <p class="hint" style="margin:0" id="relabelNote"></p>
         </div>
@@ -593,6 +593,12 @@ td .acts { display: flex; gap: 4px; }
   // Aisle 31, or its two rack rows "AA/AB" in the proposed naming.
   const aisleName = (a) => (wh.naming.show === 'row' ? wh.rowsOf(a).join('/') : a);
   const show = (text) => esc(wh.display(text));
+  // "Say A3C2 · cell A" under a big location, in the proposed naming.
+  const spokenHtml = (code) => {
+    if (wh.naming.show !== 'row' || !parseRack(code)) return '';
+    const sp = wh.spoken(code);
+    return `<div class="sub">Say <b>${esc(sp.short)}</b> · cell ${esc(sp.cell)}</div>`;
+  };
 
   const ssccHtml = (s) => (s ? `<span class="sscc" title="${esc(s)}">…<b>${esc(s.slice(-6))}</b></span>` : '–');
   const typeHtml = (type) => `<span class="type t-${type}">${TASK_TYPES[type].short}</span>`;
@@ -1003,17 +1009,17 @@ td .acts { display: flex; gap: 4px; }
     } else if (ins.kind === 'pickup' || ins.kind === 'drop' || ins.kind === 'wait') {
       body += `<div class="steps"><span class="${t.step === 0 ? 'on' : 'done'}">1 Pick up</span><span class="${t.step === 1 ? 'on' : ''}">2 Drop</span></div>`;
       if (ins.kind === 'wait') {
-        body += `<div class="verb wait">Wait at aisle ${esc(aisleName(ins.aisle))} entry</div><div>${locHtml(ins.target, 'lg')}</div><div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
+        body += `<div class="verb wait">Wait at aisle ${esc(aisleName(ins.aisle))} entry</div><div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}<div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
       } else if (ins.kind === 'pickup') {
         const enter = wh.entryFor(truck, ins.target);
         if (enter) body += `<div class="sub">One-way: enter aisle <b>${esc(aisleName(aisleOf(ins.target)))}</b> from the <b>${enter}</b></div>`;
         body += `<div class="verb">Pick up ${parseRack(ins.target) ? 'at' : `at ${esc(ins.target)}`}</div>`;
-        body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
+        body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
         body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(wh.label(t.to)) : 'auto slot'}</div>`;
       } else {
         const enter = wh.entryFor(truck, ins.target);
         if (enter) body += `<div class="sub">One-way: enter aisle <b>${esc(aisleName(aisleOf(ins.target)))}</b> from the <b>${enter}</b></div>`;
-        body += `<div class="verb">Drop at</div><div>${locHtml(ins.target, 'lg')}</div>`;
+        body += `<div class="verb">Drop at</div><div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}`;
         const p = wh.pallets[t.sscc];
         body += `<div class="sub">${palletLine(p)}</div>`;
         if (t.autoSlot && wh.config.allowSlotOverride) body += `<div class="sub">or scan any free ${esc(CATEGORIES[t.category])} slot</div>`;
@@ -1120,7 +1126,7 @@ td .acts { display: flex; gap: 4px; }
     setHTML($('relabel'), sample.map((r) => `<tr><td class="sscc">${esc(r.current)}</td><td class="sscc"><b>${esc(r.row)}</b></td></tr>`).join(''));
     $('relabelNote').textContent = `Aisle ${aisle}, ground level, first position. ${wh.relabelList(aisle).length} labels for this aisle, ${wh._racks().length} in total.`;
     $('oneway').checked = wh.config.oneWay;
-    setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><span><b>Aisle ${a}</b> <span class="hint">rows ${wh.rowsOf(a).join(' / ')}</span></span>
+    setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><span><b>Aisle ${a}</b> <span class="hint">racks ${wh.rowsOf(a).join(' / ')}</span></span>
       <span class="seg" role="group" aria-label="Aisle ${a} entry">${['front', 'back'].map((d) => `<button type="button" data-aisle="${a}" data-dir="${d}" aria-pressed="${wh.aisleDir[a] === d}">${d === 'front' ? 'Front ▸' : '◂ Back'}</button>`).join('')}</span></div>`).join('') : '');
     $('ground').textContent = wh.config.groundNextPerItem;
     $('gDown').disabled = wh.config.groundNextPerItem <= 0;
@@ -1277,7 +1283,7 @@ td .acts { display: flex; gap: 4px; }
   function fillItemSelect() {
     $('oItem').innerHTML = ITEMS.map(([no, name]) => `<option value="${no}">${no} ${esc(name)}</option>`).join('');
     const keep = $('tAisle').value;
-    $('tAisle').innerHTML = wh.layout.aisles.map((a, i) => `<option value="${Number(a)}" ${(keep ? String(Number(a)) === keep : i === 3) ? 'selected' : ''}>${a} · rows ${wh.rowsOf(a).join('/')}</option>`).join('');
+    $('tAisle').innerHTML = wh.layout.aisles.map((a, i) => `<option value="${Number(a)}" ${(keep ? String(Number(a)) === keep : i === 3) ? 'selected' : ''}>${a} · racks ${wh.rowsOf(a).join('/')}</option>`).join('');
   }
 
   // ---- Wiring -----------------------------------------------------------
@@ -1437,11 +1443,11 @@ td .acts { display: flex; gap: 4px; }
     if (!b) return;
     wh.setNaming(b.dataset.naming);
     const row = b.dataset.naming === 'row';
-    $('tFromL').textContent = row ? 'Bay from (along the row)' : 'Bay from';
-    $('tToL').textContent = row ? 'Bay to (along the row)' : 'Bay to';
+    $('tFromL').textContent = row ? 'Bay from (front to back)' : 'Bay from';
+    $('tToL').textContent = row ? 'Bay to (front to back)' : 'Bay to';
     $('tFrom').max = $('tTo').max = row ? DEPTH : BAYS;
     $('tFrom').value = row ? 8 : 15; $('tTo').value = row ? 10 : 20;
-    $('tplProtein').textContent = row ? `Protein drinks: rows ${wh.rowsOf('34').join('/')}, bays 08–10` : 'Protein drinks: aisle 34, bays 15–20';
+    $('tplProtein').textContent = row ? `Protein drinks: racks ${wh.rowsOf('34').join('/')}, bays 08–10` : 'Protein drinks: aisle 34, bays 15–20';
     fillItemSelect();
     render(true);
   });

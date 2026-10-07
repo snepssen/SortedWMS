@@ -5,7 +5,7 @@ The prototype holds the rules: Auto dispatch, aisle limits, categories, FEFO, re
 ## 1. Load the real site (needs the location table)
 
 - **Location table** → import as CSV: code (`38-02-0-10`), category, and anything blocked. Aisle, bay, side (odd/even), level and position follow from the code. Add each aisle's one-way direction and which cell it is in.
-- **Relabelling (optional):** the proposed names (`AA-07-01-A`) are generated from the same table. New rack labels can be printed on the label printers, and both barcodes keep working during the changeover.
+- **Relabelling (optional):** the proposed names (`AA03C2`: cell, rack, bay, level, position) are generated from the same table. New rack labels can be printed on the label printers, and both barcodes keep working during the changeover.
 - **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum days left to ship.
 - **Opening stock** → SSCC, item, batch, expiry, quantity, location, blocked yes/no.
 
@@ -59,6 +59,6 @@ The demo keeps everything in the browser. For real use:
 - Do suppliers send a pallet list (by email, EDI or on the delivery note) that could be loaded before the truck arrives? Then the bottom barcode alone is enough.
 - Is the minimum days to ship per item only, or does it differ per customer?
 - Which end does each aisle enter from, and is it the same for every aisle or alternating?
-- Which aisles are in which cell, and which side of each aisle should be the first rack row?
+- Which aisles are in which cell, and which side of each aisle gets the first rack letter?
 - Does each order have to be checked and labelled, or only some customers?
 - How many reach trucks per shift, and who works which category?

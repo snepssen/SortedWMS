@@ -365,21 +365,35 @@ test('label and delivery list disagreeing is caught', () => {
   assert.match(r.text, /disagree on batch/);
 });
 
-test('proposed row names: cell + rack row, bays in a line, position 01–03, height A = ground', () => {
+test('proposed names: cell + rack letter, bay front to back, level letter, position 1–3', () => {
   const wh = new Warehouse({ aisles: [31, 32, 33, 34, 35, 36, 37, 38], bays: 20, levels: 5, clock: () => T0 });
-  assert.equal(wh.rowName('31-13-0-10'), 'AA-07-01-A');
-  assert.equal(wh.rowName('31-14-0-10'), 'AB-07-01-A', 'facing row across aisle 31');
-  assert.equal(wh.rowName('32-01-0-10'), 'AC-01-01-A', 'next aisle: rows C and D');
-  assert.equal(wh.rowName('38-02-0-10'), 'AP-01-01-A');
-  assert.equal(wh.rowName('38-20-4-70'), 'AP-10-03-E');
+  assert.equal(wh.rowName('31-05-2-40'), 'AA03C2', 'cell A, rack A, bay 03, level C, position 2');
+  assert.equal(wh.rowName('31-13-0-10'), 'AA07A1');
+  assert.equal(wh.rowName('31-14-0-10'), 'AB07A1', 'the facing rack has the same bay number');
+  assert.equal(wh.rowName('32-01-0-10'), 'AC01A1', 'next aisle: racks C and D');
+  assert.equal(wh.rowName('38-02-0-10'), 'AP01A1');
+  assert.equal(wh.rowName('38-20-4-70'), 'AP10E3');
+  assert.deepEqual(wh.spoken('31-05-2-40'), { short: 'A3C2', cell: 'A' });
+  assert.equal(wh.resolve('aa03c2'), '31-05-2-40');
+  assert.equal(wh.resolve('AA-03-C-2'), '31-05-2-40', 'dashes and spaces are ignored');
+  assert.equal(wh.resolve('A3C2', { cell: 'A' }), '31-05-2-40', 'short form in the cell you are in');
+  assert.equal(wh.resolve('A3C2'), 'A3C2', 'short form without a cell means nothing');
+  assert.equal(wh.resolve('ZZ01A1'), 'ZZ01A1', 'unknown names are left alone');
   wh.setAisleCell(35, 'B'); wh.setAisleCell(36, 'B'); wh.setAisleCell(37, 'B'); wh.setAisleCell(38, 'B');
-  assert.equal(wh.rowName('35-01-0-10'), 'BA-01-01-A', 'a second cell starts again at row A');
-  assert.equal(wh.resolve('BH-01-01-A'), '38-02-0-10');
-  assert.equal(wh.resolve('aa-07-01-a'), '31-13-0-10');
-  assert.equal(wh.resolve('ZZ-01-01-A'), 'ZZ-01-01-A', 'unknown names are left alone');
+  assert.equal(wh.rowName('35-01-0-10'), 'BA01A1', 'a second cell starts again at rack A');
+  assert.equal(wh.resolve('BH01A1'), '38-02-0-10');
   const list = wh.relabelList(38);
   assert.equal(list.length, 20 * 5 * 3);
   assert.equal(new Set(list.map((r) => r.row)).size, list.length, 'every new name is unique');
+});
+
+test('a driver can type the spoken short form; the cell is the one the truck is in', () => {
+  const { wh } = setup({ checkAfterPick: false });
+  const p = stock(wh, '01-05-2-40', 'Y1', 'B1', '2026-10-25');
+  wh.addTruck('RT1', { position: '01-01-0-10' });
+  const r = wh.scan('RT1', 'A3C2');
+  assert.ok(r.ok, r.text);
+  assert.equal(wh.tasks[wh.trucks.RT1.taskId].sscc, p.sscc, 'started an Auto-Shift of that pallet');
 });
 
 test('either label scans: racks can be relabelled one aisle at a time', () => {
@@ -390,7 +404,7 @@ test('either label scans: racks can be relabelled one aisle at a time', () => {
   wh.setNaming('row');
   const r = wh.scan('RT1', wh.rowName(p.loc));
   assert.ok(r.ok, r.text);
-  assert.equal(wh.display('Take it from 01-05-0-10'), 'Take it from AA-03-01-A');
+  assert.equal(wh.display('Take it from 01-05-0-10'), 'Take it from AA03A1');
   assert.ok(wh.scan('RT1', 'OUT-01').ok);
 });
 

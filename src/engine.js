@@ -134,10 +134,11 @@
       // One-way aisles: which end a truck drives in from. Alternates by default.
       this.aisleDir = {};
       // Location names. 'current' is what's on the racks today (38-02-0-10).
-      // 'row' is the proposed scheme (AA-07-01-A): cell letter + rack row
-      // letter, bays 01… along the row, position 01–03, height A (ground)
-      // upwards. Rack rows are lettered in a line across the cell: the two
-      // rows facing each other across its first aisle are A and B, then C/D…
+      // 'row' is the proposed scheme (AA03C2): cell letter + rack letter, bay
+      // 01… front to back on every rack, level letter (A = ground), position
+      // 1–3 left to right. Racks are lettered in a line across the cell: the
+      // two racks facing each other across its first aisle are A and B, then
+      // C/D… People say the short form "A3C2"; the cell is the one you're in.
       this.naming = { show: 'current', cellOf: {} };
       aisleList.forEach((a) => { this.naming.cellOf[a] = 'A'; });
       aisleList.forEach((a, i) => { this.aisleDir[a] = i % 2 === 0 ? 'front' : 'back'; });
@@ -281,13 +282,24 @@
       return [cell + String.fromCharCode(65 + i * 2), cell + String.fromCharCode(66 + i * 2)];
     }
 
-    /** A rack code in the proposed row scheme, e.g. 31-13-0-10 → AA-07-01-A. */
-    rowName(code) {
+    _rowParts(code) {
       const r = parseRack(code);
-      if (!r) return code;
+      if (!r) return null;
       const [odd, even] = this.rowsOf(r.aisle);
-      const pos = this.layout.positions.indexOf(r.pos) + 1;
-      return `${r.bay % 2 ? odd : even}-${pad(depthOf(r.bay), 2)}-${pad(pos, 2)}-${String.fromCharCode(65 + r.level)}`;
+      const rack = r.bay % 2 ? odd : even;
+      return { cell: rack[0], rack: rack[1], bay: depthOf(r.bay), level: String.fromCharCode(65 + r.level), pos: this.layout.positions.indexOf(r.pos) + 1 };
+    }
+
+    /** A rack code in the proposed scheme, e.g. 31-05-2-40 → AA03C2. */
+    rowName(code) {
+      const p = this._rowParts(code);
+      return p ? `${p.cell}${p.rack}${pad(p.bay, 2)}${p.level}${p.pos}` : code;
+    }
+
+    /** How people say it on the floor: "A3C2" in cell A. */
+    spoken(code) {
+      const p = this._rowParts(code);
+      return p ? { short: `${p.rack}${p.bay}${p.level}${p.pos}`, cell: p.cell } : null;
     }
 
     /** Display name in the chosen scheme. Lanes and docks keep their names. */
@@ -304,19 +316,33 @@
     /**
      * A scanned or typed location in either scheme → the location it means.
      * Both barcodes work, so racks can be relabelled one aisle at a time.
+     * The spoken short form ("A3C2") works when the cell is known, e.g. the
+     * cell the truck is in.
      */
-    resolve(input) {
-      const s = String(input).trim().toUpperCase();
-      if (this.locations[s]) return s;
-      const m = /^([A-Z][A-Z])-(\d{2})-(\d{2})-([A-Z])$/.exec(s);
-      if (!m) return s;
-      const aisle = this.layout.aisles.find((a) => this.rowsOf(a).includes(m[1]));
-      const pos = this.layout.positions[Number(m[3]) - 1];
-      const depth = Number(m[2]);
-      if (!aisle || pos == null || depth < 1) return s;
-      const bay = this.rowsOf(aisle)[0] === m[1] ? depth * 2 - 1 : depth * 2;
+    resolve(input, { cell = null } = {}) {
+      const raw = String(input).trim().toUpperCase();
+      if (this.locations[raw]) return raw;
+      const s = raw.replace(/[\s-]/g, ''); // "AA-03-C-2" and "AA 03 C 2" read as AA03C2
+      let m = /^([A-Z])([A-Z])(\d{2})([A-Z])(\d)$/.exec(s);
+      if (!m && cell) {
+        const short = /^([A-Z])(\d{1,2})([A-Z])(\d)$/.exec(s);
+        if (short) m = [s, cell, short[1], short[2], short[3], short[4]];
+      }
+      if (!m) return raw;
+      const rack = m[1] + m[2];
+      const aisle = this.layout.aisles.find((a) => this.rowsOf(a).includes(rack));
+      const pos = this.layout.positions[Number(m[5]) - 1];
+      const depth = Number(m[3]);
+      if (!aisle || pos == null || depth < 1) return raw;
+      const bay = this.rowsOf(aisle)[0] === rack ? depth * 2 - 1 : depth * 2;
       const code = rackCode(aisle, bay, m[4].charCodeAt(0) - 65, pos);
-      return this.locations[code] ? code : s;
+      return this.locations[code] ? code : raw;
+    }
+
+    /** The cell a location is in (proposed scheme), or null for lanes. */
+    cellOfLocation(code) {
+      const a = aisleOf(code);
+      return a ? this.naming.cellOf[a] : null;
     }
 
     /** Old → new name for every location, for relabelling the racks. */
@@ -796,7 +822,7 @@
       if (task.type === 'CHECK') return this._checkScan(truck, task, input);
 
       const label = GS1.parse(input);
-      const code = (label && label.sscc) || this.resolve(input);
+      const code = (label && label.sscc) || this.resolve(input, { cell: this.cellOfLocation(truck.position) });
       if (task.step === 0) {
         const r = this._matchPickup(truck, task, code);
         if (!r.ok) return this._fail(truck, r.text);
@@ -1407,7 +1433,7 @@
 
     // Idle driver scans a pallet or rack location: take its waiting job, or start an Auto-Shift.
     _startFromScan(truck, input) {
-      const code = this.resolve(input);
+      const code = this.resolve(input, { cell: this.cellOfLocation(truck.position) });
       const gs1 = GS1.parse(code);
       let pallet = this.pallets[(gs1 && gs1.sscc) || code];
       if (!pallet) {

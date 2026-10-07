@@ -78,10 +78,11 @@ Every location has two names, and both barcodes scan. The coordinator chooses wh
 - Height 0 is the ground, 1–4 above it.
 - Positions 10/40/70 run left to right between the rack legs.
 
-**Proposed:** `AA-07-01-A` = cell A, rack row A, bay 07, position 01, height A.
-- The first letter is the warehouse cell. The second is the rack row, lettered in a line across the cell: the rows facing each other across the first aisle are A and B, then C and D.
-- Bays run 01–10 along each row, with no odd/even hopping. Facing rows have the same bay number (AA-07 faces AB-07).
-- Positions run 01–03, and height A (ground) to E.
+**Proposed:** `AA03C2` = cell A, rack A, bay 03, level C, position 2 (the format used at Syncreon).
+- The first letter is the warehouse cell. The second is the rack, lettered in a line across the cell: the racks facing each other across the first aisle are A and B, then C and D.
+- Bays count 01–10 front to back on every rack, whatever the one-way direction, so the number tells you how deep in the aisle you are. Facing racks share bay numbers (AA07 faces AB07).
+- Level A is the ground, up to E. Positions 1–3 run left to right between the rack legs.
+- On the floor it's said "A3C2", with the cell assumed. The sticker scans the full `AA03C2`. A driver can also type the short form; the system takes the cell the truck is in.
 
 Because both names scan, the racks can be relabelled one aisle at a time while everything keeps working. The Locations tab shows the old → new list.
 
