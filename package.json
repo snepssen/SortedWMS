@@ -4,7 +4,8 @@
   "private": true,
   "description": "Auto dispatch, Auto-Shift and aisle limits for reach trucks",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build:pages": "node scripts/build-pages.js"
   },
   "license": "UNLICENSED"
 }

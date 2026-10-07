@@ -2,7 +2,11 @@
 
 A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, cheese and (soon) protein drinks.
 
-Open `index.html` in a browser to run a simulated shift. No install or server needed.
+**Try the demo: https://snepssen.github.io/SortedWMS/**. It's a simulated shift that runs in the browser, on a computer or a phone.
+
+To run it locally, open `index.html` in a browser. No install or server needed.
+
+The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
 
 ## What it does
 
@@ -67,6 +71,7 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 | `src/labels.js` | ZPL shipping and pallet labels. |
 | `index.html` | The demo: floor, handhelds, coordinator tabs, job queue, stock. |
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
+| `scripts/build-pages.js` | Builds the demo site for GitHub Pages into `_site/` (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
 
 ## Locations
