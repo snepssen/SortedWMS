@@ -1,51 +1,63 @@
 # SortedWMS
 
-A working prototype of **Auto dispatch** for reach trucks, built to show the floor what it could look like next to the WMS in use today.
+A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, cheese and (soon) protein drinks.
 
 Open `index.html` in a browser to run a simulated shift. No install or server needed.
 
 ## What it does
 
 ### Auto
-A reach truck driver doesn't choose work from a menu. The moment they finish a job, the next one is on the screen.
+Drivers don't pick work from a menu. The moment they finish a job, the next one is on the handheld. The order:
 
-Jobs are handed out in the order the coordinator sets:
+1. **Urgent jobs:** flagged by the coordinator, or waiting longer than the "jump the queue" time (default 20 min). Auto-Shift jobs never jump the queue on their own.
+2. **Job type,** in the coordinator's order. Default: Pick › Check & label › Receiving › Put-away › Auto-Shift.
+3. **Nearest job** within the same type (can be switched off; then oldest first).
 
-1. **Urgent jobs** first: those flagged by the coordinator, and any job that has waited longer than the "jump the queue" time (default 20 min), so nothing gets forgotten at the bottom of the list.
-2. Then by **job type**, in the coordinator's order. The default is Replenishment › Pallet pick › Put-away › Auto-Shift.
-3. Within the same type, the **nearest job** to where the truck is now (can be switched off; then it's oldest first).
+Each truck is set to the **categories its operator works** (yoghurt, cheese, protein drinks), and only gets jobs in those. Trucks can also be set to *Auto-Shift only* or *Paused*.
 
-The coordinator can switch any job type off, reorder the types, flag or cancel single jobs, and set each truck to **Auto**, **Auto-Shift only** or **Paused**.
+**No more than 2 reach trucks in one aisle** (adjustable). A third truck gets work elsewhere. A driver carrying a pallet towards a full aisle waits at the entry and is let in when a truck leaves.
 
-### Two scans per job
-Every job is two inputs: scan the pick-up location, scan the drop location. The scanner sends its own Enter, so the driver never presses a key. A wrong scan shows what's wrong and changes nothing, and the next correct scan just works. There's nothing to dismiss.
+### Stock rules
+- **Pallets are identified by SSCC**, with item, batch, expiry date and quantity.
+- **Categories never mix.** Every rack location carries a category from the location template. Put-away and Auto-Shift only use locations of the pallet's category.
+- **First expired, first out.** Shipping orders take whole pallets with the earliest expiry first, and the oldest received first on a tie.
+- **Blocked stock never ships.** Pallets that arrive with too little shelf life left (set per item) are blocked at receiving and put away on upper levels. So are pallets reported damaged. The coordinator can release them.
 
-### Max 2 reach trucks per aisle
-A truck counts against an aisle from the moment it is sent there until it leaves. Auto never sends a third truck into a full aisle; that truck gets the best job somewhere else instead.
-If a driver picks up a pallet that has to go into a full aisle, the handheld says **wait at the aisle entry**, and lets them in as soon as a truck leaves. Waiting trucks stand outside the aisle, so two full aisles can never lock each other up. The limit is a setting (1–4).
+### Every job is as few inputs as possible
+| Job | Inputs |
+| --- | --- |
+| Put-away, pick, Auto-Shift | 2 scans: the pallet (or its location), then the drop location |
+| Check & label | 2 scans: the picked pallet, then the new shipping label once it's on |
+| Receiving, GS1-128 label with count | **1 scan** per pallet |
+| Receiving, GS1-128 label without count | 1 scan + 1 tap to confirm quantity |
+| Receiving, separate barcodes | batch → expiry → item → SSCC (4 scans) + 1 tap for quantity |
+
+The scanner sends its own Enter. A wrong scan explains what's wrong and changes nothing.
+
+Picking a different pallet with the **same item, batch and expiry** is accepted and swapped automatically. If a pallet is **missing or damaged**, the system allocates the next one by expiry date straight away. The problem job is held for the coordinator.
 
 ### Auto-Shift (rack-to-rack)
-Rack-to-rack moves where **the system picks the destination slot**: the nearest free reserve slot to the pallet, lower levels first, and avoiding aisles that are full.
+The system picks the slot, and the driver scans twice. Jobs are created when:
 
-- The coordinator can queue shift jobs, which Auto hands out like any other job type.
-- A driver with nothing to do can **scan any pallet in the racking**. The system creates the move, chooses the slot, and shows it. Two scans, no menus.
-- If the driver prefers another free slot, they just scan it instead and it's accepted (the coordinator can turn this off).
-- Slots are reserved the moment they're handed out, so two trucks are never sent to the same one.
+- **The location template changes.** Pallets now standing in a location of another category are relocated to their own category.
+- **A pallet ships next.** For every item, the next pallet(s) out (by expiry) are brought down to ground level, so a pick never waits on a high reach. The number per item is a setting.
+- **The same batch is apart.** A pallet standing alone is moved next to the rest of its item, batch and expiry, in the same bay level (3 positions per bay level).
+- **A driver starts one.** An idle driver scans any pallet; the system picks the slot.
 
-### Problems
-**Report a problem** on the handheld: location blocked, pallet missing, or pallet damaged. The job is held for the coordinator and the driver gets the next one straight away. If the blocked location is an Auto-Shift drop slot, the system just picks another slot. A driver can't pause while carrying a pallet.
+Put-away uses the same slotting rules from the start. It prefers a free position next to the same batch. It sends the next-out pallet low and later batches higher, to keep the ground free. Blocked stock goes to the top.
+
+### Labels
+Checking a picked pallet sends a 4×6" shipping label to the label printer at that shipping lane. The label is ZPL, the language most networked thermal label printers accept on port 9100. It carries the customer, order, item, batch, best-before date, a label barcode the driver scans to confirm it's on, and the GS1-128 SSCC.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
-| `engine.js` | The dispatch rules. Plain JavaScript with no dependencies; runs in a browser or Node. |
-| `index.html` | The demo: aisle board, handheld screens, coordinator controls, job queue and floor log. |
-| `test/engine.test.js` | Tests for every rule above. Run with `npm test` (Node 18+). |
+| `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
+| `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
+| `src/labels.js` | ZPL shipping and pallet labels. |
+| `index.html` | The demo: floor, handhelds, coordinator tabs, job queue, stock. |
+| `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
+| `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
 
-## Open questions for the floor
-
-- **Auto-Shift as used at the other site:** is this how it worked (system picks the slot, driver scans twice)? Or was it a separate stream of rack-to-rack jobs a truck worked through? Both are supported here (driver-started shifts, and trucks set to "Auto-Shift only").
-- **Aisle limit:** should a truck waiting to drop count against the aisle it's waiting for, or stay outside like here?
-- **Location codes:** the demo uses `aisle-bay-level` (`03-012-2`, level 0 = pick face). Real labels will differ.
-- **Connecting to the current WMS:** this prototype keeps its own job list. Running it for real means reading jobs from, and confirming moves back to, the existing system, which depends on what interface that system offers.
+The demo's items, customers, suppliers and stock are made up. Location codes are `aisle-bay-level-position` (`03-012-2-1`, level 0 = ground). The real location table will replace them.

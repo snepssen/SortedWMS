@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: floor (aisle board + handhelds) beside a coordinator rail; job queue and log below. Stacks on phones. */
+/* Layout: floor (lanes, aisle board, handhelds) beside a tabbed coordinator rail; queue, stock and log below. Stacks on phones. */
 :root {
   --bg: #eceff1;
   --panel: #ffffff;
@@ -11,9 +11,9 @@
   --muted: #5a6670;
   --line: #d3d9dd;
   --lane: #f4f6f7;
-  --accent: #e3a008;          /* safety amber */
+  --accent: #e3a008;
   --accent-ink: #1a1400;
-  --label: #f6cc1c;           /* rack label stock */
+  --label: #f6cc1c;
   --label-ink: #121212;
   --screen: #1c252b;
   --screen-2: #26323a;
@@ -25,10 +25,17 @@
   --ok-bg: #e2f2e8;
   --warn-bg: #fbf0d9;
   --bad-bg: #f9e1de;
-  --t-REPLEN: #2b67a8;
   --t-PICK: #7348ad;
+  --t-CHECK: #2b67a8;
+  --t-RECEIVE: #5b6b2a;
   --t-PUTAWAY: #12827a;
   --t-SHIFT: #b23c76;
+  --cat-YOG: #cfe2f3;
+  --cat-CHE: #f6e3a6;
+  --cat-PRO: #d6ecd2;
+  --cat-none: transparent;
+  --paper: #ffffff;
+  --paper-ink: #111111;
   --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -36,47 +43,47 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
-    --accent: #f0b429; --accent-ink: #1a1400; --label: #f6cc1c; --label-ink: #121212;
-    --screen: #0b1013; --screen-2: #18222a; --screen-ink: #eef3f5; --screen-dim: #8c9da7;
+    --accent: #f0b429; --screen: #0b1013; --screen-2: #18222a; --screen-dim: #8c9da7;
     --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
-    --t-REPLEN: #6aa7ea; --t-PICK: #a98ae0; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+    --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+    --cat-YOG: #1d3347; --cat-CHE: #3d3317; --cat-PRO: #1f3a22;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
-  --accent: #f0b429; --accent-ink: #1a1400; --label: #f6cc1c; --label-ink: #121212;
-  --screen: #0b1013; --screen-2: #18222a; --screen-ink: #eef3f5; --screen-dim: #8c9da7;
+  --accent: #f0b429; --screen: #0b1013; --screen-2: #18222a; --screen-dim: #8c9da7;
   --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
-  --t-REPLEN: #6aa7ea; --t-PICK: #a98ae0; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+  --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+  --cat-YOG: #1d3347; --cat-CHE: #3d3317; --cat-PRO: #1f3a22;
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-input::placeholder { text-transform: none; font-family: var(--body); }
 body { background: var(--bg); color: var(--ink); font: 400 14px/1.45 var(--body); }
 h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; margin: 0; }
 h2 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: .04em; }
-h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 button, input, select { font: inherit; color: inherit; }
+input::placeholder { text-transform: none; font-family: var(--body); }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
+.hint { color: var(--muted); font-size: .85rem; }
 
-/* Top bar */
 .bar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
-  padding: 10px 16px; background: var(--screen); color: var(--screen-ink);
-  border-bottom: 4px solid var(--accent);
+  padding: 10px 16px; background: var(--screen); color: var(--screen-ink); border-bottom: 4px solid var(--accent);
 }
 .brand { display: flex; align-items: baseline; gap: 10px; }
 .brand h1 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: .03em; }
 .brand span { color: var(--screen-dim); font-size: .85rem; }
-.clock { font: 600 1.25rem var(--mono); font-variant-numeric: tabular-nums; }
+.clock { font: 600 1.15rem var(--mono); font-variant-numeric: tabular-nums; }
 .bar .spacer { flex: 1; }
 .bar .ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bar select, .bar .btn { background: var(--screen-2); border: 1px solid #3a4851; color: var(--screen-ink); }
+.bar label { color: var(--screen-dim); font-size: .85rem; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -88,102 +95,118 @@ button, input, select { font: inherit; color: inherit; }
 .btn.small { min-height: 28px; padding: 2px 8px; font-size: .82rem; font-weight: 500; }
 .btn.danger { color: var(--bad); }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
-select { min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
 
-/* Page */
-.page { padding-inline: 16px; padding-block: 16px 40px; max-width: 1480px; margin: 0 auto; display: grid; gap: 16px; }
-.intro { max-width: 70ch; color: var(--muted); margin: 0; }
+.page { padding-inline: 16px; padding-block: 16px 40px; max-width: 1500px; margin: 0 auto; display: grid; gap: 16px; }
+.intro { max-width: 78ch; color: var(--muted); margin: 0; }
 .intro b { color: var(--ink); font-weight: 600; }
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; align-items: start; }
+@media (max-width: 1150px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 .col { display: grid; gap: 16px; min-width: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
 .panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; margin-bottom: 10px; }
-.hint { color: var(--muted); font-size: .85rem; }
 
-/* Summary strip */
 .summary { display: flex; flex-wrap: wrap; gap: 8px; }
-.stat { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+.stat { flex: 1 1 auto; white-space: nowrap; display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
 .stat b { font: 700 1.4rem var(--display); font-variant-numeric: tabular-nums; }
 .stat.alert { border-color: var(--bad); background: var(--bad-bg); }
+.stat.good { border-color: var(--ok); background: var(--ok-bg); }
 
-/* Rack label: yellow label stock, black mono print */
 .loc {
   display: inline-block; padding: 1px 6px; border-radius: 3px; white-space: nowrap;
-  background: var(--label); color: var(--label-ink); font: 600 .9em var(--mono); letter-spacing: .02em;
-  border: 1px solid rgba(0,0,0,.25);
+  background: var(--label); color: var(--label-ink); font: 600 .9em var(--mono); letter-spacing: .02em; border: 1px solid rgba(0,0,0,.25);
 }
 .loc b { font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.loc.dock { background: var(--screen-2); color: var(--screen-ink); border-color: transparent; }
+.loc.lanecode { background: var(--screen-2); color: var(--screen-ink); border-color: transparent; }
 .loc.auto { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
-.loc.lg { font-size: clamp(1.8rem, 6vw, 2.5rem); padding: 4px 12px; border-radius: 5px; border-width: 2px; }
+.loc.lg { font-size: clamp(1.6rem, 5.4vw, 2.3rem); padding: 4px 12px; border-radius: 5px; border-width: 2px; }
+.sscc { font: 500 .85em var(--mono); white-space: nowrap; }
+.sscc b { font-weight: 600; }
 
 .type { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
 .type::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--tc); }
-.t-REPLEN { --tc: var(--t-REPLEN); } .t-PICK { --tc: var(--t-PICK); } .t-PUTAWAY { --tc: var(--t-PUTAWAY); } .t-SHIFT { --tc: var(--t-SHIFT); }
+.t-PICK { --tc: var(--t-PICK); } .t-CHECK { --tc: var(--t-CHECK); } .t-RECEIVE { --tc: var(--t-RECEIVE); } .t-PUTAWAY { --tc: var(--t-PUTAWAY); } .t-SHIFT { --tc: var(--t-SHIFT); }
+.cat { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: .75rem; font-weight: 600; border: 1px solid var(--line); background: var(--cc); white-space: nowrap; }
+.c-YOG { --cc: var(--cat-YOG); } .c-CHE { --cc: var(--cat-CHE); } .c-PRO { --cc: var(--cat-PRO); }
 
-/* Aisle board */
+/* Lanes + aisle board */
+.lanes { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.lanebox { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--lane); flex: 1 1 120px; }
+.lanebox .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.lanebox .top strong { font: 700 1rem var(--display); letter-spacing: .03em; white-space: nowrap; }
+.lanebox .trucks { display: flex; flex-wrap: wrap; gap: 3px; min-height: 18px; }
 .board { display: grid; gap: 6px; }
-.row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 54px; gap: 8px; align-items: center; }
-.row .name { font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
-.row .name small { display: block; font: 500 .7rem var(--body); color: var(--muted); letter-spacing: 0; text-transform: none; }
-.lane { position: relative; height: 46px; display: grid; grid-template-columns: 58px minmax(0, 1fr); border-radius: 5px; background: var(--lane); border: 1px solid var(--line); overflow: hidden; }
-.entry { border-right: 2px dashed var(--line); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 2px; }
-.track { position: relative; background-image: repeating-linear-gradient(90deg, transparent 0 calc(5% - 1px), var(--line) calc(5% - 1px) 5%); }
+.row { display: grid; grid-template-columns: 66px minmax(0, 1fr) 50px; gap: 8px; align-items: center; }
+.row .name { font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .03em; display: grid; }
+.row .name small { font: 500 .7rem var(--body); color: var(--muted); letter-spacing: 0; text-transform: none; }
+.lane { position: relative; height: 46px; display: grid; grid-template-columns: 54px minmax(0, 1fr); border-radius: 5px; background: var(--lane); border: 1px solid var(--line); overflow: hidden; }
+.entry { border-right: 2px dashed var(--line); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 2px; background: var(--lane); }
+.track { position: relative; }
+.ticks { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, transparent 0 calc(5% - 1px), var(--line) calc(5% - 1px) 5%); opacity: .7; }
 .truck {
   position: absolute; transform: translateX(-50%); padding: 1px 5px; border-radius: 4px;
   font: 600 .72rem var(--mono); background: var(--tc, var(--muted)); color: #fff; white-space: nowrap;
   transition: left .5s ease, top .3s ease; box-shadow: 0 1px 0 rgba(0,0,0,.25);
 }
 .truck.loaded::after { content: " ▪"; }
-.entry .truck { position: static; transform: none; background: var(--warn); color: #1a1400; }
-.dot { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--tc); transform: translateX(-50%); opacity: .8; }
+.entry .truck, .lanebox .truck { position: static; transform: none; }
+.entry .truck { background: var(--warn); color: #1a1400; }
+.dot { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--tc); transform: translateX(-50%); }
 .dot.urgent { width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--bad); }
 .occ { justify-self: end; font: 700 1.05rem var(--display); font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); }
 .occ.some { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
 .occ.full { color: var(--bad); border-color: var(--bad); background: var(--bad-bg); }
-.docks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
-.docks .truck { position: static; transform: none; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--muted); margin-top: 10px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--muted); margin-top: 10px; align-items: center; }
 
 /* Handhelds */
-.terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
-.term { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
-.term-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.term { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.term-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .term-head strong { font: 700 1.2rem var(--display); letter-spacing: .03em; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .chip { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: .75rem; font-weight: 600; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip.auto { color: var(--ok); border-color: var(--ok); }
 .chip.shift { color: var(--t-SHIFT); border-color: var(--t-SHIFT); }
 .chip.paused { color: var(--warn); border-color: var(--warn); }
 .chip.you { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.screen { background: var(--screen); color: var(--screen-ink); border-radius: 8px; padding: 10px 12px; min-height: 196px; display: flex; flex-direction: column; gap: 6px; }
-.scr-top { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--screen-dim); }
+.screen { background: var(--screen); color: var(--screen-ink); border-radius: 8px; padding: 10px 12px; min-height: 236px; display: flex; flex-direction: column; gap: 6px; }
+.scr-top { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--screen-dim); flex-wrap: wrap; }
 .screen .type { color: var(--screen-ink); }
-.steps { display: flex; gap: 6px; font-size: .75rem; }
+.steps { display: flex; gap: 6px; font-size: .75rem; flex-wrap: wrap; }
 .steps span { padding: 1px 8px; border-radius: 99px; border: 1px solid #3d4b54; color: var(--screen-dim); }
 .steps span.on { background: var(--screen-ink); color: var(--screen); border-color: var(--screen-ink); font-weight: 600; }
 .steps span.done { text-decoration: line-through; }
-.verb { font: 700 1.5rem/1.05 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.verb { font: 700 1.45rem/1.05 var(--display); text-transform: uppercase; letter-spacing: .04em; }
 .verb.wait { color: #f0b429; }
-.sub { color: var(--screen-dim); font-size: .85rem; }
+.sub { color: var(--screen-dim); font-size: .84rem; }
+.sub b { color: var(--screen-ink); font-weight: 600; }
+.recv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; font-size: .85rem; }
+.recv dt { color: var(--screen-dim); }
+.recv dd { margin: 0; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recv .now { color: #f0b429; font-weight: 600; }
+.recv .now + dd { color: #f0b429; }
 .msg { margin-top: auto; font-size: .82rem; padding: 4px 8px; border-radius: 4px; }
 .msg.ok { background: #173325; color: #8fe0b3; }
 .msg.bad { background: #3d1f1c; color: #ffb3aa; }
 .scanrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-.scanrow input { min-height: 40px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--lane); font-family: var(--mono); text-transform: uppercase; min-width: 0; }
+.scanrow input { min-height: 40px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--lane); font-family: var(--mono); min-width: 0; }
 .term-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .problems { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-radius: 6px; background: var(--bad-bg); }
 .stats { font-size: .78rem; color: var(--muted); }
 
 /* Coordinator rail */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -4px -4px 12px; overflow-x: auto; }
+.tabs button { border: 0; background: transparent; padding: 8px 10px; font: 700 1rem var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabpanel { display: grid; gap: 14px; }
 .prio { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.prio li { display: grid; grid-template-columns: 26px 22px minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.prio li { display: grid; grid-template-columns: 22px 20px minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .prio li.off { opacity: .55; }
 .rank { font: 700 1.3rem var(--display); text-align: center; font-variant-numeric: tabular-nums; }
 .prio .count { font-size: .8rem; color: var(--muted); }
 .arrows { display: flex; gap: 2px; }
 .arrows .btn { min-height: 28px; width: 28px; padding: 0; }
-.rules { display: grid; gap: 10px; margin-top: 14px; }
+.rules { display: grid; gap: 10px; }
 .rule { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .rule label { min-width: 0; }
 .rule small { display: block; color: var(--muted); font-size: .78rem; }
@@ -198,51 +221,72 @@ select { min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px sol
 .seg button { border: 0; background: transparent; padding: 4px 8px; font-size: .78rem; cursor: pointer; min-height: 30px; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); font-weight: 600; }
-.trucklist { display: grid; gap: 6px; }
-.trucklist div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.truckrow { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
+.truckrow:first-child { border-top: 0; padding-top: 0; }
+.truckrow .line { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.catpick { display: flex; gap: 4px; flex-wrap: wrap; }
+.catpick button { border: 1px solid var(--line); background: var(--panel); border-radius: 99px; padding: 1px 8px; font-size: .75rem; cursor: pointer; color: var(--muted); }
+.catpick button[aria-pressed="true"] { background: var(--cc); color: var(--ink); font-weight: 600; border-color: var(--muted); }
 .form { display: grid; gap: 8px; }
 .form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.form label { display: grid; gap: 3px; font-size: .8rem; color: var(--muted); }
-.form input[type=text], .form select { width: 100%; min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
-.form input[type=text] { font-family: var(--mono); text-transform: uppercase; }
-.form .check { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .85rem; }
-.err { color: var(--bad); font-size: .82rem; min-height: 1.2em; }
-.divider { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.form .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.form label { display: grid; gap: 3px; font-size: .8rem; color: var(--muted); min-width: 0; }
+.form .field, .form select { width: 100%; }
+.err { font-size: .82rem; min-height: 1.2em; }
+.err.bad { color: var(--bad); }
+.err.ok { color: var(--ok); }
+.list { display: grid; gap: 6px; }
+.list .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.status { font-size: .8rem; }
+.status.active, .status.ready { color: var(--ok); font-weight: 600; }
+.status.held, .status.short { color: var(--bad); font-weight: 600; }
+.status.urgent { color: var(--bad); }
 
-/* Queue */
-.split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+/* Label preview */
+.labelcard { background: var(--paper); color: var(--paper-ink); border: 1px solid #999; border-radius: 4px; padding: 14px; font-family: Arial, Helvetica, sans-serif; display: grid; gap: 6px; max-width: 330px; aspect-ratio: 4 / 6; align-content: start; }
+.labelcard .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+.labelcard .big { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+.labelcard hr { border: 0; border-top: 2px solid #111; margin: 4px 0; width: 100%; }
+.bars { height: 54px; width: 100%; }
+.bars.tall { height: 80px; }
+.labelcard .hr { font: 600 .8rem var(--mono); }
+pre.zpl { margin: 0; padding: 10px; border-radius: 6px; background: var(--screen); color: var(--screen-ink); font: 500 .72rem/1.4 var(--mono); max-height: 240px; overflow: auto; }
+
+/* Tables */
+.split { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1150px) { .split { grid-template-columns: minmax(0, 1fr); } }
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 th { text-align: left; font: 600 .72rem var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 tr.next td { background: var(--warn-bg); }
-.status { font-size: .8rem; }
-.status.active { color: var(--ok); font-weight: 600; }
-.status.held { color: var(--bad); font-weight: 600; }
-.status.urgent { color: var(--bad); }
 td .acts { display: flex; gap: 4px; }
 .star[aria-pressed="true"] { background: var(--bad); color: #fff; border-color: var(--bad); }
-.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .82rem; max-height: 420px; overflow: auto; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .82rem; max-height: 440px; overflow: auto; }
 .log li { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 8px; }
 .log time { font-family: var(--mono); color: var(--muted); font-size: .78rem; }
+.lvl { font: 600 .75rem var(--mono); padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); }
+.lvl.ground { color: var(--ok); border-color: var(--ok); }
+.lvl.high { color: var(--warn); border-color: var(--warn); }
 
 @media (max-width: 520px) {
-  .row { grid-template-columns: 38px minmax(0, 1fr) 44px; gap: 6px; }
-  .lane { grid-template-columns: 44px minmax(0, 1fr); }
-  .truck { font-size: .64rem; padding: 1px 3px; }
+  .row { grid-template-columns: 44px minmax(0, 1fr) 42px; gap: 6px; }
+  .row .name small { display: none; }
+  .lane { grid-template-columns: 40px minmax(0, 1fr); }
+  .truck { font-size: .62rem; padding: 1px 3px; }
   .bar .spacer { display: none; }
+  .form .three { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .truck, .switch, .switch::after { transition: none; } }
 </style>
 
 <header class="bar">
   <div class="brand"><h1>SortedWMS</h1><span>Auto dispatch · reach trucks</span></div>
-  <div class="clock num" id="clock" aria-label="Shift clock">06:00</div>
+  <div class="clock num" id="clock" aria-label="Shift clock">Wed 7 Oct 06:00</div>
   <div class="spacer"></div>
   <div class="ctl">
     <button class="btn" id="play" type="button">Pause shift</button>
-    <label class="hint" for="speed" style="color:var(--screen-dim)">Speed</label>
+    <label for="speed">Speed</label>
     <select id="speed">
       <option value="20">20×</option>
       <option value="60" selected>60×</option>
@@ -253,49 +297,55 @@ td .acts { display: flex; gap: 4px; }
 </header>
 
 <main class="page">
-  <p class="intro">A simulated shift. Trucks on <b>Auto</b> get their next job the moment they finish, in the order the coordinator sets. Every job is <b>two scans</b>: pick-up location, then drop location. No menus and no Enter presses. <b>No more than two trucks</b> are sent into one aisle; a third waits at the entry and is let in when one leaves.</p>
+  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles. Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, expiry, item, SSCC and quantity, and a GS1 pallet label does all five in one scan. Picks follow <b>first expired, first out</b>. Blocked stock never ships.</p>
 
   <div class="summary" id="summary"></div>
 
   <div class="layout">
     <div class="col">
       <section class="panel" aria-labelledby="board-h">
-        <div class="panel-head"><h2 id="board-h">Aisles</h2><span class="hint">Front of the aisle on the left. Bays 1–20.</span></div>
-        <div class="docks" id="docks"></div>
+        <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisles: front on the left, bays 1–20, 4 levels × 3 positions per bay.</span></div>
+        <div class="lanes" id="lanes"></div>
         <div class="board" id="board"></div>
         <div class="legend">
-          <span class="type t-REPLEN">Replenishment</span>
-          <span class="type t-PICK">Pallet pick</span>
-          <span class="type t-PUTAWAY">Put-away</span>
-          <span class="type t-SHIFT">Auto-Shift</span>
+          <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
+          <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
           <span>▪ pallet on the forks</span>
-          <span>● open job at that bay</span>
         </div>
       </section>
 
       <section aria-labelledby="terms-h">
-        <div class="panel-head"><h2 id="terms-h">Handhelds</h2><span class="hint">Press “Drive it yourself” on any truck to scan for it. A real scanner sends the Enter on its own.</span></div>
+        <div class="panel-head"><h2 id="terms-h">Handhelds</h2><span class="hint">Press “Drive it yourself” to scan for a truck. The scanner sends the Enter on its own.</span></div>
         <div class="terms" id="terms"></div>
       </section>
     </div>
 
-    <aside class="col" aria-label="Coordinator controls">
-      <section class="panel">
-        <div class="panel-head"><h2>Auto priority</h2><span class="hint">Top runs first</span></div>
-        <ol class="prio" id="prio"></ol>
+    <aside class="panel" aria-label="Coordinator">
+      <div class="tabs" role="tablist" id="tabs">
+        <button type="button" role="tab" aria-selected="true" data-tab="auto" id="tab-auto">Auto</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="orders" id="tab-orders">Orders</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="inbound" id="tab-inbound">Inbound</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="locations" id="tab-locations">Locations</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="labels" id="tab-labels">Labels</button>
+      </div>
+
+      <div class="tabpanel" role="tabpanel" data-panel="auto" aria-labelledby="tab-auto">
+        <div>
+          <div class="panel-head"><h3>Job priority</h3><span class="hint">Top goes first</span></div>
+          <ol class="prio" id="prio"></ol>
+        </div>
         <div class="rules">
           <div class="rule">
             <label>Reach trucks per aisle<small>Trucks sent into one aisle at once</small></label>
             <div class="stepper"><button class="btn" type="button" id="capDown" aria-label="One fewer truck per aisle">−</button><b id="cap" class="num">2</b><button class="btn" type="button" id="capUp" aria-label="One more truck per aisle">+</button></div>
           </div>
           <div class="rule">
-            <label for="escalate">Jump the queue after<small>Old jobs go to the front so nothing gets forgotten</small></label>
+            <label for="escalate">Jump the queue after<small>Old jobs go first. Auto-Shift never jumps on its own.</small></label>
             <select id="escalate">
               <option value="0">Never</option>
               <option value="10">10 min</option>
               <option value="20" selected>20 min</option>
               <option value="30">30 min</option>
-              <option value="45">45 min</option>
             </select>
           </div>
           <div class="rule">
@@ -303,50 +353,120 @@ td .acts { display: flex; gap: 4px; }
             <input type="checkbox" class="switch" id="travel" checked>
           </div>
           <div class="rule">
-            <label for="override">Driver may choose the slot<small>On Auto-Shift, scanning any other free slot is accepted</small></label>
+            <label for="override">Driver may choose the slot<small>Any other free slot of the right category is accepted</small></label>
             <input type="checkbox" class="switch" id="override" checked>
           </div>
+          <div class="rule">
+            <label for="checkpick">Check & label after picking<small>Scan pallet, label prints, scan label</small></label>
+            <input type="checkbox" class="switch" id="checkpick" checked>
+          </div>
         </div>
-      </section>
+        <div>
+          <div class="panel-head"><h3>Trucks</h3><button class="btn small" type="button" id="addTruck">Add truck</button></div>
+          <div id="trucklist"></div>
+        </div>
+      </div>
 
-      <section class="panel">
-        <div class="panel-head"><h2>Trucks</h2><button class="btn small" type="button" id="addTruck">Add truck</button></div>
-        <div class="trucklist" id="trucklist"></div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>New job</h2></div>
-        <form class="form" id="jobForm" novalidate>
+      <div class="tabpanel" role="tabpanel" data-panel="orders" aria-labelledby="tab-orders" hidden>
+        <form class="form" id="orderForm" novalidate>
+          <h3>New shipping order</h3>
           <div class="two">
-            <label for="jobType">Type
-              <select id="jobType">
-                <option value="REPLEN">Replenishment</option>
-                <option value="PICK">Pallet pick</option>
-                <option value="PUTAWAY">Put-away</option>
-                <option value="SHIFT">Auto-Shift</option>
-              </select>
+            <label for="oCustomer">Customer
+              <select id="oCustomer"><option>Corner Shop</option><option>Fresh Market</option><option>City Deli</option><option>Hotel Supplies</option></select>
             </label>
-            <label for="jobFrom">From
-              <input type="text" id="jobFrom" placeholder="03-012-2" autocomplete="off">
+            <label for="oLane">Lane
+              <select id="oLane"><option>OUT-01</option><option>OUT-02</option><option>OUT-03</option><option>OUT-04</option></select>
             </label>
           </div>
-          <label for="jobTo">To
-            <input type="text" id="jobTo" placeholder="Empty = system picks the slot" autocomplete="off">
-          </label>
-          <label class="check" for="jobUrgent"><input type="checkbox" id="jobUrgent"> Urgent</label>
-          <div class="err" id="jobErr" role="status"></div>
+          <div class="two">
+            <label for="oItem">Item<select id="oItem"></select></label>
+            <label for="oPallets">Pallets<input class="field num" type="number" id="oPallets" min="1" max="12" value="2"></label>
+          </div>
+          <div class="err" id="orderErr" role="status"></div>
           <div class="term-actions">
-            <button class="btn primary" type="submit">Add job</button>
-            <button class="btn" type="button" id="jobFill">Fill in an example</button>
-            <button class="btn" type="button" id="jobBurst">Add 5 random jobs</button>
+            <button class="btn primary" type="submit">Create order</button>
+            <button class="btn" type="button" id="orderRandom">Random order</button>
           </div>
         </form>
-      </section>
+        <div>
+          <div class="panel-head"><h3>Orders</h3><span class="hint">Pallets allocated by expiry date</span></div>
+          <div class="list" id="orders"></div>
+        </div>
+      </div>
 
-      <section class="panel" id="blockedPanel" hidden>
-        <div class="panel-head"><h2>Blocked locations</h2></div>
-        <div class="trucklist" id="blocked"></div>
-      </section>
+      <div class="tabpanel" role="tabpanel" data-panel="inbound" aria-labelledby="tab-inbound" hidden>
+        <form class="form" id="delForm" novalidate>
+          <h3>Announce a delivery</h3>
+          <div class="two">
+            <label for="dCat">Category
+              <select id="dCat"><option value="YOG">Yoghurt</option><option value="CHE">Cheese</option><option value="PRO">Protein drinks</option></select>
+            </label>
+            <label for="dPallets">Pallets<input class="field num" type="number" id="dPallets" min="1" max="20" value="4"></label>
+          </div>
+          <label for="dLabels">Supplier pallet labels
+            <select id="dLabels">
+              <option value="gs1">GS1-128 with everything (1 scan)</option>
+              <option value="gs1nocount">GS1-128 without count (1 scan + confirm qty)</option>
+              <option value="separate">Separate barcodes (4 scans + confirm qty)</option>
+            </select>
+          </label>
+          <label class="hint" style="display:flex;gap:6px;align-items:center;color:var(--ink)" for="dShort"><input type="checkbox" id="dShort"> One pallet with a short expiry</label>
+          <div class="err" id="delErr" role="status"></div>
+          <div class="term-actions"><button class="btn primary" type="submit">Announce delivery</button></div>
+        </form>
+        <div>
+          <div class="panel-head"><h3>Deliveries</h3></div>
+          <div class="list" id="deliveries"></div>
+        </div>
+      </div>
+
+      <div class="tabpanel" role="tabpanel" data-panel="locations" aria-labelledby="tab-locations" hidden>
+        <form class="form" id="tplForm" novalidate>
+          <h3>Location template</h3>
+          <p class="hint" style="margin:0">Give a range of locations a category. Pallets that end up in the wrong category get Auto-Shift relocation jobs.</p>
+          <div class="three">
+            <label for="tAisle">Aisle<select id="tAisle"></select></label>
+            <label for="tFrom">Bay from<input class="field num" type="number" id="tFrom" min="1" max="20" value="15"></label>
+            <label for="tTo">Bay to<input class="field num" type="number" id="tTo" min="1" max="20" value="20"></label>
+          </div>
+          <label for="tCat">Category
+            <select id="tCat"><option value="PRO">Protein drinks</option><option value="YOG">Yoghurt</option><option value="CHE">Cheese</option><option value="">No category</option></select>
+          </label>
+          <div class="err" id="tplErr" role="status"></div>
+          <div class="term-actions">
+            <button class="btn primary" type="submit">Apply template</button>
+            <button class="btn" type="button" id="tplProtein">Make room for protein drinks</button>
+          </div>
+        </form>
+        <div class="rules">
+          <h3>Auto-Shift</h3>
+          <div class="rule">
+            <label>Next out on the ground<small>Pallets per item kept at ground level, by expiry</small></label>
+            <div class="stepper"><button class="btn" type="button" id="gDown" aria-label="Fewer">−</button><b id="ground" class="num">1</b><button class="btn" type="button" id="gUp" aria-label="More">+</button></div>
+          </div>
+          <div class="rule">
+            <label>Same batch together<small>Move pallets standing alone next to the rest of their item, batch and expiry</small></label>
+            <button class="btn small" type="button" id="groupNow">Plan moves</button>
+          </div>
+          <div class="err" id="shiftErr" role="status"></div>
+        </div>
+        <div>
+          <div class="panel-head"><h3>Locations</h3></div>
+          <div class="list" id="catcounts"></div>
+        </div>
+        <div id="blockedBox" hidden>
+          <div class="panel-head"><h3>Blocked locations</h3></div>
+          <div class="list" id="blocked"></div>
+        </div>
+      </div>
+
+      <div class="tabpanel" role="tabpanel" data-panel="labels" aria-labelledby="tab-labels" hidden>
+        <div>
+          <div class="panel-head"><h3>Label printers</h3><span class="hint">One per shipping lane</span></div>
+          <div class="list" id="printq"></div>
+        </div>
+        <div id="labelView"></div>
+      </div>
     </aside>
   </div>
 
@@ -354,7 +474,7 @@ td .acts { display: flex; gap: 4px; }
     <section class="panel">
       <div class="panel-head"><h2>Job queue</h2><span class="hint" id="queueHint"></span></div>
       <div class="scroll"><table>
-        <thead><tr><th>Job</th><th>Type</th><th>From → To</th><th>Waiting</th><th>Status</th><th><span class="hint" style="text-transform:none;letter-spacing:0">Actions</span></th></tr></thead>
+        <thead><tr><th>Job</th><th>Type</th><th>Pallet</th><th>From → To</th><th>Waiting</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody id="queue"></tbody>
       </table></div>
     </section>
@@ -363,28 +483,54 @@ td .acts { display: flex; gap: 4px; }
       <ol class="log" id="log"></ol>
     </section>
   </div>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Stock</h2><span class="hint">Next out = the pallet the next pick will take (first expiry)</span></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Item</th><th>Category</th><th>Free pallets</th><th>Batches</th><th>Blocked</th><th>Next out</th><th>Best before</th><th>Where</th></tr></thead>
+      <tbody id="stock"></tbody>
+    </table></div>
+    <div id="blockedPallets" style="margin-top:14px"></div>
+  </section>
 </main>
 
-<script src="engine.js"></script>
+<script src="src/gs1.js"></script>
+<script src="src/labels.js"></script>
+<script src="src/engine.js"></script>
 <script>
 (function () {
   'use strict';
-  const { Warehouse, TASK_TYPES, TRUCK_MODES, distance, aisleOf, parseRack, rackCode } = window.SortedWMS;
-  const MIN = 60000;
+  const { Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, FIELD_LABELS, RECEIVE_FIELDS, distance, aisleOf, parseRack, rackCode, daysBetween } = window.SortedWMS;
+  const GS1 = window.GS1;
+  const MIN = 60000, DAY = 86400000;
   const SHIFT_START = Date.UTC(2026, 9, 7, 6, 0);
-  const SKUS = ['10234', '10871', '11402', '12095', '12730', '13318', '14006', '14522', '15190', '15877', '16233', '17041'];
-  const AISLES = 8, BAYS = 20, LEVELS = 4;
+  const AISLES = 8, BAYS = 20, LEVELS = 4, POS = 3;
 
-  let wh, simNow, rng, running = true, eta = {}, manual = {}, problemOpen = {}, nextArrival = 0, truckSeq = 0;
-  let holding = false;
+  // Example item list (made up for the demo).
+  const ITEMS = [
+    ['Y1001', 'Greek yoghurt 1 kg', 'YOG', 96, 10, 24],
+    ['Y1002', 'Strawberry yoghurt 500 g', 'YOG', 120, 10, 21],
+    ['Y1003', 'Vanilla quark 500 g', 'YOG', 120, 10, 28],
+    ['Y1004', 'Drinking yoghurt 1 l', 'YOG', 84, 8, 18],
+    ['C2001', 'Young gouda slices 150 g', 'CHE', 160, 30, 75],
+    ['C2002', 'Mature cheddar block 400 g', 'CHE', 120, 30, 120],
+    ['C2003', 'Grated mozzarella 200 g', 'CHE', 150, 25, 60],
+    ['C2004', 'Brie wedge 200 g', 'CHE', 140, 14, 40],
+    ['P3001', 'Protein shake chocolate 330 ml', 'PRO', 72, 60, 270],
+    ['P3002', 'Protein shake vanilla 330 ml', 'PRO', 72, 60, 270],
+  ]; // itemNo, name, category, cases per pallet, min days left at receiving, typical shelf life
+
+  let wh, simNow, rng, running = true, eta = {}, manual = {}, problemOpen = {}, holding = false;
+  let nextOrder = 0, nextDelivery = 0, orderSeq = 4500, delSeq = 2040, truckSeq = 0;
+  let incoming = {}; // deliveryId -> physical pallets still on the truck, with their barcodes
+  let labelSel = null, tab = 'auto';
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const hhmm = (t, secs) => {
-    const d = new Date(t);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}${secs ? ':' + p(d.getUTCSeconds()) : ''}`;
-  };
+  const p2 = (n) => String(n).padStart(2, '0');
+  const hhmm = (t, secs) => { const d = new Date(t); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}${secs ? ':' + p2(d.getUTCSeconds()) : ''}`; };
+  const dmy = (iso) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
+  const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
   function mulberry32(a) {
     return function () {
@@ -395,92 +541,173 @@ td .acts { display: flex; gap: 4px; }
     };
   }
   const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+  const between = (a, b) => a + Math.floor(rng() * (b - a + 1));
 
   function locHtml(code, cls = '') {
     if (!code) return '<span class="loc auto">auto slot</span>';
-    if (code.startsWith('DOCK')) return `<span class="loc dock ${cls}">${esc(code)}</span>`;
-    const [a, rest] = [code.slice(0, 2), code.slice(2)];
-    return `<span class="loc ${cls}"><b>${a}</b>${esc(rest)}</span>`;
+    if (!parseRack(code)) return `<span class="loc lanecode ${cls}">${esc(code)}</span>`;
+    return `<span class="loc ${cls}"><b>${code.slice(0, 2)}</b>${esc(code.slice(2))}</span>`;
   }
+  const ssccHtml = (s) => (s ? `<span class="sscc" title="${esc(s)}">…<b>${esc(s.slice(-6))}</b></span>` : '–');
   const typeHtml = (type) => `<span class="type t-${type}">${TASK_TYPES[type].short}</span>`;
+  const catHtml = (c) => (c ? `<span class="cat c-${c}">${esc(CATEGORIES[c])}</span>` : '<span class="hint">none</span>');
 
   // ---- Demo data --------------------------------------------------------
 
-  function freePallets() {
-    const busy = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.from));
-    return Object.values(wh.locations).filter((l) => l.kind === 'reserve' && l.pallet && !l.blocked && !l.reservedBy && !busy.has(l.code));
+  function batchCode(itemNo, expiry) {
+    return `L${expiry.slice(2, 4)}${expiry.slice(5, 7)}${itemNo.slice(-2)}${String.fromCharCode(65 + between(0, 5))}`;
   }
+  function addDays(iso, n) { return isoDay(Date.parse(iso) + n * DAY); }
 
-  function makeJob(type, aisle) {
-    let pool = freePallets();
-    if (aisle) pool = pool.filter((l) => l.aisle === aisle);
-    if (!pool.length && type !== 'PUTAWAY') return null;
-    const src = pool.length ? pick(pool) : null;
-    switch (type) {
-      case 'REPLEN': return { type, from: src.code, to: rackCode(src.aisle, src.bay, 0) };
-      case 'PICK': return { type, from: src.code, to: 'DOCK-OUT' };
-      case 'PUTAWAY': return { type, from: 'DOCK-IN', to: null, sku: pick(SKUS), qty: 24 + Math.floor(rng() * 48) };
-      default: return { type: 'SHIFT', from: src.code, to: null };
+  function seedStock() {
+    const today = isoDay(simNow);
+    const slots = (cat) => Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.category === cat && !l.sscc);
+    for (const [itemNo, , cat, , , shelf] of ITEMS) {
+      if (cat === 'PRO') continue;
+      const free = slots(cat).filter((l) => l.aisle === pick([...new Set(slots(cat).map((s) => s.aisle))]));
+      // Several batches per item, mostly standing together in one bay level, a few scattered.
+      const batches = between(6, 8);
+      let cursor = between(0, Math.max(0, free.length - 90));
+      for (let b = 0; b < batches; b++) {
+        const expiry = addDays(today, Math.round(shelf * (0.3 + b * 0.1)) + between(0, 3));
+        const batch = batchCode(itemNo, expiry);
+        const n = between(6, 12);
+        for (let i = 0; i < n; i++) {
+          let loc = free[cursor++];
+          if (rng() < 0.18) loc = pick(slots(cat)); // the odd one put away somewhere else
+          if (!loc || loc.sscc) continue;
+          wh.stockPallet(loc.code, { itemNo, batch, expiry, receivedAt: simNow - between(2, 20) * DAY });
+        }
+      }
+      // Short-expiry stock sitting blocked high up in the racks.
+      if (rng() < 0.6) {
+        const high = slots(cat).filter((l) => l.level === LEVELS - 1);
+        const expiry = addDays(today, between(2, 6));
+        wh.stockPallet(pick(high).code, { itemNo, batch: batchCode(itemNo, expiry), expiry, receivedAt: simNow - 9 * DAY, status: 'blocked', blockReason: 'Short expiry' });
+      }
     }
   }
 
-  function randomType() {
-    const r = rng();
-    return r < 0.3 ? 'REPLEN' : r < 0.65 ? 'PICK' : r < 0.85 ? 'PUTAWAY' : 'SHIFT';
+  function makeIncoming(cat, count, labels, withShort) {
+    const items = ITEMS.filter((i) => i[2] === cat);
+    const today = isoDay(simNow);
+    const [itemNo, , , qty, , shelf] = pick(items);
+    const expiry = addDays(today, Math.round(shelf * 0.9));
+    const batch = batchCode(itemNo, expiry);
+    const pallets = [];
+    for (let i = 0; i < count; i++) {
+      const short = withShort && i === count - 1;
+      const exp = short ? addDays(today, between(2, 5)) : expiry;
+      const sscc = GS1.makeSscc(3, '8712345', between(1e6, 9e6) * 10 + i); // supplier's own SSCCs
+      pallets.push({ itemNo, gtin: wh.items[itemNo].gtin, batch: short ? batchCode(itemNo, exp) : batch, expiry: exp, sscc, qty, labels, scanned: 0 });
+    }
+    return pallets;
   }
 
-  function addJob(spec) {
-    if (!spec) return null;
-    try { return wh.addTask(spec); } catch (e) { return null; }
+  // The barcodes on the physical pallet, in the order the driver scans them.
+  function barcodesFor(p) {
+    if (p.labels === 'gs1') return [`(00)${p.sscc}(02)${p.gtin}(15)${GS1.toYymmdd(p.expiry)}(10)${p.batch}(37)${p.qty}`];
+    if (p.labels === 'gs1nocount') return [`(00)${p.sscc}(02)${p.gtin}(15)${GS1.toYymmdd(p.expiry)}(10)${p.batch}`];
+    return [p.batch, GS1.toYymmdd(p.expiry), p.gtin.slice(1), p.sscc];
+  }
+
+  function announce(cat, count, labels, withShort) {
+    const id = `D-${++delSeq}`;
+    const suppliers = { YOG: 'Dairy supplier', CHE: 'Cheese supplier', PRO: 'Drinks supplier' };
+    wh.addDelivery({ id, supplier: suppliers[cat], category: cat, pallets: count });
+    incoming[id] = makeIncoming(cat, count, labels, withShort);
+    return id;
+  }
+
+  function randomOrder() {
+    const usable = wh.stockSummary().filter((r) => r.available >= 1);
+    if (!usable.length) return null;
+    const lines = [];
+    const n = between(1, 2);
+    for (let i = 0; i < n; i++) {
+      const r = pick(usable);
+      if (lines.some((l) => l.itemNo === r.item.itemNo)) continue;
+      lines.push({ itemNo: r.item.itemNo, pallets: Math.min(r.available, rng() < 0.7 ? 1 : 2) });
+    }
+    const busyLanes = new Set(Object.values(wh.orders).filter((o) => o.status !== 'shipped').map((o) => o.lane));
+    const lane = ['OUT-01', 'OUT-02', 'OUT-03', 'OUT-04'].find((l) => !busyLanes.has(l)) || pick(['OUT-01', 'OUT-02', 'OUT-03', 'OUT-04']);
+    return wh.addOrder({ id: String(++orderSeq), customer: pick(['Corner Shop', 'Fresh Market', 'City Deli', 'Hotel Supplies']), lane, lines });
   }
 
   function boot() {
     rng = mulberry32(20261007);
-    eta = {}; manual = {}; problemOpen = {}; truckSeq = 0;
-    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, clock: () => simNow });
+    simNow = SHIFT_START - 30 * MIN;
+    eta = {}; manual = {}; problemOpen = {}; incoming = {}; truckSeq = 0; orderSeq = 4500; delSeq = 2040; labelSel = null;
+    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, clock: () => simNow });
+    ITEMS.forEach(([itemNo, name, category, palletQty, minShelfDays], i) => wh.addItem({ itemNo, name, category, palletQty, minShelfDays, gtin: GS1.makeGtin13('20012', 3000 + i) }));
+    for (let a = 1; a <= AISLES; a++) wh.setLocationCategory({ aisle: a }, a <= 4 ? 'YOG' : 'CHE');
+    seedStock();
 
-    for (const loc of Object.values(wh.locations)) {
-      if (loc.kind === 'reserve' && rng() < 0.55) wh.addPallet(loc.code, { sku: pick(SKUS), qty: 20 + Math.floor(rng() * 60) });
-      if (loc.kind === 'pick' && rng() < 0.8) wh.addPallet(loc.code, { sku: pick(SKUS), qty: 1 + Math.floor(rng() * 12) });
-    }
-
-    // Jobs that arrived before the shift started. One pick has waited long enough
-    // to jump the queue; aisle 03 has more work than two trucks can take.
-    simNow = SHIFT_START - 23 * MIN;
-    addJob(makeJob('PICK', '07'));
-    simNow = SHIFT_START - 14 * MIN;
-    addJob(makeJob('SHIFT', '06'));
-    addJob(makeJob('PUTAWAY'));
-    addJob(makeJob('PICK', '03'));
-    simNow = SHIFT_START - 8 * MIN;
-    addJob(makeJob('REPLEN', '03'));
-    addJob(makeJob('PICK', '03'));
-    addJob(makeJob('PUTAWAY'));
-    simNow = SHIFT_START - 3 * MIN;
-    addJob(makeJob('REPLEN', '03'));
-    addJob(makeJob('REPLEN', '05'));
-    addJob(makeJob('SHIFT', '02'));
+    // Before the shift: some orders and two trucks at the door.
+    randomOrder();
+    simNow += 6 * MIN;
+    randomOrder();
+    announce('YOG', 4, 'gs1', false);
+    simNow += 14 * MIN;
+    announce('CHE', 3, 'separate', true);
+    randomOrder();
     simNow = SHIFT_START;
+    wh.planGround();
 
-    for (let i = 0; i < 3; i++) addTruck('auto');
-    addTruck('shift');
-    nextArrival = simNow + 2 * MIN;
+    for (const cats of [['YOG'], ['YOG'], ['CHE'], ['CHE']]) addTruck('auto', cats);
+    nextOrder = simNow + 4 * MIN;
+    nextDelivery = simNow + 25 * MIN;
     wh.events.length = 0;
-    wh.log('Shift started. 4 reach trucks on the floor');
+    wh.log('Shift started. RT-01 and RT-02 on yoghurt, RT-03 and RT-04 on cheese');
+    fillItemSelect();
     buildTerminals();
     render(true);
   }
 
-  function addTruck(mode) {
-    const id = `RT-${String(++truckSeq).padStart(2, '0')}`;
-    wh.addTruck(id, { mode });
+  function addTruck(mode, categories) {
+    const id = `RT-${p2(++truckSeq)}`;
+    wh.addTruck(id, { mode, categories });
     return id;
   }
 
   // ---- Simulation -------------------------------------------------------
 
-  function travelMs(from, to) {
-    return (distance(from, to) * 5 + 50) * 1000; // 5 s per bay, 50 s to lift and place
+  const travelMs = (from, to) => (distance(from, to) * 5 + 50) * 1000;
+
+  // What the simulated driver scans next, and how long it takes to get there.
+  function nextAction(truck, ins) {
+    switch (ins.kind) {
+      case 'pickup': return { code: ins.task.sscc, ms: travelMs(truck.position, ins.target) };
+      case 'drop': return { code: ins.target, ms: travelMs(truck.position, ins.target) };
+      case 'check-pallet': return { code: ins.task.sscc, ms: travelMs(truck.position, ins.task.from) + 20000 };
+      case 'check-label': return { code: ins.task.labelCode, ms: 35000 };
+      case 'receive': {
+        if (ins.field === 'qty') return { tap: true, ms: 5000 };
+        const queue = incoming[ins.delivery.id] || [];
+        const p = queue[0];
+        if (!p) return { finish: true, ms: 5000 };
+        const codes = barcodesFor(p);
+        return { code: codes[Math.min(p.scanned, codes.length - 1)], pallet: p, ms: p.scanned === 0 ? 45000 : 8000 };
+      }
+      default: return null;
+    }
+  }
+
+  // Pallets that have been registered are no longer on the delivery truck.
+  function syncIncoming() {
+    for (const q of Object.values(incoming)) while (q[0] && wh.pallets[q[0].sscc]) q.shift();
+  }
+
+  function doAction(truck, act) {
+    let r;
+    if (act.finish) r = wh.finishReceiving(truck.id);
+    else if (act.tap) r = wh.confirmQty(truck.id);
+    else {
+      r = wh.scan(truck.id, act.code);
+      if (act.pallet && r.ok) act.pallet.scanned++;
+    }
+    syncIncoming();
+    return r;
   }
 
   function tick(simSeconds) {
@@ -489,18 +716,27 @@ td .acts { display: flex; gap: 4px; }
     for (const truck of Object.values(wh.trucks)) {
       if (manual[truck.id]) continue;
       const ins = wh.instruction(truck.id);
-      if (ins.kind !== 'pickup' && ins.kind !== 'drop') { delete eta[truck.id]; continue; }
-      const key = `${ins.task.id}:${ins.task.step}:${ins.target}`;
-      if (!eta[truck.id] || eta[truck.id].key !== key) {
-        eta[truck.id] = { key, at: simNow + travelMs(truck.position, ins.target) };
-      } else if (simNow >= eta[truck.id].at) {
-        delete eta[truck.id];
-        wh.scan(truck.id, ins.target);
-      }
+      const act = nextAction(truck, ins);
+      if (!act) { delete eta[truck.id]; continue; }
+      const key = `${ins.task.id}:${ins.kind}:${ins.task.step}:${ins.field || ''}:${act.code || ''}`;
+      if (!eta[truck.id] || eta[truck.id].key !== key) eta[truck.id] = { key, at: simNow + act.ms };
+      else if (simNow >= eta[truck.id].at) { delete eta[truck.id]; doAction(truck, act); }
     }
-    if (simNow >= nextArrival || wh.openTasks().length < 3) {
-      addJob(makeJob(randomType()));
-      nextArrival = simNow + (1 + rng() * 3) * MIN;
+    if (simNow >= nextOrder) {
+      randomOrder();
+      nextOrder = simNow + between(9, 16) * MIN;
+    }
+    if (simNow >= nextDelivery) {
+      const cats = ['YOG', 'CHE'];
+      if (Object.values(wh.locations).some((l) => l.category === 'PRO')) cats.push('PRO');
+      announce(pick(cats), between(3, 5), pick(['gs1', 'gs1', 'gs1nocount', 'separate']), rng() < 0.3);
+      nextDelivery = simNow + between(40, 70) * MIN;
+    }
+    for (const o of Object.values(wh.orders)) {
+      if (o.status === 'ready') {
+        o.readyAt = o.readyAt || simNow;
+        if (simNow - o.readyAt > 12 * MIN) wh.shipOrder(o.id);
+      }
     }
   }
 
@@ -508,81 +744,95 @@ td .acts { display: flex; gap: 4px; }
 
   const setHTML = (el, html) => { if (el.__html !== html) { el.innerHTML = html; el.__html = html; } };
 
-  function queueOrder() {
-    const cfg = wh.config;
-    const rank = (t) => (wh.isUrgent(t) ? -1 : cfg.priority.indexOf(t.type));
-    const order = { active: 0, held: 1, open: 2 };
-    return Object.values(wh.tasks)
-      .filter((t) => t.status in order)
-      .sort((a, b) => order[a.status] - order[b.status] || rank(a) - rank(b) || a.createdAt - b.createdAt);
-  }
-
-  // Scans spent on finished jobs only; a job in progress has already used its pick-up scan.
-  function inputsPerJob(trucks) {
-    let scans = 0, jobs = 0;
+  function inputsPer(trucks, kind) {
+    let n = 0, inputs = 0;
     for (const t of trucks) {
-      const midJob = t.taskId && wh.tasks[t.taskId].step === 1 ? 1 : 0;
-      scans += t.stats.scans - midJob;
-      jobs += t.stats.jobs;
+      n += kind === 'move' ? t.stats.moves : t.stats.received;
+      inputs += kind === 'move' ? t.stats.moveInputs : t.stats.receiveInputs;
     }
-    return jobs ? (scans / jobs).toFixed(1) : '–';
+    return n ? (inputs / n).toFixed(1) : '–';
   }
 
   function renderSummary() {
+    const tasks = Object.values(wh.tasks);
     const open = wh.openTasks();
+    const trucks = Object.values(wh.trucks);
     const occ = wh.aisleOccupancy();
     const full = Object.entries(occ).filter(([, ids]) => ids.length >= wh.config.aisleCap).map(([a]) => a);
-    const working = Object.values(wh.trucks).filter((t) => t.taskId).length;
-    const waiting = Object.values(wh.trucks).filter((t) => t.waiting).length;
-    const done = Object.values(wh.tasks).filter((t) => t.status === 'done').length;
     const urgent = open.filter((t) => wh.isUrgent(t)).length;
-    const held = Object.values(wh.tasks).filter((t) => t.status === 'held').length;
-    const trucks = Object.values(wh.trucks);
+    const held = tasks.filter((t) => t.status === 'held' && !t.replacedBy).length;
+    const orders = Object.values(wh.orders);
+    const blockedPallets = Object.values(wh.pallets).filter((p) => p.status === 'blocked' && p.loc).length;
     setHTML($('summary'), [
       `<div class="stat"><b>${open.length}</b> open jobs</div>`,
       `<div class="stat ${urgent ? 'alert' : ''}"><b>${urgent}</b> urgent</div>`,
-      `<div class="stat"><b>${working}/${trucks.length}</b> trucks working</div>`,
+      `<div class="stat"><b>${trucks.filter((t) => t.taskId).length}/${trucks.length}</b> trucks working</div>`,
       `<div class="stat"><b>${full.length}</b> aisles full${full.length ? ' (' + full.join(', ') + ')' : ''}</div>`,
-      `<div class="stat"><b>${waiting}</b> waiting at an entry</div>`,
       `<div class="stat ${held ? 'alert' : ''}"><b>${held}</b> held</div>`,
-      `<div class="stat"><b>${done}</b> done this shift</div>`,
-      `<div class="stat"><b>${inputsPerJob(trucks)}</b> inputs per job</div>`,
+      `<div class="stat"><b>${orders.filter((o) => o.status === 'ready').length}</b> orders ready · <b>${orders.filter((o) => o.status === 'shipped').length}</b> shipped</div>`,
+      `<div class="stat"><b>${blockedPallets}</b> blocked pallets</div>`,
+      `<div class="stat good"><b>${inputsPer(trucks, 'move')}</b> scans per pallet move</div>`,
+      `<div class="stat good"><b>${inputsPer(trucks, 'recv')}</b> inputs per received pallet</div>`,
     ].join(''));
   }
 
-  function truckTag(truck, extraStyle = '') {
+  function truckTag(truck, style = '') {
     const task = truck.taskId && wh.tasks[truck.taskId];
-    const cls = task ? `t-${task.type}` : '';
-    return `<span class="truck ${cls} ${truck.load ? 'loaded' : ''}" style="${extraStyle}" title="${esc(truck.id)}">${esc(truck.id)}</span>`;
+    return `<span class="truck ${task ? `t-${task.type}` : ''} ${truck.load ? 'loaded' : ''}" style="${style}">${esc(truck.id)}</span>`;
+  }
+
+  // Where the truck is headed right now: a rack code, or a lane.
+  function truckTarget(truck) {
+    const ins = wh.instruction(truck.id);
+    if (ins.kind === 'receive') return 'DOCK-IN';
+    if (ins.kind === 'check-pallet' || ins.kind === 'check-label') return ins.task.from;
+    if (ins.kind === 'idle' || ins.kind === 'paused') return null;
+    return ins.target;
   }
 
   function renderBoard() {
     const cap = wh.config.aisleCap;
     const occ = wh.aisleOccupancy();
     const trucks = Object.values(wh.trucks);
+    const open = wh.openTasks();
 
-    const atDock = trucks.filter((t) => !t.taskId);
-    setHTML($('docks'), `<span class="hint">Docks / idle:</span> ${atDock.length ? atDock.map((t) => truckTag(t)).join('') : '<span class="hint">none</span>'}`);
+    const laneCodes = Object.values(wh.locations).filter((l) => l.kind === 'lane').map((l) => l.code);
+    let lanes = laneCodes.map((code) => {
+      const lane = wh.locations[code];
+      const here = trucks.filter((t) => { const tg = truckTarget(t); return tg === code && !parseRack(tg); });
+      const order = Object.values(wh.orders).find((o) => o.lane === code && o.status !== 'shipped');
+      const sub = code === 'DOCK-IN'
+        ? `${lane.pallets.length} pallet${lane.pallets.length === 1 ? '' : 's'} to put away`
+        : order ? `${esc(order.id)} · ${lane.pallets.length} on lane` : `${lane.pallets.length} on lane`;
+      return `<div class="lanebox"><div class="top"><strong>${code}</strong><span class="hint num">${sub}</span></div><div class="trucks">${here.map((t) => truckTag(t)).join('')}</div></div>`;
+    }).join('');
+    const idle = trucks.filter((t) => !truckTarget(t));
+    lanes += `<div class="lanebox"><div class="top"><strong>Idle</strong><span class="hint">${idle.length ? '' : 'none'}</span></div><div class="trucks">${idle.map((t) => truckTag(t)).join('')}</div></div>`;
+    setHTML($('lanes'), lanes);
 
     let html = '';
     for (let a = 1; a <= AISLES; a++) {
-      const aisle = String(a).padStart(2, '0');
+      const aisle = p2(a);
       const inside = (occ[aisle] || []).map((id) => wh.trucks[id]);
       const waitingHere = trucks.filter((t) => t.waiting && aisleOf(wh.tasks[t.taskId].to) === aisle);
-      const jobs = wh.openTasks().filter((t) => aisleOf(t.from) === aisle);
-      const n = inside.length;
+      const jobs = open.filter((t) => aisleOf(t.from) === aisle);
       const pct = (bay) => ((bay - 0.5) / BAYS) * 100;
-
-      const markers = inside.map((t, i) => {
-        const task = wh.tasks[t.taskId];
-        const target = task.step === 0 ? task.from : task.to;
-        return truckTag(t, `left:${pct(parseRack(target).bay)}%;top:${i === 0 ? 4 : 22}px`);
-      }).join('');
+      // Category band from the location template, bay by bay (ground level, position 1).
+      const stops = [];
+      const cats = new Set();
+      for (let b = 1; b <= BAYS; b++) {
+        const c = wh.locations[rackCode(a, b, 0, 1)].category;
+        if (c) cats.add(c);
+        stops.push(`var(--cat-${c || 'none'}) ${((b - 1) / BAYS) * 100}% ${(b / BAYS) * 100}%`);
+      }
+      let used = 0, total = 0;
+      for (let b = 1; b <= BAYS; b++) for (let l = 0; l < LEVELS; l++) for (let p = 1; p <= POS; p++) { total++; if (wh.locations[rackCode(a, b, l, p)].sscc) used++; }
+      const markers = inside.map((t, i) => truckTag(t, `left:${pct(parseRack(truckTarget(t)).bay)}%;top:${i === 0 ? 4 : 22}px`)).join('');
       const dots = jobs.map((t) => `<span class="dot t-${t.type} ${wh.isUrgent(t) ? 'urgent' : ''}" style="left:${pct(parseRack(t.from).bay)}%" title="Job #${t.id}"></span>`).join('');
-
+      const n = inside.length;
       html += `<div class="row">
-        <div class="name">${aisle}<small>${jobs.length} job${jobs.length === 1 ? '' : 's'}</small></div>
-        <div class="lane"><div class="entry">${waitingHere.map((t) => truckTag(t)).join('')}</div><div class="track">${dots}${markers}</div></div>
+        <div class="name">${aisle}<small>${[...cats].map((c) => CATEGORIES[c].split(' ')[0]).join(' / ') || 'no category'}</small><small>${Math.round((used / total) * 100)}% full</small></div>
+        <div class="lane"><div class="entry">${waitingHere.map((t) => truckTag(t)).join('')}</div><div class="track" style="background:linear-gradient(90deg, ${stops.join(', ')})"><div class="ticks"></div>${dots}${markers}</div></div>
         <div class="occ num ${n >= cap ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${cap} trucks in aisle ${aisle}">${n}/${cap}</div>
       </div>`;
     }
@@ -592,8 +842,7 @@ td .acts { display: flex; gap: 4px; }
   function buildTerminals() {
     const box = $('terms');
     box.innerHTML = '';
-    for (const truck of Object.values(wh.trucks)) {
-      const id = truck.id;
+    for (const id of Object.keys(wh.trucks)) {
       const el = document.createElement('article');
       el.className = 'term';
       el.dataset.truck = id;
@@ -601,10 +850,12 @@ td .acts { display: flex; gap: 4px; }
         <div class="term-head"><strong>${esc(id)}</strong><span class="chips"></span></div>
         <div class="screen"></div>
         <form class="scanrow" novalidate>
-          <input type="text" id="scan-${esc(id)}" aria-label="Scan for ${esc(id)}" placeholder="Scan or type a location" autocomplete="off" spellcheck="false">
+          <input type="text" id="scan-${esc(id)}" aria-label="Scan for ${esc(id)}" placeholder="Scan or type a barcode" autocomplete="off" spellcheck="false">
           <button class="btn primary" type="button" data-act="scan">Scan</button>
         </form>
         <div class="term-actions">
+          <button class="btn small primary" type="button" data-act="qty" hidden></button>
+          <button class="btn small" type="button" data-act="finish" hidden>End delivery</button>
           <button class="btn small" type="button" data-act="drive"></button>
           <button class="btn small" type="button" data-act="problem">Report a problem</button>
           <button class="btn small" type="button" data-act="pause"></button>
@@ -619,63 +870,113 @@ td .acts { display: flex; gap: 4px; }
     }
   }
 
+  function palletLine(p) {
+    if (!p) return '';
+    const item = wh.items[p.itemNo];
+    return `<b>${esc(item.itemNo)}</b> ${esc(item.name)} · batch <b>${esc(p.batch)}</b> · BB ${dmy(p.expiry)} · ${p.qty} cs`;
+  }
+
+  // What the "Scan" button reads for this truck right now.
+  function simulatedScan(truck, ins) {
+    if (ins.kind === 'receive') {
+      const p = (incoming[ins.delivery.id] || [])[0];
+      if (!p || ins.field === 'qty') return null;
+      const codes = barcodesFor(p);
+      return { code: codes[Math.min(p.scanned, codes.length - 1)], label: codes.length === 1 ? 'Scan pallet label' : `Scan ${FIELD_LABELS[ins.field].toLowerCase()}`, pallet: p };
+    }
+    if (ins.kind === 'pickup' || ins.kind === 'check-pallet') return { code: ins.task.sscc, label: `Scan pallet …${ins.task.sscc.slice(-6)}` };
+    if (ins.kind === 'check-label') return { code: ins.task.labelCode, label: `Scan label ${ins.task.labelCode}` };
+    if (ins.kind === 'drop' || ins.kind === 'wait') return { code: ins.target, label: `Scan ${ins.target}` };
+    if (ins.kind === 'idle') {
+      const occ = wh.aisleOccupancy();
+      const live = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.sscc));
+      const cand = Object.values(wh.pallets).filter((p) => p.loc && parseRack(p.loc) && !live.has(p.sscc) && !p.orderId
+        && (!truck.categories || truck.categories.includes(wh.items[p.itemNo].category))
+        && (occ[aisleOf(p.loc)] || []).length < wh.config.aisleCap)
+        .sort((x, y) => distance(truck.position, x.loc) - distance(truck.position, y.loc))[0];
+      return cand ? { code: cand.sscc, label: 'Scan a pallet (Auto-Shift)' } : null;
+    }
+    return null;
+  }
+
   function renderTerminal(el) {
     const id = el.dataset.truck;
     const truck = wh.trucks[id];
     const ins = wh.instruction(id);
-    const modeCls = truck.mode;
     el.querySelector('.chips').innerHTML =
-      (manual[id] ? '<span class="chip you">You’re driving</span> ' : '') +
-      `<span class="chip ${modeCls}">${esc(TRUCK_MODES[truck.mode].label)}</span>`;
+      (manual[id] ? '<span class="chip you">You’re driving</span>' : '') +
+      (truck.categories || []).map((c) => catHtml(c)).join('') +
+      `<span class="chip ${truck.mode}">${esc(TRUCK_MODES[truck.mode].label)}</span>`;
 
     let body = '';
-    if (ins.kind === 'pickup' || ins.kind === 'drop' || ins.kind === 'wait') {
-      const t = ins.task;
-      const step = t.step;
-      body += `<div class="scr-top"><span>${typeHtml(t.type)}</span><span>${esc(t.reason || '')}</span><span class="num">#${t.id}</span></div>`;
-      body += `<div class="steps"><span class="${step === 0 ? 'on' : 'done'}">1 Pick up</span><span class="${step === 1 ? 'on' : ''}">2 Drop</span></div>`;
-      if (ins.kind === 'wait') {
-        const cap = wh.config.aisleCap;
-        body += `<div class="verb wait">Wait at aisle ${esc(ins.aisle)} entry</div>`;
-        body += `<div>${locHtml(ins.target, 'lg')}</div>`;
-        body += `<div class="sub">${cap} of ${cap} trucks already inside. You’ll be let in as soon as one leaves.</div>`;
+    const t = ins.task;
+    if (t) {
+      const why = t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.dispatchReason || '';
+      body += `<div class="scr-top"><span>${typeHtml(t.type)}</span><span>${esc(why)}</span><span class="num">#${t.id}</span></div>`;
+    }
+    if (ins.kind === 'receive') {
+      const d = ins.draft;
+      const del = ins.delivery;
+      body += `<div class="sub">Delivery <b>${esc(del.id)}</b> · ${esc(del.supplier)} · pallet <b>${del.received.length + 1}</b> of ${del.expected}</div>`;
+      body += `<div class="verb">${ins.field === 'qty' ? 'Confirm quantity' : `Scan ${FIELD_LABELS[ins.field]}`}</div>`;
+      const val = {
+        batch: d.batch, expiry: d.expiry && dmy(d.expiry), item: d.item && `${d.item} ${wh.items[d.item].name}`,
+        sscc: d.sscc && `…${d.sscc.slice(-8)}`, qty: d.qty || (ins.field === 'qty' ? `${wh.items[d.item].palletQty}?` : null),
+      };
+      body += `<dl class="recv">${RECEIVE_FIELDS.map((f) => `<dt class="${f === ins.field ? 'now' : ''}">${FIELD_LABELS[f]}</dt><dd>${val[f] ? esc(val[f]) : (f === ins.field ? '◀ scan' : '–')}</dd>`).join('')}</dl>`;
+    } else if (ins.kind === 'check-pallet' || ins.kind === 'check-label') {
+      const order = wh.orders[t.orderId];
+      body += `<div class="steps"><span class="${ins.kind === 'check-pallet' ? 'on' : 'done'}">1 Check pallet</span><span class="${ins.kind === 'check-label' ? 'on' : ''}">2 Label</span></div>`;
+      if (ins.kind === 'check-pallet') {
+        body += `<div class="verb">Check pallet at ${esc(t.from)}</div><div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b> · order <b>${esc(order.id)}</b> ${esc(order.customer)}</div><div class="sub">${palletLine(ins.pallet)}</div>`;
       } else {
-        body += `<div class="verb">${ins.kind === 'pickup' ? 'Pick up at' : 'Drop at'}</div>`;
-        body += `<div>${locHtml(ins.target, 'lg')}</div>`;
-        const other = ins.kind === 'pickup'
-          ? `then to ${t.to ? esc(t.to) : 'auto slot'}`
-          : (t.autoSlot && wh.config.allowSlotOverride ? 'or scan any free slot' : `from ${esc(t.from)}`);
-        body += `<div class="sub">SKU ${esc(t.sku)} · ${t.qty} units · ${other}</div>`;
+        body += `<div class="verb">Stick on the shipping label</div><div>${locHtml(t.labelCode, 'lg')}</div><div class="sub">Printed on ${esc(wh.locations[t.from].printer)}. Scan it once it's on the pallet.</div>`;
+      }
+    } else if (ins.kind === 'pickup' || ins.kind === 'drop' || ins.kind === 'wait') {
+      body += `<div class="steps"><span class="${t.step === 0 ? 'on' : 'done'}">1 Pick up</span><span class="${t.step === 1 ? 'on' : ''}">2 Drop</span></div>`;
+      if (ins.kind === 'wait') {
+        body += `<div class="verb wait">Wait at aisle ${esc(ins.aisle)} entry</div><div>${locHtml(ins.target, 'lg')}</div><div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
+      } else if (ins.kind === 'pickup') {
+        body += `<div class="verb">Pick up ${parseRack(ins.target) ? 'at' : `at ${esc(ins.target)}`}</div>`;
+        body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
+        body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(t.to) : 'auto slot'}</div>`;
+      } else {
+        body += `<div class="verb">Drop at</div><div>${locHtml(ins.target, 'lg')}</div>`;
+        const p = wh.pallets[t.sscc];
+        body += `<div class="sub">${palletLine(p)}</div>`;
+        if (t.autoSlot && wh.config.allowSlotOverride) body += `<div class="sub">or scan any free ${esc(CATEGORIES[t.category])} slot</div>`;
       }
       if (t.alert) body += `<div class="sub" style="color:#ffb3aa">${esc(t.alert)}</div>`;
     } else if (ins.kind === 'paused') {
-      body += `<div class="verb">Paused</div><div class="sub">No jobs are sent to this truck. Press Resume to go back on ${esc(TRUCK_MODES.auto.label)}.</div>`;
+      body += `<div class="verb">Paused</div><div class="sub">No jobs are sent to this truck. Press Resume to go back on Auto.</div>`;
     } else {
-      body += `<div class="verb">No job for you</div>`;
-      body += `<div class="sub">${truck.mode === 'shift' ? 'No Auto-Shift jobs waiting.' : 'Every open job is in a full aisle or switched off.'} Scan any pallet in the racking to start an Auto-Shift: the system picks the new slot.</div>`;
+      body += `<div class="verb">No job for you</div><div class="sub">Nothing open in your categories that fits the aisle limit. Scan any pallet in the racking to start an Auto-Shift: the system picks the new slot.</div>`;
     }
     if (truck.message) body += `<div class="msg ${truck.message.ok ? 'ok' : 'bad'}">${esc(truck.message.text)}</div>`;
     setHTML(el.querySelector('.screen'), body);
 
-    const drive = el.querySelector('[data-act="drive"]');
-    drive.textContent = manual[id] ? 'Let the demo drive' : 'Drive it yourself';
-    const pause = el.querySelector('[data-act="pause"]');
-    pause.textContent = truck.mode === 'paused' ? 'Resume' : 'Pause (break)';
+    const sim = simulatedScan(truck, ins);
     const scanBtn = el.querySelector('[data-act="scan"]');
-    scanBtn.textContent = ins.target && ins.kind !== 'wait' ? `Scan ${ins.target}` : 'Scan';
+    scanBtn.textContent = sim ? sim.label : 'Scan';
+    const qty = el.querySelector('[data-act="qty"]');
+    qty.hidden = !(ins.kind === 'receive' && ins.field === 'qty');
+    if (!qty.hidden) qty.textContent = `Confirm ${wh.items[ins.draft.item].palletQty}`;
+    el.querySelector('[data-act="finish"]').hidden = ins.kind !== 'receive';
+    el.querySelector('[data-act="problem"]').hidden = ins.kind === 'receive';
     el.querySelector('[data-act="problem"]').disabled = !truck.taskId;
+    el.querySelector('[data-act="drive"]').textContent = manual[id] ? 'Let the demo drive' : 'Drive it yourself';
+    el.querySelector('[data-act="pause"]').textContent = truck.mode === 'paused' ? 'Resume' : 'Pause (break)';
     const probs = el.querySelector('.problems');
-    probs.hidden = !(problemOpen[id] && truck.taskId);
+    probs.hidden = !(problemOpen[id] && truck.taskId && ins.kind !== 'receive');
     if (!probs.hidden) {
-      const carrying = wh.tasks[truck.taskId].step === 1;
-      probs.querySelector('[data-problem="missing"]').disabled = carrying;
-      probs.querySelector('[data-problem="damaged"]').disabled = carrying;
+      probs.querySelector('[data-problem="missing"]').disabled = Boolean(truck.load);
+      probs.querySelector('[data-problem="damaged"]').disabled = Boolean(truck.load);
     }
     const s = truck.stats;
-    setHTML(el.querySelector('.stats'), `${s.jobs} jobs · ${s.scans} scans · ${s.wrongScans} wrong · ${inputsPerJob([truck])} inputs per job`);
+    setHTML(el.querySelector('.stats'), `${s.moves} moves · ${s.received} pallets received · ${s.wrongScans} wrong scans`);
   }
 
-  function renderAdmin() {
+  function renderAuto() {
     const cfg = wh.config;
     const open = wh.openTasks();
     setHTML($('prio'), cfg.priority.map((type, i) => {
@@ -683,8 +984,7 @@ td .acts { display: flex; gap: 4px; }
       return `<li class="${cfg.enabled[type] ? '' : 'off'}">
         <input type="checkbox" class="enable" data-type="${type}" ${cfg.enabled[type] ? 'checked' : ''} aria-label="Send ${TASK_TYPES[type].label} jobs">
         <span class="rank">${i + 1}</span>
-        <span>${`<span class="type t-${type}">${TASK_TYPES[type].label}</span>`}<br><span class="count num">${n} open</span></span>
-        <span></span>
+        <span><span class="type t-${type}">${TASK_TYPES[type].label}</span><br><span class="count num">${n} open</span></span>
         <span class="arrows">
           <button class="btn" type="button" data-move="${type}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${TASK_TYPES[type].label} up">↑</button>
           <button class="btn" type="button" data-move="${type}" data-dir="1" ${i === cfg.priority.length - 1 ? 'disabled' : ''} aria-label="Move ${TASK_TYPES[type].label} down">↓</button>
@@ -694,77 +994,202 @@ td .acts { display: flex; gap: 4px; }
     $('cap').textContent = cfg.aisleCap;
     $('capDown').disabled = cfg.aisleCap <= 1;
     $('capUp').disabled = cfg.aisleCap >= 4;
-
-    setHTML($('trucklist'), Object.values(wh.trucks).map((t) => `<div>
-      <strong>${esc(t.id)}</strong>
-      <span class="seg" role="group" aria-label="${esc(t.id)} mode">${Object.entries(TRUCK_MODES).map(([m, def]) =>
-        `<button type="button" data-truck="${esc(t.id)}" data-mode="${m}" aria-pressed="${t.mode === m}">${def.label}</button>`).join('')}</span>
+    setHTML($('trucklist'), Object.values(wh.trucks).map((t) => `<div class="truckrow">
+      <div class="line"><strong>${esc(t.id)}</strong>
+        <span class="seg" role="group" aria-label="${esc(t.id)} mode">${Object.entries(TRUCK_MODES).map(([m, def]) =>
+          `<button type="button" data-truck="${esc(t.id)}" data-mode="${m}" aria-pressed="${t.mode === m}">${def.label}</button>`).join('')}</span></div>
+      <div class="line"><span class="hint">Works</span><span class="catpick">${Object.keys(CATEGORIES).map((c) =>
+        `<button type="button" class="c-${c}" data-truck="${esc(t.id)}" data-cat="${c}" aria-pressed="${!t.categories || t.categories.includes(c)}">${CATEGORIES[c]}</button>`).join('')}</span></div>
     </div>`).join(''));
+  }
 
+  function renderOrders() {
+    const orders = Object.values(wh.orders).sort((a, b) => b.createdAt - a.createdAt).slice(0, 12);
+    setHTML($('orders'), orders.map((o) => {
+      const all = o.lines.flatMap((l) => l.allocated).map((s) => wh.pallets[s]);
+      const total = o.lines.reduce((s, l) => s + l.pallets, 0);
+      const onLane = all.filter((p) => p.loc === o.lane || p.status === 'shipped').length;
+      const checked = all.filter((p) => p.checked).length;
+      const short = o.lines.reduce((s, l) => s + l.short, 0);
+      const st = { open: 'Waiting', picking: 'Picking', ready: 'Ready to load', shipped: 'Shipped' }[o.status];
+      return `<div class="item"><span><b>${esc(o.id)}</b> ${esc(o.customer)} · ${locHtml(o.lane)}<br><span class="hint num">${o.lines.map((l) => `${l.pallets}× ${esc(l.itemNo)}`).join(', ')} · picked ${onLane}/${total} · labelled ${checked}</span></span>
+        <span><span class="status ${o.status === 'ready' ? 'ready' : ''} ${short ? 'short' : ''}">${short ? `${short} short · ` : ''}${st}</span>
+        ${o.status === 'ready' ? `<button class="btn small" type="button" data-ship="${esc(o.id)}">Loaded</button>` : ''}</span></div>`;
+    }).join('') || '<p class="hint">No orders yet.</p>');
+  }
+
+  function renderInbound() {
+    const dels = Object.values(wh.deliveries).sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
+    setHTML($('deliveries'), dels.map((d) => {
+      const blocked = d.received.filter((s) => wh.pallets[s].status === 'blocked').length;
+      const labels = (incoming[d.id] && incoming[d.id][0]) ? { gs1: 'GS1 label', gs1nocount: 'GS1, no count', separate: 'separate barcodes' }[incoming[d.id][0].labels] : '';
+      return `<div class="item"><span><b>${esc(d.id)}</b> ${esc(d.supplier)} ${catHtml(d.category)}<br><span class="hint num">${d.received.length} of ${d.expected} received${blocked ? ` · ${blocked} blocked` : ''}${labels ? ` · ${labels}` : ''}</span></span>
+        <span class="status ${d.status === 'received' ? 'ready' : ''}">${{ open: 'At the door', received: 'Received', cancelled: 'Cancelled' }[d.status]}</span></div>`;
+    }).join(''));
+  }
+
+  function renderLocations() {
+    const counts = {};
+    for (const l of Object.values(wh.locations)) {
+      if (l.kind !== 'rack') continue;
+      const k = l.category || '';
+      counts[k] = counts[k] || { total: 0, used: 0, ground: 0, groundFree: 0 };
+      counts[k].total++;
+      if (l.sscc) counts[k].used++;
+      if (l.level === 0) { counts[k].ground++; if (!l.sscc) counts[k].groundFree++; }
+    }
+    const misplaced = Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.sscc && l.category && wh.items[wh.pallets[l.sscc].itemNo].category !== l.category).length;
+    setHTML($('catcounts'), Object.entries(counts).map(([c, v]) => `<div class="item"><span>${catHtml(c || null)}</span><span class="hint num">${v.used}/${v.total} used · ${v.groundFree} free on the ground</span></div>`).join('')
+      + (misplaced ? `<div class="item"><span class="status held">${misplaced} pallet(s) in the wrong category</span><span class="hint">relocation jobs queued</span></div>` : ''));
+    $('ground').textContent = wh.config.groundNextPerItem;
+    $('gDown').disabled = wh.config.groundNextPerItem <= 0;
+    $('gUp').disabled = wh.config.groundNextPerItem >= 3;
     const blocked = wh.blockedLocations();
-    $('blockedPanel').hidden = !blocked.length;
-    setHTML($('blocked'), blocked.map((l) => `<div>${locHtml(l.code)}<button class="btn small" type="button" data-unblock="${l.code}">Unblock</button></div>`).join(''));
+    $('blockedBox').hidden = !blocked.length;
+    setHTML($('blocked'), blocked.map((l) => `<div class="item">${locHtml(l.code)}<button class="btn small" type="button" data-unblock="${l.code}">Unblock</button></div>`).join(''));
+  }
+
+  // Decorative bar pattern so the preview reads as a label. The printer draws the real Code 128.
+  function bars(text, cls) {
+    let x = 0, rects = '';
+    for (const ch of String(text)) {
+      const c = ch.charCodeAt(0);
+      for (let k = 0; k < 3; k++) {
+        const w = 1 + ((c >> k) & 1) + ((c >> (k + 3)) & 1);
+        rects += `<rect x="${x}" y="0" width="${w}" height="10" fill="currentColor"/>`;
+        x += w + 1 + ((c >> (k + 1)) & 1);
+      }
+    }
+    return `<svg class="bars ${cls || ''}" viewBox="0 0 ${x} 10" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
+  }
+
+  function renderLabels() {
+    const q = wh.printQueue;
+    if (!labelSel && q[0]) labelSel = q[0].id;
+    setHTML($('printq'), q.slice(0, 8).map((j) => `<div class="item"><span><b>${esc(j.printer)}</b> · ${esc(j.label.labelCode)}<br><span class="hint num">${hhmm(j.at)} · order ${esc(j.label.orderId)} · ${esc(j.label.customer)}</span></span>
+      <button class="btn small" type="button" data-label="${j.id}" aria-pressed="${j.id === labelSel}">${j.id === labelSel ? 'Showing' : 'Show'}</button></div>`).join('') || '<p class="hint">Nothing printed yet. Labels print when a picked pallet is checked.</p>');
+    const j = q.find((x) => x.id === labelSel);
+    if (!j) { setHTML($('labelView'), ''); return; }
+    const l = j.label;
+    setHTML($('labelView'), `<div class="panel-head"><h3>Label ${esc(l.labelCode)}</h3><span class="hint">Preview · 4×6 in</span></div>
+      <div class="labelcard">
+        <span class="k">Ship to</span><span class="big">${esc(l.customer)}</span>
+        <span>Order ${esc(l.orderId)} · Pallet ${l.index} of ${l.total}</span><hr>
+        <b>${esc(l.itemName)}</b><span>Item ${esc(l.itemNo)} · Qty ${l.qty}</span><span>Batch ${esc(l.batch)} · Best before ${dmy(l.expiry)}</span><hr>
+        <span class="k">Label ${esc(l.labelCode)}</span>${bars(l.labelCode)}<hr>
+        <span class="k">SSCC</span>${bars(l.sscc, 'tall')}<span class="hr">(00) ${esc(l.sscc)}</span>
+      </div>
+      <details style="margin-top:10px"><summary class="hint">ZPL sent to ${esc(j.printer)} (port 9100)</summary><pre class="zpl">${esc(j.zpl)}</pre></details>`);
+  }
+
+  function queueOrder() {
+    const cfg = wh.config;
+    const rank = (t) => (wh.isUrgent(t) ? -1 : cfg.priority.indexOf(t.type));
+    const order = { active: 0, held: 1, open: 2 };
+    return Object.values(wh.tasks)
+      .filter((t) => t.status in order)
+      .sort((a, b) => order[a.status] - order[b.status] || rank(a) - rank(b) || a.createdAt - b.createdAt);
   }
 
   function renderQueue() {
     const rows = queueOrder();
     const nextOpen = rows.find((t) => t.status === 'open');
+    const occ = wh.aisleOccupancy();
     setHTML($('queue'), rows.slice(0, 40).map((t) => {
       const age = Math.max(0, Math.floor((simNow - t.createdAt) / MIN));
       let status;
       if (t.status === 'active') {
-        const truck = wh.trucks[t.truckId];
-        status = `<span class="status active">${esc(t.truckId)} · ${truck.waiting ? 'waiting at entry' : t.step === 0 ? 'to pick-up' : 'to drop'}</span>`;
+        const tr = wh.trucks[t.truckId];
+        const what = t.type === 'RECEIVE' ? 'receiving' : t.type === 'CHECK' ? (t.step === 0 ? 'checking' : 'labelling') : tr.waiting ? 'waiting at entry' : t.step === 0 ? 'to pick-up' : 'to drop';
+        status = `<span class="status active">${esc(t.truckId)} · ${what}</span>`;
       } else if (t.status === 'held') {
-        status = `<span class="status held">Held: ${esc(t.heldReason)}</span>`;
+        status = `<span class="status held">Held: ${esc(t.heldReason)}${t.replacedBy ? ` · replaced by #${t.replacedBy}` : ''}</span>`;
       } else {
-        const occ = wh.aisleOccupancy()[aisleOf(t.from)] || [];
-        const blockedBy = !wh.config.enabled[t.type] ? 'Type switched off'
-          : occ.length >= wh.config.aisleCap ? `Aisle ${aisleOf(t.from)} full` : (wh.isUrgent(t) ? 'Urgent' : 'Queued');
-        status = `<span class="status ${wh.isUrgent(t) ? 'urgent' : ''}">${blockedBy}</span>`;
+        const a = aisleOf(t.from);
+        const anyone = Object.values(wh.trucks).some((tr) => tr.mode !== 'paused' && (!tr.categories || tr.categories.includes(t.category)));
+        const s = !wh.config.enabled[t.type] ? 'Type switched off'
+          : !anyone ? `No truck works ${CATEGORIES[t.category]}`
+          : a && (occ[a] || []).length >= wh.config.aisleCap ? `Aisle ${a} full`
+          : wh.isUrgent(t) ? 'Urgent' : t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : 'Queued';
+        status = `<span class="status ${wh.isUrgent(t) || !anyone ? 'urgent' : ''}">${esc(s)}</span>`;
       }
       const acts = [];
-      if (t.status !== 'held') acts.push(`<button class="btn small star" type="button" data-urgent="${t.id}" aria-pressed="${t.urgent}" title="Urgent">Urgent</button>`);
-      if (t.status === 'held') acts.push(`<button class="btn small" type="button" data-release="${t.id}">Release</button>`);
-      if (!(t.status === 'active' && t.step === 1)) acts.push(`<button class="btn small danger" type="button" data-cancel="${t.id}">Cancel</button>`);
+      if (t.status !== 'held') acts.push(`<button class="btn small star" type="button" data-urgent="${t.id}" aria-pressed="${t.urgent}">Urgent</button>`);
+      if (t.status === 'held') acts.push(`<button class="btn small" type="button" data-release="${t.id}">${t.replacedBy ? 'Close' : 'Release'}</button>`);
+      const tr = t.truckId && wh.trucks[t.truckId];
+      if (!(tr && tr.load) && t.status !== 'held') acts.push(`<button class="btn small danger" type="button" data-cancel="${t.id}">Cancel</button>`);
       return `<tr class="${t === nextOpen ? 'next' : ''}">
-        <td class="num">#${t.id}</td>
-        <td>${typeHtml(t.type)}</td>
-        <td>${locHtml(t.from)} → ${locHtml(t.to)}</td>
-        <td class="num">${t.status === 'open' ? age + ' min' : '–'}</td>
-        <td>${status}</td>
-        <td><div class="acts">${acts.join('')}</div></td>
+        <td class="num">#${t.id}</td><td>${typeHtml(t.type)} ${catHtml(t.category)}</td>
+        <td>${t.type === 'RECEIVE' ? esc(t.deliveryId) : ssccHtml(t.sscc)}</td>
+        <td>${t.type === 'RECEIVE' ? locHtml('DOCK-IN') : t.type === 'CHECK' ? `${locHtml(t.from)} · order ${esc(t.orderId)}` : `${locHtml(t.from)} → ${locHtml(t.to)}`}</td>
+        <td class="num">${t.status === 'open' ? age + ' min' : '–'}</td><td>${status}</td><td><div class="acts">${acts.join('')}</div></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" class="hint">No jobs. Add one on the right.</td></tr>');
+    }).join('') || '<tr><td colspan="7" class="hint">No jobs.</td></tr>');
     const done = Object.values(wh.tasks).filter((t) => t.status === 'done').length;
-    $('queueHint').textContent = `Highlighted row goes to the next free truck · ${done} done`;
+    $('queueHint').textContent = `Highlighted row goes to the next free truck that works its category · ${done} done`;
+    setHTML($('log'), wh.events.slice(0, 50).map((e) => `<li><time>${hhmm(e.t, true)}</time><span>${esc(e.text)}</span></li>`).join(''));
+  }
 
-    setHTML($('log'), wh.events.slice(0, 40).map((e) => `<li><time>${hhmm(e.t, true)}</time><span>${esc(e.text)}</span></li>`).join(''));
+  function renderStock() {
+    const today = isoDay(simNow);
+    setHTML($('stock'), wh.stockSummary().map((r) => {
+      const n = r.next;
+      const loc = n && wh.locations[n.loc];
+      const lvl = loc ? (loc.level === 0 ? '<span class="lvl ground">ground</span>' : `<span class="lvl high">level ${loc.level}</span>`) : '';
+      return `<tr><td><b>${esc(r.item.itemNo)}</b> ${esc(r.item.name)}</td><td>${catHtml(r.item.category)}</td>
+        <td class="num">${r.available}</td><td class="num">${r.batches}</td><td class="num">${r.blocked || ''}</td>
+        <td>${n ? `${ssccHtml(n.sscc)} ${esc(n.batch)}` : '<span class="hint">no stock</span>'}</td>
+        <td class="num">${n ? `${dmy(n.expiry)} <span class="hint">(${daysBetween(today, n.expiry)} d)</span>` : ''}</td>
+        <td>${n ? `${locHtml(n.loc)} ${lvl}` : ''}</td></tr>`;
+    }).join(''));
+    const blocked = Object.values(wh.pallets).filter((p) => p.status === 'blocked' && p.loc);
+    setHTML($('blockedPallets'), blocked.length ? `<h3 style="margin-bottom:6px">Blocked pallets</h3><div class="scroll"><table><thead><tr><th>Pallet</th><th>Item</th><th>Batch</th><th>Best before</th><th>Where</th><th>Reason</th><th></th></tr></thead><tbody>${blocked.map((p) =>
+      `<tr><td>${ssccHtml(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td class="num">${dmy(p.expiry)}</td><td>${locHtml(p.loc)}</td><td><span class="status held">${esc(p.blockReason)}</span></td>
+       <td><button class="btn small" type="button" data-unblockpallet="${p.sscc}">Release</button></td></tr>`).join('')}</tbody></table></div>` : '');
   }
 
   function render(force) {
     if (holding && !force) return;
-    $('clock').textContent = hhmm(simNow);
+    const d = new Date(simNow);
+    $('clock').textContent = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()]} ${d.getUTCDate()} Oct ${hhmm(simNow)}`;
     renderSummary();
     renderBoard();
     document.querySelectorAll('.term').forEach(renderTerminal);
-    renderAdmin();
+    if (tab === 'auto') renderAuto();
+    if (tab === 'orders') renderOrders();
+    if (tab === 'inbound') renderInbound();
+    if (tab === 'locations') renderLocations();
+    if (tab === 'labels') renderLabels();
     renderQueue();
+    renderStock();
+  }
+
+  function fillItemSelect() {
+    $('oItem').innerHTML = ITEMS.map(([no, name]) => `<option value="${no}">${no} ${esc(name)}</option>`).join('');
+    $('tAisle').innerHTML = Array.from({ length: AISLES }, (_, i) => `<option value="${i + 1}" ${i === 3 ? 'selected' : ''}>${p2(i + 1)}</option>`).join('');
   }
 
   // ---- Wiring -----------------------------------------------------------
 
-  // Don't swap buttons out from under a press.
   document.addEventListener('pointerdown', () => { holding = true; }, true);
   const letGo = () => setTimeout(() => { holding = false; }, 0);
   document.addEventListener('pointerup', letGo, true);
   document.addEventListener('pointercancel', letGo, true);
 
   function act(fn) {
-    try { fn(); } catch (e) { flash(e.message); }
+    try { fn(); } catch (e) { wh.log(`⚠ ${e.message}`); }
     render(true);
   }
-  function flash(text) { wh.log(`⚠ ${text}`); }
+  function say(id, text, ok) { const el = $(id); el.textContent = text; el.className = `err ${ok ? 'ok' : 'bad'}`; }
+
+  $('tabs').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-tab]');
+    if (!b) return;
+    tab = b.dataset.tab;
+    document.querySelectorAll('#tabs [data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    document.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+    render(true);
+  });
 
   $('terms').addEventListener('click', (ev) => {
     const btn = ev.target.closest('button');
@@ -773,34 +1198,33 @@ td .acts { display: flex; gap: 4px; }
     const id = card.dataset.truck;
     const truck = wh.trucks[id];
     act(() => {
-      if (btn.dataset.act === 'scan') {
-        const input = card.querySelector('input');
-        const typed = input.value.trim();
-        const ins = wh.instruction(id);
+      const a = btn.dataset.act;
+      if (a === 'scan') {
         manual[id] = true;
-        if (typed) { wh.scan(id, typed); input.value = ''; }
-        else if (ins.target && ins.kind !== 'wait') wh.scan(id, ins.target);
-        else if (ins.kind === 'wait') wh.scan(id, ins.target);
-        else {
-          // Idle: pretend the driver scanned the nearest pallet that has room in its aisle.
-          const occ = wh.aisleOccupancy();
-          const pal = freePallets().filter((l) => (occ[l.aisle] || []).length < wh.config.aisleCap)
-            .sort((x, y) => distance(truck.position, x.code) - distance(truck.position, y.code))[0];
-          if (pal) wh.scan(id, pal.code);
-        }
         delete eta[id];
-      } else if (btn.dataset.act === 'drive') {
+        const input = card.querySelector('input');
+        if (input.value.trim()) { wh.scan(id, input.value); input.value = ''; syncIncoming(); return; }
+        const ins = wh.instruction(id);
+        const sim = simulatedScan(truck, ins);
+        if (sim) doAction(truck, { code: sim.code, pallet: sim.pallet });
+      } else if (a === 'qty') {
+        manual[id] = true;
+        delete eta[id];
+        doAction(truck, { tap: true });
+      } else if (a === 'finish') {
+        wh.finishReceiving(id);
+      } else if (a === 'drive') {
         manual[id] = !manual[id];
         delete eta[id];
-      } else if (btn.dataset.act === 'pause') {
+      } else if (a === 'pause') {
         wh.setTruckMode(id, truck.mode === 'paused' ? 'auto' : 'paused');
-      } else if (btn.dataset.act === 'problem') {
+      } else if (a === 'problem') {
         problemOpen[id] = !problemOpen[id];
       } else if (btn.dataset.problem) {
         manual[id] = true;
         problemOpen[id] = false;
-        wh.reportProblem(id, btn.dataset.problem);
         delete eta[id];
+        wh.reportProblem(id, btn.dataset.problem);
       }
     });
   });
@@ -810,7 +1234,7 @@ td .acts { display: flex; gap: 4px; }
     const input = card.querySelector('input');
     const id = card.dataset.truck;
     if (!input.value.trim()) return;
-    act(() => { manual[id] = true; delete eta[id]; wh.scan(id, input.value); input.value = ''; });
+    act(() => { manual[id] = true; delete eta[id]; wh.scan(id, input.value); input.value = ''; syncIncoming(); });
   });
 
   $('prio').addEventListener('click', (ev) => {
@@ -827,32 +1251,74 @@ td .acts { display: flex; gap: 4px; }
   });
   $('prio').addEventListener('change', (ev) => {
     const box = ev.target.closest('.enable');
-    if (!box) return;
-    act(() => {
-      wh.setConfig({ enabled: { [box.dataset.type]: box.checked } });
-      wh.log(`${TASK_TYPES[box.dataset.type].label} ${box.checked ? 'switched on' : 'switched off'}`);
-    });
+    if (box) act(() => { wh.setConfig({ enabled: { [box.dataset.type]: box.checked } }); wh.log(`${TASK_TYPES[box.dataset.type].label} ${box.checked ? 'switched on' : 'switched off'}`); });
   });
   $('capDown').addEventListener('click', () => act(() => { wh.setConfig({ aisleCap: wh.config.aisleCap - 1 }); wh.log(`Max ${wh.config.aisleCap} truck(s) per aisle`); }));
   $('capUp').addEventListener('click', () => act(() => { wh.setConfig({ aisleCap: wh.config.aisleCap + 1 }); wh.log(`Max ${wh.config.aisleCap} trucks per aisle`); }));
   $('escalate').addEventListener('change', (ev) => act(() => wh.setConfig({ escalateAfterMin: Number(ev.target.value) })));
   $('travel').addEventListener('change', (ev) => act(() => wh.setConfig({ travelOptimise: ev.target.checked })));
   $('override').addEventListener('change', (ev) => act(() => wh.setConfig({ allowSlotOverride: ev.target.checked })));
+  $('checkpick').addEventListener('change', (ev) => act(() => wh.setConfig({ checkAfterPick: ev.target.checked })));
 
   $('trucklist').addEventListener('click', (ev) => {
-    const btn = ev.target.closest('[data-mode]');
-    if (btn) act(() => wh.setTruckMode(btn.dataset.truck, btn.dataset.mode));
+    const m = ev.target.closest('[data-mode]');
+    if (m) return act(() => wh.setTruckMode(m.dataset.truck, m.dataset.mode));
+    const c = ev.target.closest('[data-cat]');
+    if (c) act(() => {
+      const t = wh.trucks[c.dataset.truck];
+      const cur = new Set(t.categories || Object.keys(CATEGORIES));
+      if (cur.has(c.dataset.cat)) cur.delete(c.dataset.cat); else cur.add(c.dataset.cat);
+      if (!cur.size) throw new Error('A truck needs at least one category');
+      wh.setTruckCategories(t.id, cur.size === Object.keys(CATEGORIES).length ? null : [...cur]);
+    });
   });
   $('addTruck').addEventListener('click', () => act(() => {
     if (Object.keys(wh.trucks).length >= 8) throw new Error('The demo stops at 8 trucks');
-    const id = addTruck('auto');
-    wh.log(`${id} joined the shift`);
+    const id = addTruck('auto', null);
+    wh.log(`${id} joined the shift (all categories)`);
     buildTerminals();
   }));
-  $('blocked').addEventListener('click', (ev) => {
-    const btn = ev.target.closest('[data-unblock]');
-    if (btn) act(() => wh.unblockLocation(btn.dataset.unblock));
+
+  $('orderForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    try {
+      const o = wh.addOrder({ id: String(++orderSeq), customer: $('oCustomer').value, lane: $('oLane').value, lines: [{ itemNo: $('oItem').value, pallets: Math.max(1, Number($('oPallets').value) || 1) }] });
+      const short = o.lines[0].short;
+      say('orderErr', short ? `Order ${o.id} created, ${short} pallet(s) short: not enough stock that can ship` : `Order ${o.id} created. Pallets allocated by expiry date`, !short);
+    } catch (e) { say('orderErr', e.message, false); }
+    render(true);
   });
+  $('orderRandom').addEventListener('click', () => act(() => { const o = randomOrder(); if (o) say('orderErr', `Order ${o.id} created`, true); }));
+  $('orders').addEventListener('click', (ev) => { const b = ev.target.closest('[data-ship]'); if (b) act(() => wh.shipOrder(b.dataset.ship)); });
+
+  $('delForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    try {
+      const id = announce($('dCat').value, Math.max(1, Math.min(20, Number($('dPallets').value) || 1)), $('dLabels').value, $('dShort').checked);
+      say('delErr', `Delivery ${id} is at the door. A receiving job is in the queue`, true);
+    } catch (e) { say('delErr', e.message, false); }
+    render(true);
+  });
+
+  function applyTemplate(aisle, from, to, cat) {
+    try {
+      if (from > to) throw new Error('“Bay from” must not be after “Bay to”');
+      const r = wh.setLocationCategory({ aisle, bayFrom: from, bayTo: to }, cat || null);
+      say('tplErr', `${r.changed} locations changed. ${r.moves} relocation job(s) created`, true);
+    } catch (e) { say('tplErr', e.message, false); }
+    render(true);
+  }
+  $('tplForm').addEventListener('submit', (ev) => { ev.preventDefault(); applyTemplate(Number($('tAisle').value), Number($('tFrom').value), Number($('tTo').value), $('tCat').value); });
+  $('tplProtein').addEventListener('click', () => {
+    applyTemplate(4, 15, 20, 'PRO');
+    act(() => { if (!Object.values(wh.trucks).some((t) => !t.categories || t.categories.includes('PRO'))) wh.log('No truck works Protein drinks yet: tick it on a truck in the Auto tab'); });
+  });
+  $('gDown').addEventListener('click', () => act(() => wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem - 1 })));
+  $('gUp').addEventListener('click', () => act(() => { wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem + 1 }); }));
+  $('groupNow').addEventListener('click', () => act(() => { const n = wh.planGrouping(); say('shiftErr', n ? `${n} grouping move(s) queued as Auto-Shift jobs` : 'Every batch already stands together, or there is no room next to it', Boolean(n)); }));
+  $('blocked').addEventListener('click', (ev) => { const b = ev.target.closest('[data-unblock]'); if (b) act(() => wh.unblockLocation(b.dataset.unblock)); });
+  $('blockedPallets').addEventListener('click', (ev) => { const b = ev.target.closest('[data-unblockpallet]'); if (b) act(() => wh.setPalletStatus(b.dataset.unblockpallet, 'available')); });
+  $('printq').addEventListener('click', (ev) => { const b = ev.target.closest('[data-label]'); if (b) { labelSel = Number(b.dataset.label); render(true); } });
 
   $('queue').addEventListener('click', (ev) => {
     const btn = ev.target.closest('button');
@@ -864,39 +1330,7 @@ td .acts { display: flex; gap: 4px; }
     });
   });
 
-  $('jobForm').addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const err = $('jobErr');
-    const type = $('jobType').value;
-    const from = $('jobFrom').value.trim().toUpperCase();
-    const to = $('jobTo').value.trim().toUpperCase() || null;
-    try {
-      if (!from) throw new Error('Enter where the pallet is, for example 03-012-2 or DOCK-IN');
-      const spec = { type, from, to, urgent: $('jobUrgent').checked };
-      if (from === 'DOCK-IN') { spec.sku = pick(SKUS); spec.qty = 40; }
-      const t = wh.addTask(spec);
-      err.textContent = `Job #${t.id} added`;
-      err.style.color = 'var(--ok)';
-      $('jobFrom').value = ''; $('jobTo').value = ''; $('jobUrgent').checked = false;
-    } catch (e) {
-      err.textContent = e.message;
-      err.style.color = '';
-    }
-    render(true);
-  });
-  $('jobFill').addEventListener('click', () => {
-    const spec = makeJob($('jobType').value);
-    if (!spec) return;
-    $('jobFrom').value = spec.from;
-    $('jobTo').value = spec.to || '';
-    $('jobErr').textContent = '';
-  });
-  $('jobBurst').addEventListener('click', () => act(() => { for (let i = 0; i < 5; i++) addJob(makeJob(randomType())); }));
-
-  $('play').addEventListener('click', () => {
-    running = !running;
-    $('play').textContent = running ? 'Pause shift' : 'Run shift';
-  });
+  $('play').addEventListener('click', () => { running = !running; $('play').textContent = running ? 'Pause shift' : 'Run shift'; });
   $('reset').addEventListener('click', () => { running = true; $('play').textContent = 'Pause shift'; boot(); });
 
   const TICK_MS = 250;
