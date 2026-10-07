@@ -141,8 +141,14 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .row .name small { font: 500 .7rem var(--body); color: var(--muted); letter-spacing: 0; text-transform: none; }
 .lane { position: relative; height: 46px; display: grid; grid-template-columns: 54px minmax(0, 1fr); border-radius: 5px; background: var(--lane); border: 1px solid var(--line); overflow: hidden; }
 .entry { border-right: 2px dashed var(--line); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 2px; background: var(--lane); }
-.track { position: relative; }
-.ticks { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, transparent 0 calc(5% - 1px), var(--line) calc(5% - 1px) 5%); opacity: .7; }
+.track { position: relative; display: grid; grid-template-rows: 1fr 1fr; gap: 2px; }
+.side { opacity: .95; }
+.lane.back { grid-template-columns: minmax(0, 1fr) 54px; }
+.lane.back .entry { order: 2; border-right: 0; border-left: 2px dashed var(--line); }
+.dir { font-size: 1.1rem; color: var(--muted); line-height: 1; }
+.flow { position: absolute; inset: 0; pointer-events: none; opacity: .55; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='12'%3E%3Cpath d='M18 2l6 4-6 4' fill='none' stroke='%23808b93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") repeat-x left center; }
+.flow.back { transform: scaleX(-1); }
+.ticks { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--line) calc(10% - 1px) 10%); opacity: .7; }
 .truck {
   position: absolute; transform: translateX(-50%); padding: 1px 5px; border-radius: 4px;
   font: 600 .72rem var(--mono); background: var(--tc, var(--muted)); color: #fff; white-space: nowrap;
@@ -151,7 +157,7 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .truck.loaded::after { content: " ▪"; }
 .entry .truck, .lanebox .truck { position: static; transform: none; }
 .entry .truck { background: var(--warn); color: #1a1400; }
-.dot { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--tc); transform: translateX(-50%); }
+.dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--tc); transform: translateX(-50%); }
 .dot.urgent { width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--bad); }
 .occ { justify-self: end; font: 700 1.05rem var(--display); font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); }
 .occ.some { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
@@ -195,8 +201,8 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .stats { font-size: .78rem; color: var(--muted); }
 
 /* Coordinator rail */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -4px -4px 12px; overflow-x: auto; }
-.tabs button { border: 0; background: transparent; padding: 8px 10px; font: 700 1rem var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.tabs { display: flex; flex-wrap: wrap; gap: 0 2px; border-bottom: 1px solid var(--line); margin: -4px -4px 12px; }
+.tabs button { border: 0; background: transparent; padding: 8px 8px; font: 700 1rem var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .tabpanel { display: grid; gap: 14px; }
 .prio { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -297,20 +303,21 @@ td .acts { display: flex; gap: 4px; }
 </header>
 
 <main class="page">
-  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles. Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, expiry, item, SSCC and quantity, and a GS1 pallet label does all five in one scan. Picks follow <b>first expired, first out</b>. Blocked stock never ships.</p>
+  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles, one-way traffic in every aisle. Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, best-before, item, SSCC and quantity from the supplier label, or from the bottom barcode alone with a delivery list. Picks follow <b>first expired, first out</b>, and nothing with fewer days left than the manager's minimum is shipped.</p>
 
   <div class="summary" id="summary"></div>
 
   <div class="layout">
     <div class="col">
       <section class="panel" aria-labelledby="board-h">
-        <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisles: front on the left, bays 1–20, 4 levels × 3 positions per bay.</span></div>
+        <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisle front on the left. Bays 01–20 (odd and even sides), ground + 4 levels, positions 10/40/70.</span></div>
         <div class="lanes" id="lanes"></div>
         <div class="board" id="board"></div>
         <div class="legend">
           <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
           <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
           <span>▪ pallet on the forks</span>
+          <span>Each aisle: odd bays on top, even bays below · ▸ one-way, enter from the front · ◂ enter from the back</span>
         </div>
       </section>
 
@@ -326,6 +333,7 @@ td .acts { display: flex; gap: 4px; }
         <button type="button" role="tab" aria-selected="false" data-tab="orders" id="tab-orders">Orders</button>
         <button type="button" role="tab" aria-selected="false" data-tab="inbound" id="tab-inbound">Inbound</button>
         <button type="button" role="tab" aria-selected="false" data-tab="locations" id="tab-locations">Locations</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="expiry" id="tab-expiry">Expiry</button>
         <button type="button" role="tab" aria-selected="false" data-tab="labels" id="tab-labels">Labels</button>
       </div>
 
@@ -405,9 +413,9 @@ td .acts { display: flex; gap: 4px; }
           </div>
           <label for="dLabels">Supplier pallet labels
             <select id="dLabels">
-              <option value="gs1">GS1-128 with everything (1 scan)</option>
-              <option value="gs1nocount">GS1-128 without count (1 scan + confirm qty)</option>
-              <option value="separate">Separate barcodes (4 scans + confirm qty)</option>
+              <option value="three">3-barcode label (3 scans, no typing)</option>
+              <option value="list">3-barcode label + delivery list (bottom barcode only)</option>
+              <option value="separate">No usable label (4 scans + confirm qty)</option>
             </select>
           </label>
           <label class="hint" style="display:flex;gap:6px;align-items:center;color:var(--ink)" for="dShort"><input type="checkbox" id="dShort"> One pallet with a short expiry</label>
@@ -435,9 +443,17 @@ td .acts { display: flex; gap: 4px; }
           <div class="err" id="tplErr" role="status"></div>
           <div class="term-actions">
             <button class="btn primary" type="submit">Apply template</button>
-            <button class="btn" type="button" id="tplProtein">Make room for protein drinks</button>
+            <button class="btn" type="button" id="tplProtein">Protein drinks: aisle 34, bays 15–20</button>
           </div>
         </form>
+        <div class="rules">
+          <h3>Driving direction</h3>
+          <div class="rule">
+            <label for="oneway">One-way aisles<small>Route trucks with the signs. Handhelds say which end to enter.</small></label>
+            <input type="checkbox" class="switch" id="oneway" checked>
+          </div>
+          <div class="list" id="dirs"></div>
+        </div>
         <div class="rules">
           <h3>Auto-Shift</h3>
           <div class="rule">
@@ -457,6 +473,14 @@ td .acts { display: flex; gap: 4px; }
         <div id="blockedBox" hidden>
           <div class="panel-head"><h3>Blocked locations</h3></div>
           <div class="list" id="blocked"></div>
+        </div>
+      </div>
+
+      <div class="tabpanel" role="tabpanel" data-panel="expiry" aria-labelledby="tab-expiry" hidden>
+        <div>
+          <div class="panel-head"><h3>Minimum days left to ship</h3><span class="hint">Set by the manager</span></div>
+          <p class="hint" style="margin:0 0 10px">A pallet with fewer days left can't be picked. It moves to the upper levels and shows under “Can't ship” in Stock. Picks already planned on a pallet that becomes too short are swapped for the next one.</p>
+          <div class="list" id="msd"></div>
         </div>
       </div>
 
@@ -487,7 +511,7 @@ td .acts { display: flex; gap: 4px; }
   <section class="panel">
     <div class="panel-head"><h2>Stock</h2><span class="hint">Next out = the pallet the next pick will take (first expiry)</span></div>
     <div class="scroll"><table>
-      <thead><tr><th>Item</th><th>Category</th><th>Free pallets</th><th>Batches</th><th>Blocked</th><th>Next out</th><th>Best before</th><th>Where</th></tr></thead>
+      <thead><tr><th>Item</th><th>Category</th><th>Can ship</th><th>Batches</th><th>Too short</th><th>Blocked</th><th>Next out</th><th>Best before</th><th>Where</th></tr></thead>
       <tbody id="stock"></tbody>
     </table></div>
     <div id="blockedPallets" style="margin-top:14px"></div>
@@ -500,11 +524,12 @@ td .acts { display: flex; gap: 4px; }
 <script>
 (function () {
   'use strict';
-  const { Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, FIELD_LABELS, RECEIVE_FIELDS, distance, aisleOf, parseRack, rackCode, daysBetween } = window.SortedWMS;
+  const { Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, FIELD_LABELS, RECEIVE_FIELDS, aisleOf, parseRack, rackCode, depthOf, daysBetween } = window.SortedWMS;
   const GS1 = window.GS1;
   const MIN = 60000, DAY = 86400000;
   const SHIFT_START = Date.UTC(2026, 9, 7, 6, 0);
-  const AISLES = 8, BAYS = 20, LEVELS = 4, POS = 3;
+  const AISLES = [31, 32, 33, 34, 35, 36, 37, 38], BAYS = 20, LEVELS = 5, POS = [10, 40, 70];
+  const DEPTH = BAYS / 2;
 
   // Example item list (made up for the demo).
   const ITEMS = [
@@ -518,7 +543,7 @@ td .acts { display: flex; gap: 4px; }
     ['C2004', 'Brie wedge 200 g', 'CHE', 140, 14, 40],
     ['P3001', 'Protein shake chocolate 330 ml', 'PRO', 72, 60, 270],
     ['P3002', 'Protein shake vanilla 330 ml', 'PRO', 72, 60, 270],
-  ]; // itemNo, name, category, cases per pallet, min days left at receiving, typical shelf life
+  ]; // itemNo, name, category, cases per pallet, minimum days left to ship, typical shelf life
 
   let wh, simNow, rng, running = true, eta = {}, manual = {}, problemOpen = {}, holding = false;
   let nextOrder = 0, nextDelivery = 0, orderSeq = 4500, delSeq = 2040, truckSeq = 0;
@@ -562,14 +587,14 @@ td .acts { display: flex; gap: 4px; }
   function seedStock() {
     const today = isoDay(simNow);
     const slots = (cat) => Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.category === cat && !l.sscc);
-    for (const [itemNo, , cat, , , shelf] of ITEMS) {
+    for (const [itemNo, , cat, , minShip, shelf] of ITEMS) {
       if (cat === 'PRO') continue;
       const free = slots(cat).filter((l) => l.aisle === pick([...new Set(slots(cat).map((s) => s.aisle))]));
       // Several batches per item, mostly standing together in one bay level, a few scattered.
       const batches = between(6, 8);
       let cursor = between(0, Math.max(0, free.length - 90));
       for (let b = 0; b < batches; b++) {
-        const expiry = addDays(today, Math.round(shelf * (0.3 + b * 0.1)) + between(0, 3));
+        const expiry = addDays(today, minShip + between(2, 4) + Math.round((b * (shelf - minShip)) / batches));
         const batch = batchCode(itemNo, expiry);
         const n = between(6, 12);
         for (let i = 0; i < n; i++) {
@@ -579,11 +604,11 @@ td .acts { display: flex; gap: 4px; }
           wh.stockPallet(loc.code, { itemNo, batch, expiry, receivedAt: simNow - between(2, 20) * DAY });
         }
       }
-      // Short-expiry stock sitting blocked high up in the racks.
+      // Short-dated stock sitting high up in the racks: too few days left to ship.
       if (rng() < 0.6) {
         const high = slots(cat).filter((l) => l.level === LEVELS - 1);
         const expiry = addDays(today, between(2, 6));
-        wh.stockPallet(pick(high).code, { itemNo, batch: batchCode(itemNo, expiry), expiry, receivedAt: simNow - 9 * DAY, status: 'blocked', blockReason: 'Short expiry' });
+        wh.stockPallet(pick(high).code, { itemNo, batch: batchCode(itemNo, expiry), expiry, receivedAt: simNow - 9 * DAY });
       }
     }
   }
@@ -606,16 +631,22 @@ td .acts { display: flex; gap: 4px; }
 
   // The barcodes on the physical pallet, in the order the driver scans them.
   function barcodesFor(p) {
-    if (p.labels === 'gs1') return [`(00)${p.sscc}(02)${p.gtin}(15)${GS1.toYymmdd(p.expiry)}(10)${p.batch}(37)${p.qty}`];
-    if (p.labels === 'gs1nocount') return [`(00)${p.sscc}(02)${p.gtin}(15)${GS1.toYymmdd(p.expiry)}(10)${p.batch}`];
+    // Supplier logistic label: top = item + count, middle = best-before + batch, bottom = SSCC.
+    const top = `02${p.gtin}37${p.qty}`;
+    const middle = `15${GS1.toYymmdd(p.expiry)}10${p.batch}`;
+    const bottom = `00${p.sscc}`;
+    if (p.labels === 'three') return [top, middle, bottom];
+    if (p.labels === 'list') return [bottom];
     return [p.batch, GS1.toYymmdd(p.expiry), p.gtin.slice(1), p.sscc];
   }
 
   function announce(cat, count, labels, withShort) {
     const id = `D-${++delSeq}`;
     const suppliers = { YOG: 'Dairy supplier', CHE: 'Cheese supplier', PRO: 'Drinks supplier' };
-    wh.addDelivery({ id, supplier: suppliers[cat], category: cat, pallets: count });
-    incoming[id] = makeIncoming(cat, count, labels, withShort);
+    const pallets = makeIncoming(cat, count, labels, withShort);
+    const list = labels === 'list' ? pallets.map((p) => ({ sscc: p.sscc, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, qty: p.qty })) : null;
+    wh.addDelivery({ id, supplier: suppliers[cat], category: cat, pallets: count, list });
+    incoming[id] = pallets;
     return id;
   }
 
@@ -638,18 +669,18 @@ td .acts { display: flex; gap: 4px; }
     rng = mulberry32(20261007);
     simNow = SHIFT_START - 30 * MIN;
     eta = {}; manual = {}; problemOpen = {}; incoming = {}; truckSeq = 0; orderSeq = 4500; delSeq = 2040; labelSel = null;
-    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, clock: () => simNow });
-    ITEMS.forEach(([itemNo, name, category, palletQty, minShelfDays], i) => wh.addItem({ itemNo, name, category, palletQty, minShelfDays, gtin: GS1.makeGtin13('20012', 3000 + i) }));
-    for (let a = 1; a <= AISLES; a++) wh.setLocationCategory({ aisle: a }, a <= 4 ? 'YOG' : 'CHE');
+    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, clock: () => simNow, config: { oneWay: true } });
+    ITEMS.forEach(([itemNo, name, category, palletQty, minShipDays], i) => wh.addItem({ itemNo, name, category, palletQty, minShipDays, gtin: GS1.makeGtin13('20012', 3000 + i) }));
+    AISLES.forEach((a, i) => wh.setLocationCategory({ aisle: a }, i < 4 ? 'YOG' : 'CHE'));
     seedStock();
 
     // Before the shift: some orders and two trucks at the door.
     randomOrder();
     simNow += 6 * MIN;
     randomOrder();
-    announce('YOG', 4, 'gs1', false);
+    announce('YOG', 4, 'three', false);
     simNow += 14 * MIN;
-    announce('CHE', 3, 'separate', true);
+    announce('CHE', 3, 'list', true);
     randomOrder();
     simNow = SHIFT_START;
     wh.planGround();
@@ -660,6 +691,7 @@ td .acts { display: flex; gap: 4px; }
     wh.events.length = 0;
     wh.log('Shift started. RT-01 and RT-02 on yoghurt, RT-03 and RT-04 on cheese');
     fillItemSelect();
+    buildExpiry();
     buildTerminals();
     render(true);
   }
@@ -672,7 +704,7 @@ td .acts { display: flex; gap: 4px; }
 
   // ---- Simulation -------------------------------------------------------
 
-  const travelMs = (from, to) => (distance(from, to) * 5 + 50) * 1000;
+  const travelMs = (from, to) => (wh.travel(from, to) * 6 + 50) * 1000; // ~6 s per bay depth, 50 s to lift and place
 
   // What the simulated driver scans next, and how long it takes to get there.
   function nextAction(truck, ins) {
@@ -729,7 +761,7 @@ td .acts { display: flex; gap: 4px; }
     if (simNow >= nextDelivery) {
       const cats = ['YOG', 'CHE'];
       if (Object.values(wh.locations).some((l) => l.category === 'PRO')) cats.push('PRO');
-      announce(pick(cats), between(3, 5), pick(['gs1', 'gs1', 'gs1nocount', 'separate']), rng() < 0.3);
+      announce(pick(cats), between(3, 5), pick(['three', 'three', 'list', 'separate']), rng() < 0.3);
       nextDelivery = simNow + between(40, 70) * MIN;
     }
     for (const o of Object.values(wh.orders)) {
@@ -762,7 +794,7 @@ td .acts { display: flex; gap: 4px; }
     const urgent = open.filter((t) => wh.isUrgent(t)).length;
     const held = tasks.filter((t) => t.status === 'held' && !t.replacedBy).length;
     const orders = Object.values(wh.orders);
-    const blockedPallets = Object.values(wh.pallets).filter((p) => p.status === 'blocked' && p.loc).length;
+    const blockedPallets = Object.values(wh.pallets).filter((p) => p.loc && wh.shipState(p) !== 'ok').length;
     setHTML($('summary'), [
       `<div class="stat"><b>${open.length}</b> open jobs</div>`,
       `<div class="stat ${urgent ? 'alert' : ''}"><b>${urgent}</b> urgent</div>`,
@@ -770,7 +802,7 @@ td .acts { display: flex; gap: 4px; }
       `<div class="stat"><b>${full.length}</b> aisles full${full.length ? ' (' + full.join(', ') + ')' : ''}</div>`,
       `<div class="stat ${held ? 'alert' : ''}"><b>${held}</b> held</div>`,
       `<div class="stat"><b>${orders.filter((o) => o.status === 'ready').length}</b> orders ready · <b>${orders.filter((o) => o.status === 'shipped').length}</b> shipped</div>`,
-      `<div class="stat"><b>${blockedPallets}</b> blocked pallets</div>`,
+      `<div class="stat"><b>${blockedPallets}</b> pallets can't ship</div>`,
       `<div class="stat good"><b>${inputsPer(trucks, 'move')}</b> scans per pallet move</div>`,
       `<div class="stat good"><b>${inputsPer(trucks, 'recv')}</b> inputs per received pallet</div>`,
     ].join(''));
@@ -811,28 +843,40 @@ td .acts { display: flex; gap: 4px; }
     setHTML($('lanes'), lanes);
 
     let html = '';
-    for (let a = 1; a <= AISLES; a++) {
-      const aisle = p2(a);
+    const pct = (bay) => ((depthOf(bay) - 0.5) / DEPTH) * 100;
+    for (const aisle of wh.layout.aisles) {
       const inside = (occ[aisle] || []).map((id) => wh.trucks[id]);
       const waitingHere = trucks.filter((t) => t.waiting && aisleOf(wh.tasks[t.taskId].to) === aisle);
       const jobs = open.filter((t) => aisleOf(t.from) === aisle);
-      const pct = (bay) => ((bay - 0.5) / BAYS) * 100;
-      // Category band from the location template, bay by bay (ground level, position 1).
-      const stops = [];
+      // Category bands from the location template: odd side on top, even side below.
       const cats = new Set();
-      for (let b = 1; b <= BAYS; b++) {
-        const c = wh.locations[rackCode(a, b, 0, 1)].category;
-        if (c) cats.add(c);
-        stops.push(`var(--cat-${c || 'none'}) ${((b - 1) / BAYS) * 100}% ${(b / BAYS) * 100}%`);
-      }
+      const band = (side) => {
+        const stops = [];
+        for (let d = 1; d <= DEPTH; d++) {
+          const c = wh.locations[rackCode(aisle, side === 'odd' ? d * 2 - 1 : d * 2, 0, POS[0])].category;
+          if (c) cats.add(c);
+          stops.push(`var(--cat-${c || 'none'}) ${((d - 1) / DEPTH) * 100}% ${(d / DEPTH) * 100}%`);
+        }
+        return `linear-gradient(90deg, ${stops.join(', ')})`;
+      };
+      const odd = band('odd');
+      const even = band('even');
       let used = 0, total = 0;
-      for (let b = 1; b <= BAYS; b++) for (let l = 0; l < LEVELS; l++) for (let p = 1; p <= POS; p++) { total++; if (wh.locations[rackCode(a, b, l, p)].sscc) used++; }
-      const markers = inside.map((t, i) => truckTag(t, `left:${pct(parseRack(truckTarget(t)).bay)}%;top:${i === 0 ? 4 : 22}px`)).join('');
-      const dots = jobs.map((t) => `<span class="dot t-${t.type} ${wh.isUrgent(t) ? 'urgent' : ''}" style="left:${pct(parseRack(t.from).bay)}%" title="Job #${t.id}"></span>`).join('');
+      for (let b = 1; b <= BAYS; b++) for (let l = 0; l < LEVELS; l++) for (const p of POS) { total++; if (wh.locations[rackCode(aisle, b, l, p)].sscc) used++; }
+      const markers = inside.map((t) => {
+        const r = parseRack(truckTarget(t));
+        return truckTag(t, `left:${pct(r.bay)}%;top:${r.bay % 2 ? 3 : 24}px`);
+      }).join('');
+      const dots = jobs.map((t) => {
+        const r = parseRack(t.from);
+        return `<span class="dot t-${t.type} ${wh.isUrgent(t) ? 'urgent' : ''}" style="left:${pct(r.bay)}%;${r.bay % 2 ? 'top:3px' : 'bottom:3px'}" title="Job #${t.id}"></span>`;
+      }).join('');
       const n = inside.length;
+      const back = wh.config.oneWay && wh.aisleDir[aisle] === 'back';
+      const arrow = wh.config.oneWay ? `<span class="dir" aria-label="One-way, enter from the ${wh.aisleDir[aisle]}">${back ? '◂' : '▸'}</span>` : '';
       html += `<div class="row">
         <div class="name">${aisle}<small>${[...cats].map((c) => CATEGORIES[c].split(' ')[0]).join(' / ') || 'no category'}</small><small>${Math.round((used / total) * 100)}% full</small></div>
-        <div class="lane"><div class="entry">${waitingHere.map((t) => truckTag(t)).join('')}</div><div class="track" style="background:linear-gradient(90deg, ${stops.join(', ')})"><div class="ticks"></div>${dots}${markers}</div></div>
+        <div class="lane ${back ? 'back' : ''}"><div class="entry">${waitingHere.length ? waitingHere.map((t) => truckTag(t)).join('') : arrow}</div><div class="track"><div class="side" style="background:${odd}"></div><div class="side" style="background:${even}"></div><div class="ticks"></div>${wh.config.oneWay ? `<div class="flow ${back ? 'back' : ''}"></div>` : ''}${dots}${markers}</div></div>
         <div class="occ num ${n >= cap ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${cap} trucks in aisle ${aisle}">${n}/${cap}</div>
       </div>`;
     }
@@ -882,7 +926,9 @@ td .acts { display: flex; gap: 4px; }
       const p = (incoming[ins.delivery.id] || [])[0];
       if (!p || ins.field === 'qty') return null;
       const codes = barcodesFor(p);
-      return { code: codes[Math.min(p.scanned, codes.length - 1)], label: codes.length === 1 ? 'Scan pallet label' : `Scan ${FIELD_LABELS[ins.field].toLowerCase()}`, pallet: p };
+      const names = p.labels === 'three' ? ['top barcode', 'middle barcode', 'bottom barcode'] : p.labels === 'list' ? ['bottom barcode'] : ['batch', 'date', 'EAN', 'SSCC'];
+      const i = Math.min(p.scanned, codes.length - 1);
+      return { code: codes[i], label: `Scan ${names[i]}`, pallet: p };
     }
     if (ins.kind === 'pickup' || ins.kind === 'check-pallet') return { code: ins.task.sscc, label: `Scan pallet …${ins.task.sscc.slice(-6)}` };
     if (ins.kind === 'check-label') return { code: ins.task.labelCode, label: `Scan label ${ins.task.labelCode}` };
@@ -893,7 +939,7 @@ td .acts { display: flex; gap: 4px; }
       const cand = Object.values(wh.pallets).filter((p) => p.loc && parseRack(p.loc) && !live.has(p.sscc) && !p.orderId
         && (!truck.categories || truck.categories.includes(wh.items[p.itemNo].category))
         && (occ[aisleOf(p.loc)] || []).length < wh.config.aisleCap)
-        .sort((x, y) => distance(truck.position, x.loc) - distance(truck.position, y.loc))[0];
+        .sort((x, y) => wh.travel(truck.position, x.loc) - wh.travel(truck.position, y.loc))[0];
       return cand ? { code: cand.sscc, label: 'Scan a pallet (Auto-Shift)' } : null;
     }
     return null;
@@ -918,7 +964,8 @@ td .acts { display: flex; gap: 4px; }
       const d = ins.draft;
       const del = ins.delivery;
       body += `<div class="sub">Delivery <b>${esc(del.id)}</b> · ${esc(del.supplier)} · pallet <b>${del.received.length + 1}</b> of ${del.expected}</div>`;
-      body += `<div class="verb">${ins.field === 'qty' ? 'Confirm quantity' : `Scan ${FIELD_LABELS[ins.field]}`}</div>`;
+      body += `<div class="sub">${del.list ? 'Delivery list loaded: the <b>bottom barcode</b> (SSCC) is enough' : 'Scan the barcodes on the pallet label, any order'}</div>`;
+      body += `<div class="verb">${ins.field === 'qty' ? 'Confirm quantity' : del.list ? 'Scan pallet SSCC' : `Scan ${FIELD_LABELS[ins.field]}`}</div>`;
       const val = {
         batch: d.batch, expiry: d.expiry && dmy(d.expiry), item: d.item && `${d.item} ${wh.items[d.item].name}`,
         sscc: d.sscc && `…${d.sscc.slice(-8)}`, qty: d.qty || (ins.field === 'qty' ? `${wh.items[d.item].palletQty}?` : null),
@@ -937,10 +984,14 @@ td .acts { display: flex; gap: 4px; }
       if (ins.kind === 'wait') {
         body += `<div class="verb wait">Wait at aisle ${esc(ins.aisle)} entry</div><div>${locHtml(ins.target, 'lg')}</div><div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
       } else if (ins.kind === 'pickup') {
+        const enter = wh.entryFor(truck, ins.target);
+        if (enter) body += `<div class="sub">One-way: enter aisle <b>${aisleOf(ins.target)}</b> from the <b>${enter}</b></div>`;
         body += `<div class="verb">Pick up ${parseRack(ins.target) ? 'at' : `at ${esc(ins.target)}`}</div>`;
         body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
         body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(t.to) : 'auto slot'}</div>`;
       } else {
+        const enter = wh.entryFor(truck, ins.target);
+        if (enter) body += `<div class="sub">One-way: enter aisle <b>${aisleOf(ins.target)}</b> from the <b>${enter}</b></div>`;
         body += `<div class="verb">Drop at</div><div>${locHtml(ins.target, 'lg')}</div>`;
         const p = wh.pallets[t.sscc];
         body += `<div class="sub">${palletLine(p)}</div>`;
@@ -1022,7 +1073,7 @@ td .acts { display: flex; gap: 4px; }
     const dels = Object.values(wh.deliveries).sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
     setHTML($('deliveries'), dels.map((d) => {
       const blocked = d.received.filter((s) => wh.pallets[s].status === 'blocked').length;
-      const labels = (incoming[d.id] && incoming[d.id][0]) ? { gs1: 'GS1 label', gs1nocount: 'GS1, no count', separate: 'separate barcodes' }[incoming[d.id][0].labels] : '';
+      const labels = (incoming[d.id] && incoming[d.id][0]) ? { three: '3-barcode label', list: 'delivery list', separate: 'no usable label' }[incoming[d.id][0].labels] : '';
       return `<div class="item"><span><b>${esc(d.id)}</b> ${esc(d.supplier)} ${catHtml(d.category)}<br><span class="hint num">${d.received.length} of ${d.expected} received${blocked ? ` · ${blocked} blocked` : ''}${labels ? ` · ${labels}` : ''}</span></span>
         <span class="status ${d.status === 'received' ? 'ready' : ''}">${{ open: 'At the door', received: 'Received', cancelled: 'Cancelled' }[d.status]}</span></div>`;
     }).join(''));
@@ -1041,12 +1092,33 @@ td .acts { display: flex; gap: 4px; }
     const misplaced = Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.sscc && l.category && wh.items[wh.pallets[l.sscc].itemNo].category !== l.category).length;
     setHTML($('catcounts'), Object.entries(counts).map(([c, v]) => `<div class="item"><span>${catHtml(c || null)}</span><span class="hint num">${v.used}/${v.total} used · ${v.groundFree} free on the ground</span></div>`).join('')
       + (misplaced ? `<div class="item"><span class="status held">${misplaced} pallet(s) in the wrong category</span><span class="hint">relocation jobs queued</span></div>` : ''));
+    $('oneway').checked = wh.config.oneWay;
+    setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><b>Aisle ${a}</b>
+      <span class="seg" role="group" aria-label="Aisle ${a} entry">${['front', 'back'].map((d) => `<button type="button" data-aisle="${a}" data-dir="${d}" aria-pressed="${wh.aisleDir[a] === d}">${d === 'front' ? 'Front ▸' : '◂ Back'}</button>`).join('')}</span></div>`).join('') : '');
     $('ground').textContent = wh.config.groundNextPerItem;
     $('gDown').disabled = wh.config.groundNextPerItem <= 0;
     $('gUp').disabled = wh.config.groundNextPerItem >= 3;
     const blocked = wh.blockedLocations();
     $('blockedBox').hidden = !blocked.length;
     setHTML($('blocked'), blocked.map((l) => `<div class="item">${locHtml(l.code)}<button class="btn small" type="button" data-unblock="${l.code}">Unblock</button></div>`).join(''));
+  }
+
+  // Inputs are built once so typing isn't interrupted; only counts refresh.
+  function buildExpiry() {
+    $('msd').innerHTML = Object.values(wh.items).map((i) => `<div class="item">
+      <label for="msd-${i.itemNo}" style="display:grid"><span><b>${esc(i.itemNo)}</b> ${esc(i.name)}</span><span class="hint num" id="msdn-${i.itemNo}"></span></label>
+      <span style="display:flex;align-items:center;gap:6px"><input class="field num" style="width:72px" type="number" min="0" max="365" id="msd-${i.itemNo}" data-item="${i.itemNo}" value="${i.minShipDays}"><span class="hint">days</span></span>
+    </div>`).join('');
+  }
+
+  function renderExpiry() {
+    const rows = wh.stockSummary();
+    for (const r of rows) {
+      const el = $(`msdn-${r.item.itemNo}`);
+      if (el) el.textContent = `${CATEGORIES[r.item.category]} · ${r.available} can ship · ${r.short} too short`;
+      const input = $(`msd-${r.item.itemNo}`);
+      if (input && document.activeElement !== input) input.value = r.item.minShipDays;
+    }
   }
 
   // Decorative bar pattern so the preview reads as a label. The printer draws the real Code 128.
@@ -1137,15 +1209,25 @@ td .acts { display: flex; gap: 4px; }
       const loc = n && wh.locations[n.loc];
       const lvl = loc ? (loc.level === 0 ? '<span class="lvl ground">ground</span>' : `<span class="lvl high">level ${loc.level}</span>`) : '';
       return `<tr><td><b>${esc(r.item.itemNo)}</b> ${esc(r.item.name)}</td><td>${catHtml(r.item.category)}</td>
-        <td class="num">${r.available}</td><td class="num">${r.batches}</td><td class="num">${r.blocked || ''}</td>
+        <td class="num">${r.available}</td><td class="num">${r.batches}</td><td class="num">${r.short || ''}</td><td class="num">${r.blocked || ''}</td>
         <td>${n ? `${ssccHtml(n.sscc)} ${esc(n.batch)}` : '<span class="hint">no stock</span>'}</td>
         <td class="num">${n ? `${dmy(n.expiry)} <span class="hint">(${daysBetween(today, n.expiry)} d)</span>` : ''}</td>
         <td>${n ? `${locHtml(n.loc)} ${lvl}` : ''}</td></tr>`;
     }).join(''));
-    const blocked = Object.values(wh.pallets).filter((p) => p.status === 'blocked' && p.loc);
-    setHTML($('blockedPallets'), blocked.length ? `<h3 style="margin-bottom:6px">Blocked pallets</h3><div class="scroll"><table><thead><tr><th>Pallet</th><th>Item</th><th>Batch</th><th>Best before</th><th>Where</th><th>Reason</th><th></th></tr></thead><tbody>${blocked.map((p) =>
-      `<tr><td>${ssccHtml(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td class="num">${dmy(p.expiry)}</td><td>${locHtml(p.loc)}</td><td><span class="status held">${esc(p.blockReason)}</span></td>
-       <td><button class="btn small" type="button" data-unblockpallet="${p.sscc}">Release</button></td></tr>`).join('')}</tbody></table></div>` : '');
+    const stuck = Object.values(wh.pallets).filter((p) => p.loc && wh.shipState(p) !== 'ok')
+      .sort((a, b) => (a.expiry < b.expiry ? -1 : 1));
+    const why = (p) => {
+      const st = wh.shipState(p);
+      if (st === 'blocked') return esc(p.blockReason);
+      if (st === 'expired') return 'Past best-before';
+      return `${wh.daysLeft(p)} days left, minimum ${wh.items[p.itemNo].minShipDays}`;
+    };
+    setHTML($('blockedPallets'), stuck.length ? `<h3 style="margin-bottom:6px">Can't ship</h3><div class="scroll"><table><thead><tr><th>Pallet</th><th>Item</th><th>Batch</th><th>Best before</th><th>Where</th><th>Reason</th><th></th></tr></thead><tbody>${stuck.map((p) => {
+      const st = wh.shipState(p);
+      const btn = st === 'blocked' ? `<button class="btn small" type="button" data-unblockpallet="${p.sscc}">Release</button>`
+        : st === 'short' ? `<button class="btn small" type="button" data-allowshort="${p.sscc}">Let it ship</button>` : '';
+      return `<tr><td>${ssccHtml(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td class="num">${dmy(p.expiry)}</td><td>${locHtml(p.loc)}</td><td><span class="status held">${why(p)}</span></td><td>${btn}</td></tr>`;
+    }).join('')}</tbody></table></div>` : '');
   }
 
   function render(force) {
@@ -1160,13 +1242,14 @@ td .acts { display: flex; gap: 4px; }
     if (tab === 'inbound') renderInbound();
     if (tab === 'locations') renderLocations();
     if (tab === 'labels') renderLabels();
+    if (tab === 'expiry') renderExpiry();
     renderQueue();
     renderStock();
   }
 
   function fillItemSelect() {
     $('oItem').innerHTML = ITEMS.map(([no, name]) => `<option value="${no}">${no} ${esc(name)}</option>`).join('');
-    $('tAisle').innerHTML = Array.from({ length: AISLES }, (_, i) => `<option value="${i + 1}" ${i === 3 ? 'selected' : ''}>${p2(i + 1)}</option>`).join('');
+    $('tAisle').innerHTML = AISLES.map((a, i) => `<option value="${a}" ${i === 3 ? 'selected' : ''}>${a}</option>`).join('');
   }
 
   // ---- Wiring -----------------------------------------------------------
@@ -1310,14 +1393,25 @@ td .acts { display: flex; gap: 4px; }
   }
   $('tplForm').addEventListener('submit', (ev) => { ev.preventDefault(); applyTemplate(Number($('tAisle').value), Number($('tFrom').value), Number($('tTo').value), $('tCat').value); });
   $('tplProtein').addEventListener('click', () => {
-    applyTemplate(4, 15, 20, 'PRO');
+    applyTemplate(34, 15, 20, 'PRO');
     act(() => { if (!Object.values(wh.trucks).some((t) => !t.categories || t.categories.includes('PRO'))) wh.log('No truck works Protein drinks yet: tick it on a truck in the Auto tab'); });
+  });
+  $('oneway').addEventListener('change', (ev) => act(() => { wh.setConfig({ oneWay: ev.target.checked }); wh.log(ev.target.checked ? 'One-way aisles on: trucks are routed with the signs' : 'One-way aisles off'); }));
+  $('dirs').addEventListener('click', (ev) => { const b = ev.target.closest('[data-aisle]'); if (b) act(() => wh.setAisleDirection(b.dataset.aisle, b.dataset.dir)); });
+  $('msd').addEventListener('change', (ev) => {
+    const input = ev.target.closest('[data-item]');
+    if (input) act(() => wh.setMinShipDays(input.dataset.item, Math.max(0, Math.round(Number(input.value) || 0))));
   });
   $('gDown').addEventListener('click', () => act(() => wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem - 1 })));
   $('gUp').addEventListener('click', () => act(() => { wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem + 1 }); }));
   $('groupNow').addEventListener('click', () => act(() => { const n = wh.planGrouping(); say('shiftErr', n ? `${n} grouping move(s) queued as Auto-Shift jobs` : 'Every batch already stands together, or there is no room next to it', Boolean(n)); }));
   $('blocked').addEventListener('click', (ev) => { const b = ev.target.closest('[data-unblock]'); if (b) act(() => wh.unblockLocation(b.dataset.unblock)); });
-  $('blockedPallets').addEventListener('click', (ev) => { const b = ev.target.closest('[data-unblockpallet]'); if (b) act(() => wh.setPalletStatus(b.dataset.unblockpallet, 'available')); });
+  $('blockedPallets').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-unblockpallet]');
+    if (b) return act(() => wh.setPalletStatus(b.dataset.unblockpallet, 'available'));
+    const s = ev.target.closest('[data-allowshort]');
+    if (s) act(() => wh.allowShortShip(s.dataset.allowshort));
+  });
   $('printq').addEventListener('click', (ev) => { const b = ev.target.closest('[data-label]'); if (b) { labelSel = Number(b.dataset.label); render(true); } });
 
   $('queue').addEventListener('click', (ev) => {

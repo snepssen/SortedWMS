@@ -17,20 +17,29 @@ Each truck is set to the **categories its operator works** (yoghurt, cheese, pro
 
 **No more than 2 reach trucks in one aisle** (adjustable). A third truck gets work elsewhere. A driver carrying a pallet towards a full aisle waits at the entry and is let in when a truck leaves.
 
+**One-way aisles.** With the switch on, trucks are routed with the driving-direction signs. "Nearest job" means nearest by the route a truck may actually drive. A bay just behind the truck means going round, so a job further ahead in the same aisle comes first. The handheld says which end to enter an aisle from. The entry end of each aisle is a setting (it alternates by default).
+
 ### Stock rules
 - **Pallets are identified by SSCC**, with item, batch, expiry date and quantity.
 - **Categories never mix.** Every rack location carries a category from the location template. Put-away and Auto-Shift only use locations of the pallet's category.
 - **First expired, first out.** Shipping orders take whole pallets with the earliest expiry first, and the oldest received first on a tie.
-- **Blocked stock never ships.** Pallets that arrive with too little shelf life left (set per item) are blocked at receiving and put away on upper levels. So are pallets reported damaged. The coordinator can release them.
+- **Minimum days left to ship, set by the manager per item.**
+  - A pallet with fewer days left can't be picked. That's checked every day, so stock drops out on its own as it ages.
+  - Short-dated pallets are put away on upper levels.
+  - Raising the minimum swaps any planned picks onto good pallets.
+  - The manager can let a single short pallet ship anyway (e.g. a customer accepts it).
+- **Blocked stock never ships.** That covers pallets reported damaged, or expired on arrival. The coordinator can release them.
 
 ### Every job is as few inputs as possible
 | Job | Inputs |
 | --- | --- |
 | Put-away, pick, Auto-Shift | 2 scans: the pallet (or its location), then the drop location |
 | Check & label | 2 scans: the picked pallet, then the new shipping label once it's on |
-| Receiving, GS1-128 label with count | **1 scan** per pallet |
-| Receiving, GS1-128 label without count | 1 scan + 1 tap to confirm quantity |
-| Receiving, separate barcodes | batch → expiry → item → SSCC (4 scans) + 1 tap for quantity |
+| Receiving, supplier label + delivery list | **1 scan**: the bottom barcode (SSCC) |
+| Receiving, 3-barcode supplier label | 3 scans, any order: top (item + count), middle (best-before + batch), bottom (SSCC) |
+| Receiving, no usable label | batch → best-before → item → SSCC (4 scans) + 1 tap for quantity |
+
+An SSCC or a known EAN is recognised whenever it's scanned, whatever field is next. If the label and the delivery list disagree, the driver is told and nothing is registered.
 
 The scanner sends its own Enter. A wrong scan explains what's wrong and changes nothing.
 
@@ -41,7 +50,7 @@ The system picks the slot, and the driver scans twice. Jobs are created when:
 
 - **The location template changes.** Pallets now standing in a location of another category are relocated to their own category.
 - **A pallet ships next.** For every item, the next pallet(s) out (by expiry) are brought down to ground level, so a pick never waits on a high reach. The number per item is a setting.
-- **The same batch is apart.** A pallet standing alone is moved next to the rest of its item, batch and expiry, in the same bay level (3 positions per bay level).
+- **The same batch is apart.** A pallet standing alone is moved next to the rest of its item, batch and expiry, in the same bay level: positions 10, 40 and 70 between the rack legs.
 - **A driver starts one.** An idle driver scans any pallet; the system picks the slot.
 
 Put-away uses the same slotting rules from the start. It prefers a free position next to the same batch. It sends the next-out pallet low and later batches higher, to keep the ground free. Blocked stock goes to the top.
@@ -60,4 +69,11 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
 
-The demo's items, customers, suppliers and stock are made up. Location codes are `aisle-bay-level-position` (`03-012-2-1`, level 0 = ground). The real location table will replace them.
+## Locations
+
+Codes follow the site's labels: `aisle-bay-level-position`, e.g. `38-02-0-10`.
+- Bays are odd on one side of the aisle and even on the other, so bays 01 and 02 face each other.
+- Level 0 is the ground, levels 1–4 are above it.
+- Positions 10, 40 and 70 run left to right within a bay.
+
+The demo has aisles 31–38. The real list comes with the location table. The demo's items, customers, suppliers and stock are made up.

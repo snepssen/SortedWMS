@@ -103,10 +103,12 @@
       return consumed === s.length && Object.keys(out).length ? out : null;
     }
 
-    // Raw form: only treat as GS1 when it clearly is one, so a plain batch
-    // number like "10023" is never mistaken for AI 10.
-    const looksGs1 = hadPrefix || s.includes(GS) || (/^\d{16,}/.test(s) && /^(00|01|02)/.test(s));
-    if (!looksGs1) return null;
+    // Raw form: only accept it when it clearly is GS1 (scanner prefix, FNC1
+    // separators, an SSCC/GTIN at the start, or at least two elements),
+    // so a plain batch number like "10023" is never mistaken for AI 10.
+    if (!/^\d{2}/.test(s)) return null;
+    const strong = hadPrefix || s.includes(GS) || (/^\d{16,}/.test(s) && /^(00|01|02)/.test(s));
+    let count = 0;
     while (s.length) {
       if (s[0] === GS) { s = s.slice(1); continue; }
       const ai = AIS[s.slice(0, 2)] ? s.slice(0, 2) : null;
@@ -123,8 +125,9 @@
         s = end === -1 ? '' : s.slice(end + 1);
       }
       if (!put(ai, value)) return null;
+      count++;
     }
-    return Object.keys(out).length ? out : null;
+    return count && (strong || count >= 2) ? out : null;
   }
 
   /** Human-readable label line, e.g. "(02)…(17)261031(10)L2614(37)96". */

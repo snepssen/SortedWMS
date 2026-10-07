@@ -4,7 +4,7 @@ The prototype holds the rules: Auto dispatch, aisle limits, categories, FEFO, re
 
 ## 1. Load the real site (needs the location table)
 
-- **Location table** → import as CSV: code, aisle, bay, level, position, category. The engine's location format then follows the real labels instead of `03-012-2-1`.
+- **Location table** → import as CSV: code (`38-02-0-10`), category, and anything blocked. Aisle, bay, side (odd/even), level and position follow from the code. Add each aisle's one-way direction.
 - **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum shelf life at receipt (per item or per customer).
 - **Opening stock** → SSCC, item, batch, expiry, quantity, location, blocked yes/no.
 
@@ -54,8 +54,9 @@ The demo keeps everything in the browser. For real use:
 
 ## Questions for the floor
 
-- What do the real location labels look like, and how are levels and positions numbered?
-- Do supplier pallets arrive with GS1-128 labels (SSCC + GTIN + batch + best-before + count)? That decides between 1 and 5 inputs per received pallet.
-- Is minimum shelf life at receiving set per item, per supplier, or per customer?
+- What is printed in brackets under each of the 3 barcodes on the supplier label? For example (02)…(37)… on top, (15)…(10)… in the middle, (00)… at the bottom. That decides whether the scanner can read item, batch and date from it.
+- Do suppliers send a pallet list (by email, EDI or on the delivery note) that could be loaded before the truck arrives? Then the bottom barcode alone is enough.
+- Is the minimum days to ship per item only, or does it differ per customer?
+- Which end does each aisle enter from, and is it the same for every aisle or alternating?
 - Does each order have to be checked and labelled, or only some customers?
 - How many reach trucks per shift, and who works which category?

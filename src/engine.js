@@ -57,17 +57,20 @@
     allowSlotOverride: true, // Auto-Shift/put-away: driver may scan another suitable free slot
     groundNextPerItem: 1, // keep the next N pallets out of every item on ground level; 0 = off
     checkAfterPick: true, // picked pallets get a check & label job
+    oneWay: false, // route trucks with the one-way signs in the aisles
   };
 
-  const AISLE_PITCH = 4; // travel cost of crossing one aisle, in bays
+  const AISLE_PITCH = 2; // travel cost of moving over one aisle, in bay depths
   const MINUTE = 60000;
   const DAY = 86400000;
   const LIVE = new Set(['open', 'active', 'held']);
 
   // ---- Locations ------------------------------------------------------------
 
-  // aisle-bay-level-position, e.g. 03-012-2-1. Level 0 is the ground.
-  const RACK_RE = /^(\d{2})-(\d{3})-(\d)-(\d)$/;
+  // aisle-bay-level-position, e.g. 38-02-0-10. Odd bays on one side of the
+  // aisle, even bays on the other, so bays 01 and 02 face each other.
+  // Level 0 is the ground. Positions 10/40/70 run left to right in a bay.
+  const RACK_RE = /^(\d{2})-(\d{2})-(\d)-(\d{2})$/;
 
   function parseRack(code) {
     const m = RACK_RE.exec(code || '');
@@ -77,7 +80,7 @@
   const pad = (n, w) => String(n).padStart(w, '0');
 
   function rackCode(aisle, bay, level, pos) {
-    return `${pad(aisle, 2)}-${pad(bay, 3)}-${level}-${pos}`;
+    return `${pad(aisle, 2)}-${pad(bay, 2)}-${level}-${pad(pos, 2)}`;
   }
 
   function aisleOf(code) {
@@ -85,18 +88,8 @@
     return r ? r.aisle : null;
   }
 
-  // Lanes and docks sit at the front of the building, before aisle 01.
-  function point(code) {
-    const r = parseRack(code);
-    return r ? { a: Number(r.aisle), b: r.bay } : { a: 0, b: 0 };
-  }
-
-  function distance(fromCode, toCode) {
-    const p = point(fromCode);
-    const q = point(toCode);
-    if (p.a === q.a) return Math.abs(p.b - q.b);
-    return p.b + q.b + Math.abs(p.a - q.a) * AISLE_PITCH;
-  }
+  /** How far into the aisle a bay is: bays 01 and 02 are both depth 1. */
+  const depthOf = (bay) => Math.ceil(bay / 2);
 
   // ---- Dates ----------------------------------------------------------------
 
@@ -123,14 +116,24 @@
   // ---- Warehouse ------------------------------------------------------------
 
   class Warehouse {
-    constructor({ aisles = 8, bays = 20, levels = 4, positions = 3, outLanes = 4, clock, config } = {}) {
+    /**
+     * aisles: a count (01…n) or the real aisle numbers, e.g. [31, 32, …, 38].
+     * bays: bays per aisle, both sides together. levels: including the ground.
+     * positions: per bay level, left to right.
+     */
+    constructor({ aisles = 8, bays = 20, levels = 5, positions = [10, 40, 70], outLanes = 4, clock, config } = {}) {
       this.clock = clock || (() => Date.now());
       this.config = {
         ...DEFAULT_CONFIG,
         ...config,
         enabled: { ...DEFAULT_CONFIG.enabled, ...(config && config.enabled) },
       };
-      this.layout = { aisles, bays, levels, positions };
+      const aisleList = (Array.isArray(aisles) ? aisles : Array.from({ length: aisles }, (_, i) => i + 1)).map((a) => pad(a, 2));
+      if (typeof positions === 'number') positions = Array.from({ length: positions }, (_, i) => 10 + i * 30);
+      this.layout = { aisles: aisleList, bays, levels, positions, depth: depthOf(bays) };
+      // One-way aisles: which end a truck drives in from. Alternates by default.
+      this.aisleDir = {};
+      aisleList.forEach((a, i) => { this.aisleDir[a] = i % 2 === 0 ? 'front' : 'back'; });
       this.locations = {};
       this.items = {};
       this.pallets = {};
@@ -148,13 +151,13 @@
         const code = `OUT-${pad(i, 2)}`;
         this.locations[code] = { code, kind: 'lane', role: 'out', aisle: null, pallets: [], blocked: false, printer: `LP-${code}` };
       }
-      for (let a = 1; a <= aisles; a++) {
+      for (const a of aisleList) {
         for (let b = 1; b <= bays; b++) {
           for (let l = 0; l < levels; l++) {
-            for (let p = 1; p <= positions; p++) {
+            for (const p of positions) {
               const code = rackCode(a, b, l, p);
               this.locations[code] = {
-                code, kind: 'rack', aisle: pad(a, 2), bay: b, level: l, pos: p,
+                code, kind: 'rack', aisle: a, bay: b, level: l, pos: p, side: b % 2 ? 'odd' : 'even',
                 category: null, sscc: null, blocked: false, reservedBy: null,
               };
             }
@@ -171,14 +174,139 @@
       if (this.events.length > 300) this.events.length = 300;
     }
 
+    // ---- Routing --------------------------------------------------------------
+
+    setAisleDirection(aisle, enterFrom) {
+      const a = pad(aisle, 2);
+      if (!(a in this.aisleDir)) throw new Error(`No aisle ${a}`);
+      if (enterFrom !== 'front' && enterFrom !== 'back') throw new Error('Enter from "front" or "back"');
+      this.aisleDir[a] = enterFrom;
+      this.log(`Aisle ${a}: one-way, enter from the ${enterFrom}`);
+    }
+
+    // Lanes and docks are at the front, left of the first aisle.
+    _point(code) {
+      const r = parseRack(code);
+      if (!r) return { i: -1, d: 0, aisle: null };
+      return { i: this.layout.aisles.indexOf(r.aisle), d: depthOf(r.bay), aisle: r.aisle };
+    }
+
+    /**
+     * Driving distance in bay depths. With one-way aisles on, a truck only
+     * drives an aisle in its signed direction: to reach a bay behind it, it
+     * drives out the far end and comes round.
+     */
+    travel(fromCode, toCode) {
+      const p = this._point(fromCode);
+      const q = this._point(toCode);
+      const D = this.layout.depth;
+      const L = D + 1; // one aisle length, end to end
+      const across = (x, y) => Math.abs(x - y) * AISLE_PITCH;
+
+      if (!this.config.oneWay) {
+        if (p.aisle && p.aisle === q.aisle) return Math.abs(p.d - q.d);
+        const viaFront = p.d + q.d;
+        const viaBack = (p.aisle ? L - p.d : L) + (q.aisle ? L - q.d : L);
+        return Math.min(viaFront, viaBack) + across(p.i, q.i);
+      }
+
+      const dirP = p.aisle && this.aisleDir[p.aisle];
+      const dirQ = q.aisle && this.aisleDir[q.aisle];
+      if (p.aisle && p.aisle === q.aisle) {
+        const ahead = dirP === 'front' ? q.d >= p.d : q.d <= p.d;
+        if (ahead) return Math.abs(q.d - p.d);
+      }
+      // Out of the current aisle in its direction…
+      const exitEnd = !p.aisle ? 'front' : dirP === 'front' ? 'back' : 'front';
+      const exitCost = !p.aisle ? 0 : dirP === 'front' ? L - p.d : p.d;
+      // …and into the target aisle from its entry end.
+      const entryEnd = !q.aisle ? 'front' : dirQ;
+      const entryCost = !q.aisle ? 0 : dirQ === 'front' ? q.d : L - q.d;
+      let transfer;
+      if (exitEnd === entryEnd) {
+        transfer = across(p.i, q.i);
+      } else {
+        // Drive through an aisle signed the right way, or round the outside.
+        const n = this.layout.aisles.length;
+        const ways = [-1, n];
+        this.layout.aisles.forEach((a, i) => {
+          if ((exitEnd === 'front' && this.aisleDir[a] === 'front') || (exitEnd === 'back' && this.aisleDir[a] === 'back')) ways.push(i);
+        });
+        transfer = Math.min(...ways.map((z) => across(p.i, z) + L + across(z, q.i)));
+      }
+      return exitCost + transfer + entryCost;
+    }
+
+    /** Which end to drive into the target's aisle from, if the truck isn't already headed there. */
+    entryFor(truck, code) {
+      const a = aisleOf(code);
+      if (!a || !this.config.oneWay) return null;
+      const p = this._point(truck.position);
+      if (p.aisle === a) {
+        const q = this._point(code);
+        const ahead = this.aisleDir[a] === 'front' ? q.d >= p.d : q.d <= p.d;
+        if (ahead) return null;
+      }
+      return this.aisleDir[a];
+    }
+
     // ---- Master data --------------------------------------------------------
 
-    addItem({ itemNo, gtin, name, category, palletQty, minShelfDays = 0 }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0 }) {
       if (!CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
-      this.items[itemNo] = { itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShelfDays };
+      this.items[itemNo] = { itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShipDays };
       return this.items[itemNo];
+    }
+
+    /** Manager setting: days of shelf life a pallet must have left to be shipped. */
+    setMinShipDays(itemNo, days) {
+      const item = this.items[itemNo];
+      if (!item) throw new Error(`Unknown item ${itemNo}`);
+      if (!Number.isInteger(days) || days < 0) throw new Error('Days must be a whole number, 0 or more');
+      if (item.minShipDays === days) return;
+      item.minShipDays = days;
+      this.log(`${itemNo}: minimum ${days} days left to ship`);
+      this._dropShortAllocations(itemNo);
+      this.planGround();
+      this.dispatch();
+    }
+
+    /**
+     * Can this pallet ship today? 'ok', 'short' (fewer days left than the
+     * manager's minimum), 'expired' or 'blocked' (damaged, held back).
+     */
+    shipState(pallet) {
+      if (pallet.status === 'blocked') return 'blocked';
+      const days = daysBetween(this.today(), pallet.expiry);
+      if (days < 0) return 'expired';
+      if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
+      return 'ok';
+    }
+
+    daysLeft(pallet) {
+      return daysBetween(this.today(), pallet.expiry);
+    }
+
+    /** Manager override: let this one short-dated pallet ship (e.g. a customer accepts it). */
+    allowShortShip(sscc) {
+      const p = this._pallet(sscc);
+      p.allowShort = true;
+      this.log(`Pallet …${sscc.slice(-6)} released to ship with ${this.daysLeft(p)} days left`);
+      this.planGround();
+      this.dispatch();
+    }
+
+    // Raising the minimum can make allocated pallets too short: swap them for good ones.
+    _dropShortAllocations(itemNo) {
+      for (const t of Object.values(this.tasks)) {
+        if (t.type !== 'PICK' || t.status !== 'open') continue;
+        const p = this.pallets[t.sscc];
+        if (p.itemNo !== itemNo || this.shipState(p) === 'ok') continue;
+        this._replacePick(t);
+        t.status = 'cancelled';
+      }
     }
 
     /** Find an item by item number or by any length of GTIN/EAN. */
@@ -260,12 +388,14 @@
     stockSummary() {
       const rows = {};
       for (const item of Object.values(this.items)) {
-        rows[item.itemNo] = { item, available: 0, blocked: 0, qty: 0, next: null, batches: new Set() };
+        rows[item.itemNo] = { item, available: 0, short: 0, blocked: 0, qty: 0, next: null, batches: new Set() };
       }
       for (const p of Object.values(this.pallets)) {
         if (!p.loc || p.status === 'shipped' || p.status === 'missing') continue;
         const r = rows[p.itemNo];
-        if (p.status === 'blocked') { r.blocked++; continue; }
+        const state = this.shipState(p);
+        if (state === 'blocked') { r.blocked++; continue; }
+        if (state !== 'ok') { r.short++; continue; }
         if (p.orderId) continue;
         r.available++;
         r.qty += p.qty;
@@ -433,11 +563,16 @@
 
     // ---- Receiving ----------------------------------------------------------
 
-    /** Announce a delivery at the receiving dock; creates one receiving job. */
-    addDelivery({ id, supplier, category, pallets }) {
+    /**
+     * Announce a delivery at the receiving dock; creates one receiving job.
+     * `list` is the supplier's pallet list (SSCC, item, batch, expiry, qty),
+     * when there is one: then scanning the SSCC alone registers the pallet.
+     */
+    addDelivery({ id, supplier, category, pallets, list = null }) {
       if (this.deliveries[id]) throw new Error(`Delivery ${id} already exists`);
       if (!CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
-      const delivery = { id, supplier, category, expected: pallets, received: [], createdAt: this.now(), status: 'open' };
+      const byS = list ? Object.fromEntries(list.map((l) => [l.sscc, l])) : null;
+      const delivery = { id, supplier, category, expected: pallets || (list ? list.length : 0), received: [], list: byS, createdAt: this.now(), status: 'open' };
       this.deliveries[id] = delivery;
       const task = this._newTask({ type: 'RECEIVE', category, from: 'DOCK-IN', to: 'DOCK-IN', deliveryId: id });
       task.draft = {};
@@ -705,7 +840,7 @@
         const r = rank(x) - rank(y);
         if (r) return r;
         if (cfg.travelOptimise && rank(x) >= 0) {
-          const d = distance(truck.position, x.from) - distance(truck.position, y.from);
+          const d = this.travel(truck.position, x.from) - this.travel(truck.position, y.from);
           if (d) return d;
         }
         return x.createdAt - y.createdAt || x.id - y.id;
@@ -857,7 +992,7 @@
     _swapProblem(p, truck, task) {
       const loc = this.locations[p.loc];
       if (!loc || loc.kind !== 'rack') return 'That pallet is not in a rack location';
-      if (p.status !== 'available') return `That pallet is blocked (${p.blockReason})`;
+      if (this.shipState(p) !== 'ok') return `That pallet can't ship (${p.blockReason || 'too short-dated'})`;
       if (p.orderId) return `That pallet is for order ${p.orderId}`;
       if (loc.blocked) return `${loc.code} is blocked`;
       if (this._capacityLeft(loc.aisle, truck.id) <= 0 && loc.aisle !== aisleOf(task.from)) return `Aisle ${loc.aisle} is full`;
@@ -973,8 +1108,10 @@
 
     _checkProblem(pallet, order) {
       if (pallet.orderId !== order.id) return 'Pallet is not allocated to this order';
-      if (pallet.status !== 'available') return `Pallet is blocked (${pallet.blockReason})`;
-      if (pallet.expiry < this.today()) return 'Pallet is past its expiry date';
+      const state = this.shipState(pallet);
+      if (state === 'blocked') return `Pallet is blocked (${pallet.blockReason})`;
+      if (state === 'expired') return 'Pallet is past its expiry date';
+      if (state === 'short') return `Only ${this.daysLeft(pallet)} days left, minimum to ship is ${this.items[pallet.itemNo].minShipDays}`;
       if (!order.lines.some((l) => l.itemNo === pallet.itemNo)) return 'Wrong item for this order';
       return null;
     }
@@ -1037,12 +1174,10 @@
 
     /** Usable pallets of an item in shipping order: first expiry, then first received, ground first. */
     _fefo(itemNo) {
-      const today = this.today();
       const live = this._liveMap();
       return Object.values(this.pallets)
         .filter((p) => {
-          if (p.itemNo !== itemNo || p.status !== 'available' || !p.loc || p.orderId) return false;
-          if (p.expiry < today) return false;
+          if (p.itemNo !== itemNo || !p.loc || p.orderId || this.shipState(p) !== 'ok') return false;
           const loc = this.locations[p.loc];
           if (loc.kind !== 'rack' || loc.blocked) return false;
           const t = live.get(p.sscc);
@@ -1062,64 +1197,76 @@
 
     // ---- Internals: receiving -------------------------------------------------
 
+    /**
+     * Receiving input. Every barcode on a supplier pallet label is read for
+     * whatever it carries (a 3-barcode logistic label fills item + count,
+     * best-before + batch and SSCC, in any order). Plain barcodes are taken
+     * in the order batch, expiry, item, SSCC, quantity, except that an SSCC
+     * or a known EAN is recognised wherever it comes. With a delivery list,
+     * the SSCC alone fills the rest.
+     */
     _receiveScan(truck, task, input) {
       const d = task.draft;
+      const delivery = this.deliveries[task.deliveryId];
+      const fields = {};
       const gs1 = GS1.parse(input);
       if (gs1) {
-        const got = [];
-        if (gs1.batch) { d.batch = gs1.batch; got.push('batch'); }
-        if (gs1.expiry) { d.expiry = gs1.expiry; got.push('expiry'); }
+        Object.assign(fields, gs1);
         if (gs1.gtin) {
           const item = this.findItem(gs1.gtin);
           if (!item) return this._fail(truck, `GTIN ${gs1.gtin} is not in the item list — call the coordinator`);
-          d.item = item.itemNo;
-          got.push('item');
+          fields.item = item.itemNo;
         }
-        if (gs1.sscc) {
-          const why = this._ssccProblem(gs1.sscc);
-          if (why) return this._fail(truck, why);
-          d.sscc = gs1.sscc;
-          got.push('SSCC');
+      } else {
+        const plain = input.replace(/^\(00\)/, '');
+        const asItem = /^\d{8,14}$/.test(plain) && this.findItem(plain);
+        if (!d.sscc && /^\d{18}$/.test(plain) && GS1.isValidSscc(plain)) fields.sscc = plain;
+        else if (!d.item && asItem) fields.item = asItem.itemNo;
+        else {
+          const field = RECEIVE_FIELDS.find((f) => !d[f]);
+          if (field === 'batch') {
+            if (input.length > 20) return this._fail(truck, 'That is too long for a batch number');
+            fields.batch = input.toUpperCase();
+          } else if (field === 'expiry') {
+            const iso = parseDate(input);
+            if (!iso) return this._fail(truck, 'Not a date. Scan the best-before date (e.g. 261031 or 31-10-2026)');
+            fields.expiry = iso;
+          } else if (field === 'item') {
+            return this._fail(truck, `${input} is not a known item number or EAN`);
+          } else if (field === 'sscc') {
+            return this._fail(truck, this._ssccProblem(plain) || 'Scan the pallet SSCC');
+          } else if (field === 'qty') {
+            d.inputs--; // confirmQty counts this input
+            truck.stats.taps--;
+            return this.confirmQty(truck.id, input);
+          }
         }
-        if (gs1.qty) { d.qty = gs1.qty; got.push('quantity'); }
-        if (RECEIVE_FIELDS.every((f) => d[f])) return this._registerReceived(truck, task);
-        return this._say(truck, true, `Label read: ${got.join(', ')}`);
       }
 
-      const field = RECEIVE_FIELDS.find((f) => !d[f]);
-      switch (field) {
-        case 'batch':
-          if (input.length > 20) return this._fail(truck, 'That is too long for a batch number');
-          d.batch = input.toUpperCase();
-          break;
-        case 'expiry': {
-          const iso = parseDate(input);
-          if (!iso) return this._fail(truck, 'Not a date. Scan the expiry date (e.g. 261031 or 31-10-2026)');
-          d.expiry = iso;
-          break;
+      if (fields.sscc) {
+        const why = this._ssccProblem(fields.sscc);
+        if (why) return this._fail(truck, why);
+        const listed = delivery.list && delivery.list[fields.sscc];
+        if (listed) {
+          const item = this.findItem(listed.itemNo || listed.gtin);
+          const fromList = { item: item && item.itemNo, batch: listed.batch, expiry: listed.expiry, qty: listed.qty };
+          for (const [k, v] of Object.entries(fromList)) {
+            const mine = fields[k] || d[k];
+            if (v && mine && String(mine) !== String(v)) {
+              return this._fail(truck, `Label and delivery list disagree on ${FIELD_LABELS[k].toLowerCase()} (${mine} vs ${v}) — call the coordinator`);
+            }
+            if (v && !mine) fields[k] = v;
+          }
+        } else if (delivery.list) {
+          this.log(`Delivery ${delivery.id}: SSCC …${fields.sscc.slice(-6)} is not on the delivery list`, { taskId: task.id });
         }
-        case 'item': {
-          const item = this.findItem(input);
-          if (!item) return this._fail(truck, `${input} is not a known item number or EAN`);
-          d.item = item.itemNo;
-          break;
-        }
-        case 'sscc': {
-          const s = input.replace(/^\(00\)|^00(?=\d{18}$)/, '');
-          const why = this._ssccProblem(s);
-          if (why) return this._fail(truck, why);
-          d.sscc = s;
-          break;
-        }
-        case 'qty':
-          d.inputs--; // confirmQty counts this input
-          truck.stats.taps--;
-          return this.confirmQty(truck.id, input);
-        default:
-          break;
       }
+
+      const got = [];
+      for (const f of RECEIVE_FIELDS) if (fields[f] != null) { d[f] = fields[f]; got.push(FIELD_LABELS[f].toLowerCase()); }
+      if (RECEIVE_FIELDS.every((f) => d[f])) return this._registerReceived(truck, task);
       const next = RECEIVE_FIELDS.find((f) => !d[f]);
-      return this._say(truck, true, `${FIELD_LABELS[field]} OK. ${next === 'qty' ? 'Confirm the quantity' : `Scan the ${FIELD_LABELS[next].toLowerCase()}`}`);
+      return this._say(truck, true, `Got ${got.join(', ')}. ${next === 'qty' ? 'Confirm the quantity' : `Next: ${FIELD_LABELS[next].toLowerCase()}`}`);
     }
 
     _ssccProblem(s) {
@@ -1133,10 +1280,8 @@
       const d = task.draft;
       const item = this.items[d.item];
       const daysLeft = daysBetween(this.today(), d.expiry);
-      let status = 'available';
-      let blockReason = null;
-      if (daysLeft < 0) { status = 'blocked'; blockReason = 'Expired'; }
-      else if (daysLeft < item.minShelfDays) { status = 'blocked'; blockReason = `Short expiry (${daysLeft} days left)`; }
+      const status = daysLeft < 0 ? 'blocked' : 'available';
+      const blockReason = daysLeft < 0 ? 'Expired on arrival' : null;
       const pallet = this.stockPallet('DOCK-IN', {
         sscc: d.sscc, itemNo: item.itemNo, batch: d.batch, expiry: d.expiry, qty: d.qty, status, blockReason,
       });
@@ -1146,13 +1291,16 @@
       truck.stats.receiveInputs += d.inputs || 0;
       task.draft = {};
       this._newTask({ type: 'PUTAWAY', category: item.category, sscc: pallet.sscc, from: 'DOCK-IN', to: null });
-      this.log(`${truck.id} received …${pallet.sscc.slice(-6)} ${item.itemNo} batch ${pallet.batch}${status === 'blocked' ? ` — BLOCKED: ${blockReason}` : ''}`, { truckId: truck.id, taskId: task.id });
+      const state = this.shipState(pallet);
+      const note = state === 'blocked' ? ` — BLOCKED: ${blockReason}`
+        : state === 'short' ? ` — short date: ${daysLeft} days left, minimum to ship is ${item.minShipDays}` : '';
+      this.log(`${truck.id} received …${pallet.sscc.slice(-6)} ${item.itemNo} batch ${pallet.batch}${note}`, { truckId: truck.id, taskId: task.id });
       const count = `${delivery.received.length} of ${delivery.expected}`;
       if (delivery.received.length >= delivery.expected) {
         this._closeDelivery(truck, task);
-        return this._say(truck, status === 'available', `Pallet ${count} registered${blockReason ? ` — blocked: ${blockReason}` : ''}. Delivery complete`);
+        return this._say(truck, state === 'ok', `Pallet ${count} registered${note}. Delivery complete`);
       }
-      return this._say(truck, status === 'available', `Pallet ${count} registered${blockReason ? ` — blocked: ${blockReason}` : ''}. Scan the next batch`);
+      return this._say(truck, state === 'ok', `Pallet ${count} registered${note}. Next pallet`);
     }
 
     _closeDelivery(truck, task) {
@@ -1252,7 +1400,7 @@
       const top = this.layout.levels - 1;
       const nextOut = this.config.groundNextPerItem > 0
         && this._fefo(pallet.itemNo)
-          .concat(pallet.status === 'available' && !this._isRacked(pallet) ? [pallet] : [])
+          .concat(this.shipState(pallet) === 'ok' && !this._isRacked(pallet) ? [pallet] : [])
           .sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0) || a.receivedAt - b.receivedAt)
           .slice(0, this.config.groundNextPerItem)
           .includes(pallet);
@@ -1261,7 +1409,7 @@
       for (const loc of this._racks()) {
         if (!this._slotFree(loc, pallet) || loc.code === origin) continue;
         if (ground && loc.level !== 0) continue;
-        let score = distance(origin, loc.code) * 10;
+        let score = this.travel(origin, loc.code) * 10;
         for (const n of this._bayLevel(loc)) {
           if (!n.sscc || n === loc) continue;
           const other = this.pallets[n.sscc];
@@ -1269,7 +1417,7 @@
           else if (other.itemNo === pallet.itemNo) score -= 500;
           else score += 200;
         }
-        if (pallet.status !== 'available') score += (top - loc.level) * 300;
+        if (this.shipState(pallet) !== 'ok') score += (top - loc.level) * 300;
         else if (ground || nextOut) score += loc.level * 300;
         else if (loc.level === 0) score += 400; // keep the ground free for what ships next
         if (this._capacityLeft(loc.aisle, null) <= 0 && loc.aisle !== aisleOf(origin)) score += 10000;
@@ -1335,7 +1483,7 @@
 
     _bayLevel(loc) {
       const out = [];
-      for (let p = 1; p <= this.layout.positions; p++) out.push(this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]);
+      for (const p of this.layout.positions) out.push(this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]);
       return out;
     }
 
@@ -1395,6 +1543,6 @@
 
   return {
     Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, DEFAULT_CONFIG,
-    parseRack, rackCode, aisleOf, distance, parseDate, daysBetween,
+    parseRack, rackCode, aisleOf, depthOf, parseDate, daysBetween,
   };
 });
