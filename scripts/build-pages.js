@@ -17,7 +17,9 @@ const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 // Head = everything up to the end of the first <style> block; the rest is the body.
 const cut = page.indexOf('</style>');
 if (cut === -1) throw new Error('index.html: expected a <style> block');
-const head = page.slice(0, cut + '</style>'.length);
+// The page carries its own charset and viewport tags so it also works served raw;
+// the wrapper adds them below, so drop the page's copies.
+const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name="viewport")[^>]*>\s*/g, '');
 const body = page.slice(cut + '</style>'.length);
 
 const html = `<!doctype html>
