@@ -71,9 +71,18 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 
 ## Locations
 
-Codes follow the site's labels: `aisle-bay-level-position`, e.g. `38-02-0-10`.
-- Bays are odd on one side of the aisle and even on the other, so bays 01 and 02 face each other.
-- Level 0 is the ground, levels 1–4 are above it.
-- Positions 10, 40 and 70 run left to right within a bay.
+Every location has two names, and both barcodes scan. The coordinator chooses which one the screens show.
+
+**On the racks today:** `38-02-0-10` = aisle 38, bay 02, height 0, position 10.
+- Odd bays are on one side of the aisle and even bays on the other, so bay 13 faces bay 14.
+- Height 0 is the ground, 1–4 above it.
+- Positions 10/40/70 run left to right between the rack legs.
+
+**Proposed:** `AA-07-01-A` = cell A, rack row A, bay 07, position 01, height A.
+- The first letter is the warehouse cell. The second is the rack row, lettered in a line across the cell: the rows facing each other across the first aisle are A and B, then C and D.
+- Bays run 01–10 along each row, with no odd/even hopping. Facing rows have the same bay number (AA-07 faces AB-07).
+- Positions run 01–03, and height A (ground) to E.
+
+Because both names scan, the racks can be relabelled one aisle at a time while everything keeps working. The Locations tab shows the old → new list.
 
 The demo has aisles 31–38. The real list comes with the location table. The demo's items, customers, suppliers and stock are made up.

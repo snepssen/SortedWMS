@@ -364,3 +364,40 @@ test('label and delivery list disagreeing is caught', () => {
   assert.equal(r.ok, false);
   assert.match(r.text, /disagree on batch/);
 });
+
+test('proposed row names: cell + rack row, bays in a line, position 01–03, height A = ground', () => {
+  const wh = new Warehouse({ aisles: [31, 32, 33, 34, 35, 36, 37, 38], bays: 20, levels: 5, clock: () => T0 });
+  assert.equal(wh.rowName('31-13-0-10'), 'AA-07-01-A');
+  assert.equal(wh.rowName('31-14-0-10'), 'AB-07-01-A', 'facing row across aisle 31');
+  assert.equal(wh.rowName('32-01-0-10'), 'AC-01-01-A', 'next aisle: rows C and D');
+  assert.equal(wh.rowName('38-02-0-10'), 'AP-01-01-A');
+  assert.equal(wh.rowName('38-20-4-70'), 'AP-10-03-E');
+  wh.setAisleCell(35, 'B'); wh.setAisleCell(36, 'B'); wh.setAisleCell(37, 'B'); wh.setAisleCell(38, 'B');
+  assert.equal(wh.rowName('35-01-0-10'), 'BA-01-01-A', 'a second cell starts again at row A');
+  assert.equal(wh.resolve('BH-01-01-A'), '38-02-0-10');
+  assert.equal(wh.resolve('aa-07-01-a'), '31-13-0-10');
+  assert.equal(wh.resolve('ZZ-01-01-A'), 'ZZ-01-01-A', 'unknown names are left alone');
+  const list = wh.relabelList(38);
+  assert.equal(list.length, 20 * 5 * 3);
+  assert.equal(new Set(list.map((r) => r.row)).size, list.length, 'every new name is unique');
+});
+
+test('either label scans: racks can be relabelled one aisle at a time', () => {
+  const { wh } = setup({ checkAfterPick: false });
+  const p = stock(wh, '01-05-0-10', 'Y1', 'B1', '2026-10-25');
+  wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
+  wh.addTruck('RT1');
+  wh.setNaming('row');
+  const r = wh.scan('RT1', wh.rowName(p.loc));
+  assert.ok(r.ok, r.text);
+  assert.equal(wh.display('Take it from 01-05-0-10'), 'Take it from AA-03-01-A');
+  assert.ok(wh.scan('RT1', 'OUT-01').ok);
+});
+
+test('template by side and bays along the row', () => {
+  const { wh } = setup();
+  const { changed } = wh.setLocationCategory({ aisle: 2, side: 'even', rowFrom: 2, rowTo: 3 }, 'PRO');
+  assert.equal(changed, 2 * 3 * 3, '2 bays × 3 levels × 3 positions');
+  assert.equal(wh.locations['02-04-0-10'].category, 'PRO');
+  assert.equal(wh.locations['02-03-0-10'].category, 'YOG', 'odd side untouched');
+});

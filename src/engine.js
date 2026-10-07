@@ -133,6 +133,13 @@
       this.layout = { aisles: aisleList, bays, levels, positions, depth: depthOf(bays) };
       // One-way aisles: which end a truck drives in from. Alternates by default.
       this.aisleDir = {};
+      // Location names. 'current' is what's on the racks today (38-02-0-10).
+      // 'row' is the proposed scheme (AA-07-01-A): cell letter + rack row
+      // letter, bays 01… along the row, position 01–03, height A (ground)
+      // upwards. Rack rows are lettered in a line across the cell: the two
+      // rows facing each other across its first aisle are A and B, then C/D…
+      this.naming = { show: 'current', cellOf: {} };
+      aisleList.forEach((a) => { this.naming.cellOf[a] = 'A'; });
       aisleList.forEach((a, i) => { this.aisleDir[a] = i % 2 === 0 ? 'front' : 'back'; });
       this.locations = {};
       this.items = {};
@@ -250,6 +257,76 @@
       return this.aisleDir[a];
     }
 
+    // ---- Location names -------------------------------------------------------
+
+    /** Which name the screens show: 'current' (38-02-0-10) or 'row' (HB-01-01-A). */
+    setNaming(show) {
+      if (show !== 'current' && show !== 'row') throw new Error('Naming is "current" or "row"');
+      this.naming.show = show;
+    }
+
+    /** Put an aisle in a warehouse cell (one letter). Its rack rows are lettered within that cell. */
+    setAisleCell(aisle, cell) {
+      const a = pad(aisle, 2);
+      if (!(a in this.naming.cellOf)) throw new Error(`No aisle ${a}`);
+      if (!/^[A-Z]$/.test(cell)) throw new Error('A cell is one letter, A–Z');
+      this.naming.cellOf[a] = cell;
+    }
+
+    /** The two rack-row names of an aisle: [odd side, even side], e.g. ['AA', 'AB']. */
+    rowsOf(aisle) {
+      const a = pad(aisle, 2);
+      const cell = this.naming.cellOf[a];
+      const i = this.layout.aisles.filter((x) => this.naming.cellOf[x] === cell).indexOf(a);
+      return [cell + String.fromCharCode(65 + i * 2), cell + String.fromCharCode(66 + i * 2)];
+    }
+
+    /** A rack code in the proposed row scheme, e.g. 31-13-0-10 → AA-07-01-A. */
+    rowName(code) {
+      const r = parseRack(code);
+      if (!r) return code;
+      const [odd, even] = this.rowsOf(r.aisle);
+      const pos = this.layout.positions.indexOf(r.pos) + 1;
+      return `${r.bay % 2 ? odd : even}-${pad(depthOf(r.bay), 2)}-${pad(pos, 2)}-${String.fromCharCode(65 + r.level)}`;
+    }
+
+    /** Display name in the chosen scheme. Lanes and docks keep their names. */
+    label(code) {
+      return this.naming.show === 'row' ? this.rowName(code) : code;
+    }
+
+    /** Any text from the engine with rack codes shown in the chosen scheme. */
+    display(text) {
+      if (this.naming.show !== 'row' || !text) return text;
+      return String(text).replace(/\b\d{2}-\d{2}-\d-\d{2}\b/g, (c) => (this.locations[c] ? this.rowName(c) : c));
+    }
+
+    /**
+     * A scanned or typed location in either scheme → the location it means.
+     * Both barcodes work, so racks can be relabelled one aisle at a time.
+     */
+    resolve(input) {
+      const s = String(input).trim().toUpperCase();
+      if (this.locations[s]) return s;
+      const m = /^([A-Z][A-Z])-(\d{2})-(\d{2})-([A-Z])$/.exec(s);
+      if (!m) return s;
+      const aisle = this.layout.aisles.find((a) => this.rowsOf(a).includes(m[1]));
+      const pos = this.layout.positions[Number(m[3]) - 1];
+      const depth = Number(m[2]);
+      if (!aisle || pos == null || depth < 1) return s;
+      const bay = this.rowsOf(aisle)[0] === m[1] ? depth * 2 - 1 : depth * 2;
+      const code = rackCode(aisle, bay, m[4].charCodeAt(0) - 65, pos);
+      return this.locations[code] ? code : s;
+    }
+
+    /** Old → new name for every location, for relabelling the racks. */
+    relabelList(aisle = null) {
+      return this._racks()
+        .filter((l) => !aisle || l.aisle === pad(aisle, 2))
+        .map((l) => ({ current: l.code, row: this.rowName(l.code) }))
+        .sort((x, y) => (x.row < y.row ? -1 : 1));
+    }
+
     // ---- Master data --------------------------------------------------------
 
     addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0 }) {
@@ -322,14 +399,20 @@
 
     /**
      * Location template: give a range of rack locations a category.
-     * Pallets that no longer match get relocation jobs (Auto-Shift).
+     * Range by today's bay numbers (bayFrom/bayTo), or by one side of the
+     * aisle ('odd'/'even') and bays along that row (rowFrom/rowTo).
      */
-    setLocationCategory({ aisle, bayFrom = 1, bayTo = this.layout.bays, levels = null }, category) {
+    setLocationCategory({ aisle, bayFrom = 1, bayTo = this.layout.bays, side = null, rowFrom = null, rowTo = null, levels = null }, category) {
       if (category !== null && !CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
       const a = pad(aisle, 2);
       let changed = 0;
       for (const loc of this._racks()) {
-        if (loc.aisle !== a || loc.bay < bayFrom || loc.bay > bayTo) continue;
+        if (loc.aisle !== a) continue;
+        if (rowFrom != null || side) {
+          if (side && loc.side !== side) continue;
+          const d = depthOf(loc.bay);
+          if (d < (rowFrom || 1) || d > (rowTo || this.layout.depth)) continue;
+        } else if (loc.bay < bayFrom || loc.bay > bayTo) continue;
         if (levels && !levels.includes(loc.level)) continue;
         if (loc.category !== category) {
           loc.category = category;
@@ -337,7 +420,8 @@
         }
       }
       if (changed) {
-        this.log(`Template: aisle ${a} bays ${bayFrom}–${bayTo} → ${category ? CATEGORIES[category] : 'no category'} (${changed} locations)`);
+        const where = rowFrom != null || side ? `${side ? `${side} side` : 'both sides'}, bays ${rowFrom || 1}–${rowTo || this.layout.depth} along the row` : `bays ${bayFrom}–${bayTo}`;
+        this.log(`Template: aisle ${a} ${where} → ${category ? CATEGORIES[category] : 'no category'} (${changed} locations)`);
       }
       const moves = this.planRelocations();
       this.dispatch();
@@ -712,7 +796,7 @@
       if (task.type === 'CHECK') return this._checkScan(truck, task, input);
 
       const label = GS1.parse(input);
-      const code = (label && label.sscc) || input.toUpperCase();
+      const code = (label && label.sscc) || this.resolve(input);
       if (task.step === 0) {
         const r = this._matchPickup(truck, task, code);
         if (!r.ok) return this._fail(truck, r.text);
@@ -1323,7 +1407,7 @@
 
     // Idle driver scans a pallet or rack location: take its waiting job, or start an Auto-Shift.
     _startFromScan(truck, input) {
-      const code = input.toUpperCase();
+      const code = this.resolve(input);
       const gs1 = GS1.parse(code);
       let pallet = this.pallets[(gs1 && gs1.sscc) || code];
       if (!pallet) {

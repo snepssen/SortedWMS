@@ -213,7 +213,7 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .arrows { display: flex; gap: 2px; }
 .arrows .btn { min-height: 28px; width: 28px; padding: 0; }
 .rules { display: grid; gap: 10px; }
-.rule { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.rule { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 10px; }
 .rule label { min-width: 0; }
 .rule small { display: block; color: var(--muted); font-size: .78rem; }
 .stepper { display: flex; align-items: center; gap: 4px; }
@@ -224,7 +224,7 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .switch:checked { background: var(--ok); }
 .switch:checked::after { left: 21px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; background: transparent; padding: 4px 8px; font-size: .78rem; cursor: pointer; min-height: 30px; }
+.seg button { border: 0; background: transparent; padding: 4px 8px; font-size: .78rem; cursor: pointer; min-height: 30px; white-space: nowrap; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); font-weight: 600; }
 .truckrow { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
@@ -310,14 +310,14 @@ td .acts { display: flex; gap: 4px; }
   <div class="layout">
     <div class="col">
       <section class="panel" aria-labelledby="board-h">
-        <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisle front on the left. Bays 01–20 (odd and even sides), ground + 4 levels, positions 10/40/70.</span></div>
+        <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisle front on the left. Bays on both sides, ground + 4 levels, 3 positions per bay. Location names: Locations tab.</span></div>
         <div class="lanes" id="lanes"></div>
         <div class="board" id="board"></div>
         <div class="legend">
           <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
           <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
           <span>▪ pallet on the forks</span>
-          <span>Each aisle: odd bays on top, even bays below · ▸ one-way, enter from the front · ◂ enter from the back</span>
+          <span>Each aisle: odd bays (first row) on top, even bays (second row) below · ▸ one-way, enter from the front · ◂ enter from the back</span>
         </div>
       </section>
 
@@ -429,13 +429,29 @@ td .acts { display: flex; gap: 4px; }
       </div>
 
       <div class="tabpanel" role="tabpanel" data-panel="locations" aria-labelledby="tab-locations" hidden>
+        <div class="rules">
+          <h3>Location names</h3>
+          <div class="rule">
+            <label>Show locations as<small>Both barcodes scan, so racks can be relabelled one aisle at a time</small></label>
+            <span class="seg" role="group" aria-label="Location names" id="naming">
+              <button type="button" data-naming="current" aria-pressed="true">38-02-0-10</button>
+              <button type="button" data-naming="row" aria-pressed="false">AP-01-01-A</button>
+            </span>
+          </div>
+          <p class="hint" style="margin:0">Proposed: cell letter + rack row letter, bays 01–10 along the row (no odd/even), position 01–03 left to right, height A (ground) to E. Facing rows have the same bay number.</p>
+          <div class="scroll"><table><thead><tr><th>On the racks now</th><th>Proposed</th></tr></thead><tbody id="relabel"></tbody></table></div>
+          <p class="hint" style="margin:0" id="relabelNote"></p>
+        </div>
         <form class="form" id="tplForm" novalidate>
           <h3>Location template</h3>
           <p class="hint" style="margin:0">Give a range of locations a category. Pallets that end up in the wrong category get Auto-Shift relocation jobs.</p>
-          <div class="three">
+          <div class="two">
             <label for="tAisle">Aisle<select id="tAisle"></select></label>
-            <label for="tFrom">Bay from<input class="field num" type="number" id="tFrom" min="1" max="20" value="15"></label>
-            <label for="tTo">Bay to<input class="field num" type="number" id="tTo" min="1" max="20" value="20"></label>
+            <label for="tSide">Side<select id="tSide"><option value="">Both sides</option><option value="odd">Odd bays</option><option value="even">Even bays</option></select></label>
+          </div>
+          <div class="two">
+            <label for="tFrom"><span id="tFromL">Bay from</span><input class="field num" type="number" id="tFrom" min="1" max="20" value="15"></label>
+            <label for="tTo"><span id="tToL">Bay to</span><input class="field num" type="number" id="tTo" min="1" max="20" value="20"></label>
           </div>
           <label for="tCat">Category
             <select id="tCat"><option value="PRO">Protein drinks</option><option value="YOG">Yoghurt</option><option value="CHE">Cheese</option><option value="">No category</option></select>
@@ -571,8 +587,13 @@ td .acts { display: flex; gap: 4px; }
   function locHtml(code, cls = '') {
     if (!code) return '<span class="loc auto">auto slot</span>';
     if (!parseRack(code)) return `<span class="loc lanecode ${cls}">${esc(code)}</span>`;
-    return `<span class="loc ${cls}"><b>${code.slice(0, 2)}</b>${esc(code.slice(2))}</span>`;
+    const name = wh.label(code);
+    return `<span class="loc ${cls}" title="${esc(wh.naming.show === 'row' ? code : wh.rowName(code))}"><b>${esc(name.slice(0, 2))}</b>${esc(name.slice(2))}</span>`;
   }
+  // Aisle 31, or its two rack rows "AA/AB" in the proposed naming.
+  const aisleName = (a) => (wh.naming.show === 'row' ? wh.rowsOf(a).join('/') : a);
+  const show = (text) => esc(wh.display(text));
+
   const ssccHtml = (s) => (s ? `<span class="sscc" title="${esc(s)}">…<b>${esc(s.slice(-6))}</b></span>` : '–');
   const typeHtml = (type) => `<span class="type t-${type}">${TASK_TYPES[type].short}</span>`;
   const catHtml = (c) => (c ? `<span class="cat c-${c}">${esc(CATEGORIES[c])}</span>` : '<span class="hint">none</span>');
@@ -799,7 +820,7 @@ td .acts { display: flex; gap: 4px; }
       `<div class="stat"><b>${open.length}</b> open jobs</div>`,
       `<div class="stat ${urgent ? 'alert' : ''}"><b>${urgent}</b> urgent</div>`,
       `<div class="stat"><b>${trucks.filter((t) => t.taskId).length}/${trucks.length}</b> trucks working</div>`,
-      `<div class="stat"><b>${full.length}</b> aisles full${full.length ? ' (' + full.join(', ') + ')' : ''}</div>`,
+      `<div class="stat"><b>${full.length}</b> aisles full${full.length ? ' (' + full.map(aisleName).join(', ') + ')' : ''}</div>`,
       `<div class="stat ${held ? 'alert' : ''}"><b>${held}</b> held</div>`,
       `<div class="stat"><b>${orders.filter((o) => o.status === 'ready').length}</b> orders ready · <b>${orders.filter((o) => o.status === 'shipped').length}</b> shipped</div>`,
       `<div class="stat"><b>${blockedPallets}</b> pallets can't ship</div>`,
@@ -875,7 +896,7 @@ td .acts { display: flex; gap: 4px; }
       const back = wh.config.oneWay && wh.aisleDir[aisle] === 'back';
       const arrow = wh.config.oneWay ? `<span class="dir" aria-label="One-way, enter from the ${wh.aisleDir[aisle]}">${back ? '◂' : '▸'}</span>` : '';
       html += `<div class="row">
-        <div class="name">${aisle}<small>${[...cats].map((c) => CATEGORIES[c].split(' ')[0]).join(' / ') || 'no category'}</small><small>${Math.round((used / total) * 100)}% full</small></div>
+        <div class="name">${esc(aisleName(aisle))}<small>${[...cats].map((c) => CATEGORIES[c].split(' ')[0]).join(' / ') || 'no category'}</small><small>${Math.round((used / total) * 100)}% full</small></div>
         <div class="lane ${back ? 'back' : ''}"><div class="entry">${waitingHere.length ? waitingHere.map((t) => truckTag(t)).join('') : arrow}</div><div class="track"><div class="side" style="background:${odd}"></div><div class="side" style="background:${even}"></div><div class="ticks"></div>${wh.config.oneWay ? `<div class="flow ${back ? 'back' : ''}"></div>` : ''}${dots}${markers}</div></div>
         <div class="occ num ${n >= cap ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${cap} trucks in aisle ${aisle}">${n}/${cap}</div>
       </div>`;
@@ -932,7 +953,7 @@ td .acts { display: flex; gap: 4px; }
     }
     if (ins.kind === 'pickup' || ins.kind === 'check-pallet') return { code: ins.task.sscc, label: `Scan pallet …${ins.task.sscc.slice(-6)}` };
     if (ins.kind === 'check-label') return { code: ins.task.labelCode, label: `Scan label ${ins.task.labelCode}` };
-    if (ins.kind === 'drop' || ins.kind === 'wait') return { code: ins.target, label: `Scan ${ins.target}` };
+    if (ins.kind === 'drop' || ins.kind === 'wait') return { code: ins.target, label: `Scan ${wh.label(ins.target)}` };
     if (ins.kind === 'idle') {
       const occ = wh.aisleOccupancy();
       const live = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.sscc));
@@ -982,28 +1003,28 @@ td .acts { display: flex; gap: 4px; }
     } else if (ins.kind === 'pickup' || ins.kind === 'drop' || ins.kind === 'wait') {
       body += `<div class="steps"><span class="${t.step === 0 ? 'on' : 'done'}">1 Pick up</span><span class="${t.step === 1 ? 'on' : ''}">2 Drop</span></div>`;
       if (ins.kind === 'wait') {
-        body += `<div class="verb wait">Wait at aisle ${esc(ins.aisle)} entry</div><div>${locHtml(ins.target, 'lg')}</div><div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
+        body += `<div class="verb wait">Wait at aisle ${esc(aisleName(ins.aisle))} entry</div><div>${locHtml(ins.target, 'lg')}</div><div class="sub">Two trucks already inside. You'll be let in when one leaves.</div>`;
       } else if (ins.kind === 'pickup') {
         const enter = wh.entryFor(truck, ins.target);
-        if (enter) body += `<div class="sub">One-way: enter aisle <b>${aisleOf(ins.target)}</b> from the <b>${enter}</b></div>`;
+        if (enter) body += `<div class="sub">One-way: enter aisle <b>${esc(aisleName(aisleOf(ins.target)))}</b> from the <b>${enter}</b></div>`;
         body += `<div class="verb">Pick up ${parseRack(ins.target) ? 'at' : `at ${esc(ins.target)}`}</div>`;
         body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
-        body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(t.to) : 'auto slot'}</div>`;
+        body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(wh.label(t.to)) : 'auto slot'}</div>`;
       } else {
         const enter = wh.entryFor(truck, ins.target);
-        if (enter) body += `<div class="sub">One-way: enter aisle <b>${aisleOf(ins.target)}</b> from the <b>${enter}</b></div>`;
+        if (enter) body += `<div class="sub">One-way: enter aisle <b>${esc(aisleName(aisleOf(ins.target)))}</b> from the <b>${enter}</b></div>`;
         body += `<div class="verb">Drop at</div><div>${locHtml(ins.target, 'lg')}</div>`;
         const p = wh.pallets[t.sscc];
         body += `<div class="sub">${palletLine(p)}</div>`;
         if (t.autoSlot && wh.config.allowSlotOverride) body += `<div class="sub">or scan any free ${esc(CATEGORIES[t.category])} slot</div>`;
       }
-      if (t.alert) body += `<div class="sub" style="color:#ffb3aa">${esc(t.alert)}</div>`;
+      if (t.alert) body += `<div class="sub" style="color:#ffb3aa">${show(t.alert)}</div>`;
     } else if (ins.kind === 'paused') {
       body += `<div class="verb">Paused</div><div class="sub">No jobs are sent to this truck. Press Resume to go back on Auto.</div>`;
     } else {
       body += `<div class="verb">No job for you</div><div class="sub">Nothing open in your categories that fits the aisle limit. Scan any pallet in the racking to start an Auto-Shift: the system picks the new slot.</div>`;
     }
-    if (truck.message) body += `<div class="msg ${truck.message.ok ? 'ok' : 'bad'}">${esc(truck.message.text)}</div>`;
+    if (truck.message) body += `<div class="msg ${truck.message.ok ? 'ok' : 'bad'}">${show(truck.message.text)}</div>`;
     setHTML(el.querySelector('.screen'), body);
 
     const sim = simulatedScan(truck, ins);
@@ -1092,8 +1113,14 @@ td .acts { display: flex; gap: 4px; }
     const misplaced = Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.sscc && l.category && wh.items[wh.pallets[l.sscc].itemNo].category !== l.category).length;
     setHTML($('catcounts'), Object.entries(counts).map(([c, v]) => `<div class="item"><span>${catHtml(c || null)}</span><span class="hint num">${v.used}/${v.total} used · ${v.groundFree} free on the ground</span></div>`).join('')
       + (misplaced ? `<div class="item"><span class="status held">${misplaced} pallet(s) in the wrong category</span><span class="hint">relocation jobs queued</span></div>` : ''));
+    document.querySelectorAll('#naming [data-naming]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.naming === wh.naming.show)));
+    const aisle = $('tAisle').value || wh.layout.aisles[0];
+    const ground = wh.relabelList(aisle).filter((r) => wh.locations[r.current].level === 0 && wh.locations[r.current].pos === POS[0]);
+    const sample = wh.rowsOf(aisle).flatMap((row) => ground.filter((r) => r.row.startsWith(row)).slice(0, 3));
+    setHTML($('relabel'), sample.map((r) => `<tr><td class="sscc">${esc(r.current)}</td><td class="sscc"><b>${esc(r.row)}</b></td></tr>`).join(''));
+    $('relabelNote').textContent = `Aisle ${aisle}, ground level, first position. ${wh.relabelList(aisle).length} labels for this aisle, ${wh._racks().length} in total.`;
     $('oneway').checked = wh.config.oneWay;
-    setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><b>Aisle ${a}</b>
+    setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><span><b>Aisle ${a}</b> <span class="hint">rows ${wh.rowsOf(a).join(' / ')}</span></span>
       <span class="seg" role="group" aria-label="Aisle ${a} entry">${['front', 'back'].map((d) => `<button type="button" data-aisle="${a}" data-dir="${d}" aria-pressed="${wh.aisleDir[a] === d}">${d === 'front' ? 'Front ▸' : '◂ Back'}</button>`).join('')}</span></div>`).join('') : '');
     $('ground').textContent = wh.config.groundNextPerItem;
     $('gDown').disabled = wh.config.groundNextPerItem <= 0;
@@ -1181,7 +1208,7 @@ td .acts { display: flex; gap: 4px; }
         const anyone = Object.values(wh.trucks).some((tr) => tr.mode !== 'paused' && (!tr.categories || tr.categories.includes(t.category)));
         const s = !wh.config.enabled[t.type] ? 'Type switched off'
           : !anyone ? `No truck works ${CATEGORIES[t.category]}`
-          : a && (occ[a] || []).length >= wh.config.aisleCap ? `Aisle ${a} full`
+          : a && (occ[a] || []).length >= wh.config.aisleCap ? `Aisle ${aisleName(a)} full`
           : wh.isUrgent(t) ? 'Urgent' : t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : 'Queued';
         status = `<span class="status ${wh.isUrgent(t) || !anyone ? 'urgent' : ''}">${esc(s)}</span>`;
       }
@@ -1199,7 +1226,7 @@ td .acts { display: flex; gap: 4px; }
     }).join('') || '<tr><td colspan="7" class="hint">No jobs.</td></tr>');
     const done = Object.values(wh.tasks).filter((t) => t.status === 'done').length;
     $('queueHint').textContent = `Highlighted row goes to the next free truck that works its category · ${done} done`;
-    setHTML($('log'), wh.events.slice(0, 50).map((e) => `<li><time>${hhmm(e.t, true)}</time><span>${esc(e.text)}</span></li>`).join(''));
+    setHTML($('log'), wh.events.slice(0, 50).map((e) => `<li><time>${hhmm(e.t, true)}</time><span>${show(e.text)}</span></li>`).join(''));
   }
 
   function renderStock() {
@@ -1249,7 +1276,8 @@ td .acts { display: flex; gap: 4px; }
 
   function fillItemSelect() {
     $('oItem').innerHTML = ITEMS.map(([no, name]) => `<option value="${no}">${no} ${esc(name)}</option>`).join('');
-    $('tAisle').innerHTML = AISLES.map((a, i) => `<option value="${a}" ${i === 3 ? 'selected' : ''}>${a}</option>`).join('');
+    const keep = $('tAisle').value;
+    $('tAisle').innerHTML = wh.layout.aisles.map((a, i) => `<option value="${Number(a)}" ${(keep ? String(Number(a)) === keep : i === 3) ? 'selected' : ''}>${a} · rows ${wh.rowsOf(a).join('/')}</option>`).join('');
   }
 
   // ---- Wiring -----------------------------------------------------------
@@ -1391,7 +1419,32 @@ td .acts { display: flex; gap: 4px; }
     } catch (e) { say('tplErr', e.message, false); }
     render(true);
   }
-  $('tplForm').addEventListener('submit', (ev) => { ev.preventDefault(); applyTemplate(Number($('tAisle').value), Number($('tFrom').value), Number($('tTo').value), $('tCat').value); });
+  $('tplForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const from = Number($('tFrom').value), to = Number($('tTo').value), side = $('tSide').value || null;
+    try {
+      if (from > to) throw new Error('“Bay from” must not be after “Bay to”');
+      // Proposed naming counts bays along one row (01–10); today's labels count both sides (01–20).
+      const range = wh.naming.show === 'row' || side ? { side, rowFrom: from, rowTo: to } : { bayFrom: from, bayTo: to };
+      if (wh.naming.show !== 'row' && side) { range.rowFrom = Math.ceil(from / 2); range.rowTo = Math.ceil(to / 2); }
+      const r = wh.setLocationCategory({ aisle: Number($('tAisle').value), ...range }, $('tCat').value || null);
+      say('tplErr', `${r.changed} locations changed. ${r.moves} relocation job(s) created`, true);
+    } catch (e) { say('tplErr', e.message, false); }
+    render(true);
+  });
+  $('naming').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-naming]');
+    if (!b) return;
+    wh.setNaming(b.dataset.naming);
+    const row = b.dataset.naming === 'row';
+    $('tFromL').textContent = row ? 'Bay from (along the row)' : 'Bay from';
+    $('tToL').textContent = row ? 'Bay to (along the row)' : 'Bay to';
+    $('tFrom').max = $('tTo').max = row ? DEPTH : BAYS;
+    $('tFrom').value = row ? 8 : 15; $('tTo').value = row ? 10 : 20;
+    $('tplProtein').textContent = row ? `Protein drinks: rows ${wh.rowsOf('34').join('/')}, bays 08–10` : 'Protein drinks: aisle 34, bays 15–20';
+    fillItemSelect();
+    render(true);
+  });
   $('tplProtein').addEventListener('click', () => {
     applyTemplate(34, 15, 20, 'PRO');
     act(() => { if (!Object.values(wh.trucks).some((t) => !t.categories || t.categories.includes('PRO'))) wh.log('No truck works Protein drinks yet: tick it on a truck in the Auto tab'); });
