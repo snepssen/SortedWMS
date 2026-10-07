@@ -5,7 +5,7 @@ The prototype holds the rules: Auto dispatch, aisle limits, categories, FEFO, re
 ## 1. Load the real site (needs the location table)
 
 - **Location table** → import as CSV: code (`38-02-0-10`), category, and anything blocked. Aisle, bay, side (odd/even), level and position follow from the code. Add each aisle's one-way direction.
-- **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum shelf life at receipt (per item or per customer).
+- **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum days left to ship.
 - **Opening stock** → SSCC, item, batch, expiry, quantity, location, blocked yes/no.
 
 At this stage the prototype can run **next to the current WMS as an advisor**, without changing anything on the floor:
