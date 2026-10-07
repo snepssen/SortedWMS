@@ -1,0 +1,910 @@
+<title>SortedWMS Auto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: floor (aisle board + handhelds) beside a coordinator rail; job queue and log below. Stacks on phones. */
+:root {
+  --bg: #eceff1;
+  --panel: #ffffff;
+  --ink: #1a2228;
+  --muted: #5a6670;
+  --line: #d3d9dd;
+  --lane: #f4f6f7;
+  --accent: #e3a008;          /* safety amber */
+  --accent-ink: #1a1400;
+  --label: #f6cc1c;           /* rack label stock */
+  --label-ink: #121212;
+  --screen: #1c252b;
+  --screen-2: #26323a;
+  --screen-ink: #eef3f5;
+  --screen-dim: #92a3ad;
+  --ok: #1d7f47;
+  --warn: #a86400;
+  --bad: #c0352b;
+  --ok-bg: #e2f2e8;
+  --warn-bg: #fbf0d9;
+  --bad-bg: #f9e1de;
+  --t-REPLEN: #2b67a8;
+  --t-PICK: #7348ad;
+  --t-PUTAWAY: #12827a;
+  --t-SHIFT: #b23c76;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
+    --accent: #f0b429; --accent-ink: #1a1400; --label: #f6cc1c; --label-ink: #121212;
+    --screen: #0b1013; --screen-2: #18222a; --screen-ink: #eef3f5; --screen-dim: #8c9da7;
+    --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
+    --t-REPLEN: #6aa7ea; --t-PICK: #a98ae0; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
+  --accent: #f0b429; --accent-ink: #1a1400; --label: #f6cc1c; --label-ink: #121212;
+  --screen: #0b1013; --screen-2: #18222a; --screen-ink: #eef3f5; --screen-dim: #8c9da7;
+  --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
+  --t-REPLEN: #6aa7ea; --t-PICK: #a98ae0; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+input::placeholder { text-transform: none; font-family: var(--body); }
+body { background: var(--bg); color: var(--ink); font: 400 14px/1.45 var(--body); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: .01em; text-wrap: balance; margin: 0; }
+h2 { font-size: 1.35rem; text-transform: uppercase; letter-spacing: .04em; }
+h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Top bar */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  padding: 10px 16px; background: var(--screen); color: var(--screen-ink);
+  border-bottom: 4px solid var(--accent);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: .03em; }
+.brand span { color: var(--screen-dim); font-size: .85rem; }
+.clock { font: 600 1.25rem var(--mono); font-variant-numeric: tabular-nums; }
+.bar .spacer { flex: 1; }
+.bar .ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar select, .bar .btn { background: var(--screen-2); border: 1px solid #3a4851; color: var(--screen-ink); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); font-weight: 600;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.small { min-height: 28px; padding: 2px 8px; font-size: .82rem; font-weight: 500; }
+.btn.danger { color: var(--bad); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+select { min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+
+/* Page */
+.page { padding-inline: 16px; padding-block: 16px 40px; max-width: 1480px; margin: 0 auto; display: grid; gap: 16px; }
+.intro { max-width: 70ch; color: var(--muted); margin: 0; }
+.intro b { color: var(--ink); font-weight: 600; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 16px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; margin-bottom: 10px; }
+.hint { color: var(--muted); font-size: .85rem; }
+
+/* Summary strip */
+.summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat { display: flex; align-items: baseline; gap: 8px; padding: 6px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+.stat b { font: 700 1.4rem var(--display); font-variant-numeric: tabular-nums; }
+.stat.alert { border-color: var(--bad); background: var(--bad-bg); }
+
+/* Rack label: yellow label stock, black mono print */
+.loc {
+  display: inline-block; padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+  background: var(--label); color: var(--label-ink); font: 600 .9em var(--mono); letter-spacing: .02em;
+  border: 1px solid rgba(0,0,0,.25);
+}
+.loc b { font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.loc.dock { background: var(--screen-2); color: var(--screen-ink); border-color: transparent; }
+.loc.auto { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+.loc.lg { font-size: clamp(1.8rem, 6vw, 2.5rem); padding: 4px 12px; border-radius: 5px; border-width: 2px; }
+
+.type { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.type::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--tc); }
+.t-REPLEN { --tc: var(--t-REPLEN); } .t-PICK { --tc: var(--t-PICK); } .t-PUTAWAY { --tc: var(--t-PUTAWAY); } .t-SHIFT { --tc: var(--t-SHIFT); }
+
+/* Aisle board */
+.board { display: grid; gap: 6px; }
+.row { display: grid; grid-template-columns: 54px minmax(0, 1fr) 54px; gap: 8px; align-items: center; }
+.row .name { font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.row .name small { display: block; font: 500 .7rem var(--body); color: var(--muted); letter-spacing: 0; text-transform: none; }
+.lane { position: relative; height: 46px; display: grid; grid-template-columns: 58px minmax(0, 1fr); border-radius: 5px; background: var(--lane); border: 1px solid var(--line); overflow: hidden; }
+.entry { border-right: 2px dashed var(--line); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 2px; }
+.track { position: relative; background-image: repeating-linear-gradient(90deg, transparent 0 calc(5% - 1px), var(--line) calc(5% - 1px) 5%); }
+.truck {
+  position: absolute; transform: translateX(-50%); padding: 1px 5px; border-radius: 4px;
+  font: 600 .72rem var(--mono); background: var(--tc, var(--muted)); color: #fff; white-space: nowrap;
+  transition: left .5s ease, top .3s ease; box-shadow: 0 1px 0 rgba(0,0,0,.25);
+}
+.truck.loaded::after { content: " ▪"; }
+.entry .truck { position: static; transform: none; background: var(--warn); color: #1a1400; }
+.dot { position: absolute; bottom: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--tc); transform: translateX(-50%); opacity: .8; }
+.dot.urgent { width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--bad); }
+.occ { justify-self: end; font: 700 1.05rem var(--display); font-variant-numeric: tabular-nums; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); }
+.occ.some { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
+.occ.full { color: var(--bad); border-color: var(--bad); background: var(--bad-bg); }
+.docks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.docks .truck { position: static; transform: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--muted); margin-top: 10px; }
+
+/* Handhelds */
+.terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+.term { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.term-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.term-head strong { font: 700 1.2rem var(--display); letter-spacing: .03em; }
+.chip { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: .75rem; font-weight: 600; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.auto { color: var(--ok); border-color: var(--ok); }
+.chip.shift { color: var(--t-SHIFT); border-color: var(--t-SHIFT); }
+.chip.paused { color: var(--warn); border-color: var(--warn); }
+.chip.you { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.screen { background: var(--screen); color: var(--screen-ink); border-radius: 8px; padding: 10px 12px; min-height: 196px; display: flex; flex-direction: column; gap: 6px; }
+.scr-top { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--screen-dim); }
+.screen .type { color: var(--screen-ink); }
+.steps { display: flex; gap: 6px; font-size: .75rem; }
+.steps span { padding: 1px 8px; border-radius: 99px; border: 1px solid #3d4b54; color: var(--screen-dim); }
+.steps span.on { background: var(--screen-ink); color: var(--screen); border-color: var(--screen-ink); font-weight: 600; }
+.steps span.done { text-decoration: line-through; }
+.verb { font: 700 1.5rem/1.05 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.verb.wait { color: #f0b429; }
+.sub { color: var(--screen-dim); font-size: .85rem; }
+.msg { margin-top: auto; font-size: .82rem; padding: 4px 8px; border-radius: 4px; }
+.msg.ok { background: #173325; color: #8fe0b3; }
+.msg.bad { background: #3d1f1c; color: #ffb3aa; }
+.scanrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.scanrow input { min-height: 40px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--lane); font-family: var(--mono); text-transform: uppercase; min-width: 0; }
+.term-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.problems { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-radius: 6px; background: var(--bad-bg); }
+.stats { font-size: .78rem; color: var(--muted); }
+
+/* Coordinator rail */
+.prio { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.prio li { display: grid; grid-template-columns: 26px 22px minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.prio li.off { opacity: .55; }
+.rank { font: 700 1.3rem var(--display); text-align: center; font-variant-numeric: tabular-nums; }
+.prio .count { font-size: .8rem; color: var(--muted); }
+.arrows { display: flex; gap: 2px; }
+.arrows .btn { min-height: 28px; width: 28px; padding: 0; }
+.rules { display: grid; gap: 10px; margin-top: 14px; }
+.rule { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.rule label { min-width: 0; }
+.rule small { display: block; color: var(--muted); font-size: .78rem; }
+.stepper { display: flex; align-items: center; gap: 4px; }
+.stepper b { font: 700 1.5rem var(--display); width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+.stepper .btn { width: 32px; padding: 0; }
+.switch { appearance: none; width: 42px; height: 24px; border-radius: 99px; background: var(--line); position: relative; cursor: pointer; flex: none; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--panel); transition: left .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.switch:checked { background: var(--ok); }
+.switch:checked::after { left: 21px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 4px 8px; font-size: .78rem; cursor: pointer; min-height: 30px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); font-weight: 600; }
+.trucklist { display: grid; gap: 6px; }
+.trucklist div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.form { display: grid; gap: 8px; }
+.form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.form label { display: grid; gap: 3px; font-size: .8rem; color: var(--muted); }
+.form input[type=text], .form select { width: 100%; min-height: 36px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+.form input[type=text] { font-family: var(--mono); text-transform: uppercase; }
+.form .check { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .85rem; }
+.err { color: var(--bad); font-size: .82rem; min-height: 1.2em; }
+.divider { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+
+/* Queue */
+.split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { text-align: left; font: 600 .72rem var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+tr.next td { background: var(--warn-bg); }
+.status { font-size: .8rem; }
+.status.active { color: var(--ok); font-weight: 600; }
+.status.held { color: var(--bad); font-weight: 600; }
+.status.urgent { color: var(--bad); }
+td .acts { display: flex; gap: 4px; }
+.star[aria-pressed="true"] { background: var(--bad); color: #fff; border-color: var(--bad); }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .82rem; max-height: 420px; overflow: auto; }
+.log li { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 8px; }
+.log time { font-family: var(--mono); color: var(--muted); font-size: .78rem; }
+
+@media (max-width: 520px) {
+  .row { grid-template-columns: 38px minmax(0, 1fr) 44px; gap: 6px; }
+  .lane { grid-template-columns: 44px minmax(0, 1fr); }
+  .truck { font-size: .64rem; padding: 1px 3px; }
+  .bar .spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .truck, .switch, .switch::after { transition: none; } }
+</style>
+
+<header class="bar">
+  <div class="brand"><h1>SortedWMS</h1><span>Auto dispatch · reach trucks</span></div>
+  <div class="clock num" id="clock" aria-label="Shift clock">06:00</div>
+  <div class="spacer"></div>
+  <div class="ctl">
+    <button class="btn" id="play" type="button">Pause shift</button>
+    <label class="hint" for="speed" style="color:var(--screen-dim)">Speed</label>
+    <select id="speed">
+      <option value="20">20×</option>
+      <option value="60" selected>60×</option>
+      <option value="150">150×</option>
+    </select>
+    <button class="btn" id="reset" type="button">Restart demo</button>
+  </div>
+</header>
+
+<main class="page">
+  <p class="intro">A simulated shift. Trucks on <b>Auto</b> get their next job the moment they finish, in the order the coordinator sets. Every job is <b>two scans</b>: pick-up location, then drop location. No menus and no Enter presses. <b>No more than two trucks</b> are sent into one aisle; a third waits at the entry and is let in when one leaves.</p>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="layout">
+    <div class="col">
+      <section class="panel" aria-labelledby="board-h">
+        <div class="panel-head"><h2 id="board-h">Aisles</h2><span class="hint">Front of the aisle on the left. Bays 1–20.</span></div>
+        <div class="docks" id="docks"></div>
+        <div class="board" id="board"></div>
+        <div class="legend">
+          <span class="type t-REPLEN">Replenishment</span>
+          <span class="type t-PICK">Pallet pick</span>
+          <span class="type t-PUTAWAY">Put-away</span>
+          <span class="type t-SHIFT">Auto-Shift</span>
+          <span>▪ pallet on the forks</span>
+          <span>● open job at that bay</span>
+        </div>
+      </section>
+
+      <section aria-labelledby="terms-h">
+        <div class="panel-head"><h2 id="terms-h">Handhelds</h2><span class="hint">Press “Drive it yourself” on any truck to scan for it. A real scanner sends the Enter on its own.</span></div>
+        <div class="terms" id="terms"></div>
+      </section>
+    </div>
+
+    <aside class="col" aria-label="Coordinator controls">
+      <section class="panel">
+        <div class="panel-head"><h2>Auto priority</h2><span class="hint">Top runs first</span></div>
+        <ol class="prio" id="prio"></ol>
+        <div class="rules">
+          <div class="rule">
+            <label>Reach trucks per aisle<small>Trucks sent into one aisle at once</small></label>
+            <div class="stepper"><button class="btn" type="button" id="capDown" aria-label="One fewer truck per aisle">−</button><b id="cap" class="num">2</b><button class="btn" type="button" id="capUp" aria-label="One more truck per aisle">+</button></div>
+          </div>
+          <div class="rule">
+            <label for="escalate">Jump the queue after<small>Old jobs go to the front so nothing gets forgotten</small></label>
+            <select id="escalate">
+              <option value="0">Never</option>
+              <option value="10">10 min</option>
+              <option value="20" selected>20 min</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+            </select>
+          </div>
+          <div class="rule">
+            <label for="travel">Nearest job first<small>Among jobs with the same priority</small></label>
+            <input type="checkbox" class="switch" id="travel" checked>
+          </div>
+          <div class="rule">
+            <label for="override">Driver may choose the slot<small>On Auto-Shift, scanning any other free slot is accepted</small></label>
+            <input type="checkbox" class="switch" id="override" checked>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Trucks</h2><button class="btn small" type="button" id="addTruck">Add truck</button></div>
+        <div class="trucklist" id="trucklist"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>New job</h2></div>
+        <form class="form" id="jobForm" novalidate>
+          <div class="two">
+            <label for="jobType">Type
+              <select id="jobType">
+                <option value="REPLEN">Replenishment</option>
+                <option value="PICK">Pallet pick</option>
+                <option value="PUTAWAY">Put-away</option>
+                <option value="SHIFT">Auto-Shift</option>
+              </select>
+            </label>
+            <label for="jobFrom">From
+              <input type="text" id="jobFrom" placeholder="03-012-2" autocomplete="off">
+            </label>
+          </div>
+          <label for="jobTo">To
+            <input type="text" id="jobTo" placeholder="Empty = system picks the slot" autocomplete="off">
+          </label>
+          <label class="check" for="jobUrgent"><input type="checkbox" id="jobUrgent"> Urgent</label>
+          <div class="err" id="jobErr" role="status"></div>
+          <div class="term-actions">
+            <button class="btn primary" type="submit">Add job</button>
+            <button class="btn" type="button" id="jobFill">Fill in an example</button>
+            <button class="btn" type="button" id="jobBurst">Add 5 random jobs</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" id="blockedPanel" hidden>
+        <div class="panel-head"><h2>Blocked locations</h2></div>
+        <div class="trucklist" id="blocked"></div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="split">
+    <section class="panel">
+      <div class="panel-head"><h2>Job queue</h2><span class="hint" id="queueHint"></span></div>
+      <div class="scroll"><table>
+        <thead><tr><th>Job</th><th>Type</th><th>From → To</th><th>Waiting</th><th>Status</th><th><span class="hint" style="text-transform:none;letter-spacing:0">Actions</span></th></tr></thead>
+        <tbody id="queue"></tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Floor log</h2></div>
+      <ol class="log" id="log"></ol>
+    </section>
+  </div>
+</main>
+
+<script src="engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  const { Warehouse, TASK_TYPES, TRUCK_MODES, distance, aisleOf, parseRack, rackCode } = window.SortedWMS;
+  const MIN = 60000;
+  const SHIFT_START = Date.UTC(2026, 9, 7, 6, 0);
+  const SKUS = ['10234', '10871', '11402', '12095', '12730', '13318', '14006', '14522', '15190', '15877', '16233', '17041'];
+  const AISLES = 8, BAYS = 20, LEVELS = 4;
+
+  let wh, simNow, rng, running = true, eta = {}, manual = {}, problemOpen = {}, nextArrival = 0, truckSeq = 0;
+  let holding = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const hhmm = (t, secs) => {
+    const d = new Date(t);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}${secs ? ':' + p(d.getUTCSeconds()) : ''}`;
+  };
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+
+  function locHtml(code, cls = '') {
+    if (!code) return '<span class="loc auto">auto slot</span>';
+    if (code.startsWith('DOCK')) return `<span class="loc dock ${cls}">${esc(code)}</span>`;
+    const [a, rest] = [code.slice(0, 2), code.slice(2)];
+    return `<span class="loc ${cls}"><b>${a}</b>${esc(rest)}</span>`;
+  }
+  const typeHtml = (type) => `<span class="type t-${type}">${TASK_TYPES[type].short}</span>`;
+
+  // ---- Demo data --------------------------------------------------------
+
+  function freePallets() {
+    const busy = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.from));
+    return Object.values(wh.locations).filter((l) => l.kind === 'reserve' && l.pallet && !l.blocked && !l.reservedBy && !busy.has(l.code));
+  }
+
+  function makeJob(type, aisle) {
+    let pool = freePallets();
+    if (aisle) pool = pool.filter((l) => l.aisle === aisle);
+    if (!pool.length && type !== 'PUTAWAY') return null;
+    const src = pool.length ? pick(pool) : null;
+    switch (type) {
+      case 'REPLEN': return { type, from: src.code, to: rackCode(src.aisle, src.bay, 0) };
+      case 'PICK': return { type, from: src.code, to: 'DOCK-OUT' };
+      case 'PUTAWAY': return { type, from: 'DOCK-IN', to: null, sku: pick(SKUS), qty: 24 + Math.floor(rng() * 48) };
+      default: return { type: 'SHIFT', from: src.code, to: null };
+    }
+  }
+
+  function randomType() {
+    const r = rng();
+    return r < 0.3 ? 'REPLEN' : r < 0.65 ? 'PICK' : r < 0.85 ? 'PUTAWAY' : 'SHIFT';
+  }
+
+  function addJob(spec) {
+    if (!spec) return null;
+    try { return wh.addTask(spec); } catch (e) { return null; }
+  }
+
+  function boot() {
+    rng = mulberry32(20261007);
+    eta = {}; manual = {}; problemOpen = {}; truckSeq = 0;
+    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, clock: () => simNow });
+
+    for (const loc of Object.values(wh.locations)) {
+      if (loc.kind === 'reserve' && rng() < 0.55) wh.addPallet(loc.code, { sku: pick(SKUS), qty: 20 + Math.floor(rng() * 60) });
+      if (loc.kind === 'pick' && rng() < 0.8) wh.addPallet(loc.code, { sku: pick(SKUS), qty: 1 + Math.floor(rng() * 12) });
+    }
+
+    // Jobs that arrived before the shift started. One pick has waited long enough
+    // to jump the queue; aisle 03 has more work than two trucks can take.
+    simNow = SHIFT_START - 23 * MIN;
+    addJob(makeJob('PICK', '07'));
+    simNow = SHIFT_START - 14 * MIN;
+    addJob(makeJob('SHIFT', '06'));
+    addJob(makeJob('PUTAWAY'));
+    addJob(makeJob('PICK', '03'));
+    simNow = SHIFT_START - 8 * MIN;
+    addJob(makeJob('REPLEN', '03'));
+    addJob(makeJob('PICK', '03'));
+    addJob(makeJob('PUTAWAY'));
+    simNow = SHIFT_START - 3 * MIN;
+    addJob(makeJob('REPLEN', '03'));
+    addJob(makeJob('REPLEN', '05'));
+    addJob(makeJob('SHIFT', '02'));
+    simNow = SHIFT_START;
+
+    for (let i = 0; i < 3; i++) addTruck('auto');
+    addTruck('shift');
+    nextArrival = simNow + 2 * MIN;
+    wh.events.length = 0;
+    wh.log('Shift started. 4 reach trucks on the floor');
+    buildTerminals();
+    render(true);
+  }
+
+  function addTruck(mode) {
+    const id = `RT-${String(++truckSeq).padStart(2, '0')}`;
+    wh.addTruck(id, { mode });
+    return id;
+  }
+
+  // ---- Simulation -------------------------------------------------------
+
+  function travelMs(from, to) {
+    return (distance(from, to) * 5 + 50) * 1000; // 5 s per bay, 50 s to lift and place
+  }
+
+  function tick(simSeconds) {
+    simNow += simSeconds * 1000;
+    wh.dispatch();
+    for (const truck of Object.values(wh.trucks)) {
+      if (manual[truck.id]) continue;
+      const ins = wh.instruction(truck.id);
+      if (ins.kind !== 'pickup' && ins.kind !== 'drop') { delete eta[truck.id]; continue; }
+      const key = `${ins.task.id}:${ins.task.step}:${ins.target}`;
+      if (!eta[truck.id] || eta[truck.id].key !== key) {
+        eta[truck.id] = { key, at: simNow + travelMs(truck.position, ins.target) };
+      } else if (simNow >= eta[truck.id].at) {
+        delete eta[truck.id];
+        wh.scan(truck.id, ins.target);
+      }
+    }
+    if (simNow >= nextArrival || wh.openTasks().length < 3) {
+      addJob(makeJob(randomType()));
+      nextArrival = simNow + (1 + rng() * 3) * MIN;
+    }
+  }
+
+  // ---- Rendering --------------------------------------------------------
+
+  const setHTML = (el, html) => { if (el.__html !== html) { el.innerHTML = html; el.__html = html; } };
+
+  function queueOrder() {
+    const cfg = wh.config;
+    const rank = (t) => (wh.isUrgent(t) ? -1 : cfg.priority.indexOf(t.type));
+    const order = { active: 0, held: 1, open: 2 };
+    return Object.values(wh.tasks)
+      .filter((t) => t.status in order)
+      .sort((a, b) => order[a.status] - order[b.status] || rank(a) - rank(b) || a.createdAt - b.createdAt);
+  }
+
+  // Scans spent on finished jobs only; a job in progress has already used its pick-up scan.
+  function inputsPerJob(trucks) {
+    let scans = 0, jobs = 0;
+    for (const t of trucks) {
+      const midJob = t.taskId && wh.tasks[t.taskId].step === 1 ? 1 : 0;
+      scans += t.stats.scans - midJob;
+      jobs += t.stats.jobs;
+    }
+    return jobs ? (scans / jobs).toFixed(1) : '–';
+  }
+
+  function renderSummary() {
+    const open = wh.openTasks();
+    const occ = wh.aisleOccupancy();
+    const full = Object.entries(occ).filter(([, ids]) => ids.length >= wh.config.aisleCap).map(([a]) => a);
+    const working = Object.values(wh.trucks).filter((t) => t.taskId).length;
+    const waiting = Object.values(wh.trucks).filter((t) => t.waiting).length;
+    const done = Object.values(wh.tasks).filter((t) => t.status === 'done').length;
+    const urgent = open.filter((t) => wh.isUrgent(t)).length;
+    const held = Object.values(wh.tasks).filter((t) => t.status === 'held').length;
+    const trucks = Object.values(wh.trucks);
+    setHTML($('summary'), [
+      `<div class="stat"><b>${open.length}</b> open jobs</div>`,
+      `<div class="stat ${urgent ? 'alert' : ''}"><b>${urgent}</b> urgent</div>`,
+      `<div class="stat"><b>${working}/${trucks.length}</b> trucks working</div>`,
+      `<div class="stat"><b>${full.length}</b> aisles full${full.length ? ' (' + full.join(', ') + ')' : ''}</div>`,
+      `<div class="stat"><b>${waiting}</b> waiting at an entry</div>`,
+      `<div class="stat ${held ? 'alert' : ''}"><b>${held}</b> held</div>`,
+      `<div class="stat"><b>${done}</b> done this shift</div>`,
+      `<div class="stat"><b>${inputsPerJob(trucks)}</b> inputs per job</div>`,
+    ].join(''));
+  }
+
+  function truckTag(truck, extraStyle = '') {
+    const task = truck.taskId && wh.tasks[truck.taskId];
+    const cls = task ? `t-${task.type}` : '';
+    return `<span class="truck ${cls} ${truck.load ? 'loaded' : ''}" style="${extraStyle}" title="${esc(truck.id)}">${esc(truck.id)}</span>`;
+  }
+
+  function renderBoard() {
+    const cap = wh.config.aisleCap;
+    const occ = wh.aisleOccupancy();
+    const trucks = Object.values(wh.trucks);
+
+    const atDock = trucks.filter((t) => !t.taskId);
+    setHTML($('docks'), `<span class="hint">Docks / idle:</span> ${atDock.length ? atDock.map((t) => truckTag(t)).join('') : '<span class="hint">none</span>'}`);
+
+    let html = '';
+    for (let a = 1; a <= AISLES; a++) {
+      const aisle = String(a).padStart(2, '0');
+      const inside = (occ[aisle] || []).map((id) => wh.trucks[id]);
+      const waitingHere = trucks.filter((t) => t.waiting && aisleOf(wh.tasks[t.taskId].to) === aisle);
+      const jobs = wh.openTasks().filter((t) => aisleOf(t.from) === aisle);
+      const n = inside.length;
+      const pct = (bay) => ((bay - 0.5) / BAYS) * 100;
+
+      const markers = inside.map((t, i) => {
+        const task = wh.tasks[t.taskId];
+        const target = task.step === 0 ? task.from : task.to;
+        return truckTag(t, `left:${pct(parseRack(target).bay)}%;top:${i === 0 ? 4 : 22}px`);
+      }).join('');
+      const dots = jobs.map((t) => `<span class="dot t-${t.type} ${wh.isUrgent(t) ? 'urgent' : ''}" style="left:${pct(parseRack(t.from).bay)}%" title="Job #${t.id}"></span>`).join('');
+
+      html += `<div class="row">
+        <div class="name">${aisle}<small>${jobs.length} job${jobs.length === 1 ? '' : 's'}</small></div>
+        <div class="lane"><div class="entry">${waitingHere.map((t) => truckTag(t)).join('')}</div><div class="track">${dots}${markers}</div></div>
+        <div class="occ num ${n >= cap ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${cap} trucks in aisle ${aisle}">${n}/${cap}</div>
+      </div>`;
+    }
+    setHTML($('board'), html);
+  }
+
+  function buildTerminals() {
+    const box = $('terms');
+    box.innerHTML = '';
+    for (const truck of Object.values(wh.trucks)) {
+      const id = truck.id;
+      const el = document.createElement('article');
+      el.className = 'term';
+      el.dataset.truck = id;
+      el.innerHTML = `
+        <div class="term-head"><strong>${esc(id)}</strong><span class="chips"></span></div>
+        <div class="screen"></div>
+        <form class="scanrow" novalidate>
+          <input type="text" id="scan-${esc(id)}" aria-label="Scan for ${esc(id)}" placeholder="Scan or type a location" autocomplete="off" spellcheck="false">
+          <button class="btn primary" type="button" data-act="scan">Scan</button>
+        </form>
+        <div class="term-actions">
+          <button class="btn small" type="button" data-act="drive"></button>
+          <button class="btn small" type="button" data-act="problem">Report a problem</button>
+          <button class="btn small" type="button" data-act="pause"></button>
+        </div>
+        <div class="problems" hidden>
+          <button class="btn small danger" type="button" data-problem="blocked">Location blocked</button>
+          <button class="btn small danger" type="button" data-problem="missing">Pallet missing</button>
+          <button class="btn small danger" type="button" data-problem="damaged">Pallet damaged</button>
+        </div>
+        <div class="stats num"></div>`;
+      box.appendChild(el);
+    }
+  }
+
+  function renderTerminal(el) {
+    const id = el.dataset.truck;
+    const truck = wh.trucks[id];
+    const ins = wh.instruction(id);
+    const modeCls = truck.mode;
+    el.querySelector('.chips').innerHTML =
+      (manual[id] ? '<span class="chip you">You’re driving</span> ' : '') +
+      `<span class="chip ${modeCls}">${esc(TRUCK_MODES[truck.mode].label)}</span>`;
+
+    let body = '';
+    if (ins.kind === 'pickup' || ins.kind === 'drop' || ins.kind === 'wait') {
+      const t = ins.task;
+      const step = t.step;
+      body += `<div class="scr-top"><span>${typeHtml(t.type)}</span><span>${esc(t.reason || '')}</span><span class="num">#${t.id}</span></div>`;
+      body += `<div class="steps"><span class="${step === 0 ? 'on' : 'done'}">1 Pick up</span><span class="${step === 1 ? 'on' : ''}">2 Drop</span></div>`;
+      if (ins.kind === 'wait') {
+        const cap = wh.config.aisleCap;
+        body += `<div class="verb wait">Wait at aisle ${esc(ins.aisle)} entry</div>`;
+        body += `<div>${locHtml(ins.target, 'lg')}</div>`;
+        body += `<div class="sub">${cap} of ${cap} trucks already inside. You’ll be let in as soon as one leaves.</div>`;
+      } else {
+        body += `<div class="verb">${ins.kind === 'pickup' ? 'Pick up at' : 'Drop at'}</div>`;
+        body += `<div>${locHtml(ins.target, 'lg')}</div>`;
+        const other = ins.kind === 'pickup'
+          ? `then to ${t.to ? esc(t.to) : 'auto slot'}`
+          : (t.autoSlot && wh.config.allowSlotOverride ? 'or scan any free slot' : `from ${esc(t.from)}`);
+        body += `<div class="sub">SKU ${esc(t.sku)} · ${t.qty} units · ${other}</div>`;
+      }
+      if (t.alert) body += `<div class="sub" style="color:#ffb3aa">${esc(t.alert)}</div>`;
+    } else if (ins.kind === 'paused') {
+      body += `<div class="verb">Paused</div><div class="sub">No jobs are sent to this truck. Press Resume to go back on ${esc(TRUCK_MODES.auto.label)}.</div>`;
+    } else {
+      body += `<div class="verb">No job for you</div>`;
+      body += `<div class="sub">${truck.mode === 'shift' ? 'No Auto-Shift jobs waiting.' : 'Every open job is in a full aisle or switched off.'} Scan any pallet in the racking to start an Auto-Shift: the system picks the new slot.</div>`;
+    }
+    if (truck.message) body += `<div class="msg ${truck.message.ok ? 'ok' : 'bad'}">${esc(truck.message.text)}</div>`;
+    setHTML(el.querySelector('.screen'), body);
+
+    const drive = el.querySelector('[data-act="drive"]');
+    drive.textContent = manual[id] ? 'Let the demo drive' : 'Drive it yourself';
+    const pause = el.querySelector('[data-act="pause"]');
+    pause.textContent = truck.mode === 'paused' ? 'Resume' : 'Pause (break)';
+    const scanBtn = el.querySelector('[data-act="scan"]');
+    scanBtn.textContent = ins.target && ins.kind !== 'wait' ? `Scan ${ins.target}` : 'Scan';
+    el.querySelector('[data-act="problem"]').disabled = !truck.taskId;
+    const probs = el.querySelector('.problems');
+    probs.hidden = !(problemOpen[id] && truck.taskId);
+    if (!probs.hidden) {
+      const carrying = wh.tasks[truck.taskId].step === 1;
+      probs.querySelector('[data-problem="missing"]').disabled = carrying;
+      probs.querySelector('[data-problem="damaged"]').disabled = carrying;
+    }
+    const s = truck.stats;
+    setHTML(el.querySelector('.stats'), `${s.jobs} jobs · ${s.scans} scans · ${s.wrongScans} wrong · ${inputsPerJob([truck])} inputs per job`);
+  }
+
+  function renderAdmin() {
+    const cfg = wh.config;
+    const open = wh.openTasks();
+    setHTML($('prio'), cfg.priority.map((type, i) => {
+      const n = open.filter((t) => t.type === type).length;
+      return `<li class="${cfg.enabled[type] ? '' : 'off'}">
+        <input type="checkbox" class="enable" data-type="${type}" ${cfg.enabled[type] ? 'checked' : ''} aria-label="Send ${TASK_TYPES[type].label} jobs">
+        <span class="rank">${i + 1}</span>
+        <span>${`<span class="type t-${type}">${TASK_TYPES[type].label}</span>`}<br><span class="count num">${n} open</span></span>
+        <span></span>
+        <span class="arrows">
+          <button class="btn" type="button" data-move="${type}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${TASK_TYPES[type].label} up">↑</button>
+          <button class="btn" type="button" data-move="${type}" data-dir="1" ${i === cfg.priority.length - 1 ? 'disabled' : ''} aria-label="Move ${TASK_TYPES[type].label} down">↓</button>
+        </span>
+      </li>`;
+    }).join(''));
+    $('cap').textContent = cfg.aisleCap;
+    $('capDown').disabled = cfg.aisleCap <= 1;
+    $('capUp').disabled = cfg.aisleCap >= 4;
+
+    setHTML($('trucklist'), Object.values(wh.trucks).map((t) => `<div>
+      <strong>${esc(t.id)}</strong>
+      <span class="seg" role="group" aria-label="${esc(t.id)} mode">${Object.entries(TRUCK_MODES).map(([m, def]) =>
+        `<button type="button" data-truck="${esc(t.id)}" data-mode="${m}" aria-pressed="${t.mode === m}">${def.label}</button>`).join('')}</span>
+    </div>`).join(''));
+
+    const blocked = wh.blockedLocations();
+    $('blockedPanel').hidden = !blocked.length;
+    setHTML($('blocked'), blocked.map((l) => `<div>${locHtml(l.code)}<button class="btn small" type="button" data-unblock="${l.code}">Unblock</button></div>`).join(''));
+  }
+
+  function renderQueue() {
+    const rows = queueOrder();
+    const nextOpen = rows.find((t) => t.status === 'open');
+    setHTML($('queue'), rows.slice(0, 40).map((t) => {
+      const age = Math.max(0, Math.floor((simNow - t.createdAt) / MIN));
+      let status;
+      if (t.status === 'active') {
+        const truck = wh.trucks[t.truckId];
+        status = `<span class="status active">${esc(t.truckId)} · ${truck.waiting ? 'waiting at entry' : t.step === 0 ? 'to pick-up' : 'to drop'}</span>`;
+      } else if (t.status === 'held') {
+        status = `<span class="status held">Held: ${esc(t.heldReason)}</span>`;
+      } else {
+        const occ = wh.aisleOccupancy()[aisleOf(t.from)] || [];
+        const blockedBy = !wh.config.enabled[t.type] ? 'Type switched off'
+          : occ.length >= wh.config.aisleCap ? `Aisle ${aisleOf(t.from)} full` : (wh.isUrgent(t) ? 'Urgent' : 'Queued');
+        status = `<span class="status ${wh.isUrgent(t) ? 'urgent' : ''}">${blockedBy}</span>`;
+      }
+      const acts = [];
+      if (t.status !== 'held') acts.push(`<button class="btn small star" type="button" data-urgent="${t.id}" aria-pressed="${t.urgent}" title="Urgent">Urgent</button>`);
+      if (t.status === 'held') acts.push(`<button class="btn small" type="button" data-release="${t.id}">Release</button>`);
+      if (!(t.status === 'active' && t.step === 1)) acts.push(`<button class="btn small danger" type="button" data-cancel="${t.id}">Cancel</button>`);
+      return `<tr class="${t === nextOpen ? 'next' : ''}">
+        <td class="num">#${t.id}</td>
+        <td>${typeHtml(t.type)}</td>
+        <td>${locHtml(t.from)} → ${locHtml(t.to)}</td>
+        <td class="num">${t.status === 'open' ? age + ' min' : '–'}</td>
+        <td>${status}</td>
+        <td><div class="acts">${acts.join('')}</div></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" class="hint">No jobs. Add one on the right.</td></tr>');
+    const done = Object.values(wh.tasks).filter((t) => t.status === 'done').length;
+    $('queueHint').textContent = `Highlighted row goes to the next free truck · ${done} done`;
+
+    setHTML($('log'), wh.events.slice(0, 40).map((e) => `<li><time>${hhmm(e.t, true)}</time><span>${esc(e.text)}</span></li>`).join(''));
+  }
+
+  function render(force) {
+    if (holding && !force) return;
+    $('clock').textContent = hhmm(simNow);
+    renderSummary();
+    renderBoard();
+    document.querySelectorAll('.term').forEach(renderTerminal);
+    renderAdmin();
+    renderQueue();
+  }
+
+  // ---- Wiring -----------------------------------------------------------
+
+  // Don't swap buttons out from under a press.
+  document.addEventListener('pointerdown', () => { holding = true; }, true);
+  const letGo = () => setTimeout(() => { holding = false; }, 0);
+  document.addEventListener('pointerup', letGo, true);
+  document.addEventListener('pointercancel', letGo, true);
+
+  function act(fn) {
+    try { fn(); } catch (e) { flash(e.message); }
+    render(true);
+  }
+  function flash(text) { wh.log(`⚠ ${text}`); }
+
+  $('terms').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    const card = btn.closest('.term');
+    const id = card.dataset.truck;
+    const truck = wh.trucks[id];
+    act(() => {
+      if (btn.dataset.act === 'scan') {
+        const input = card.querySelector('input');
+        const typed = input.value.trim();
+        const ins = wh.instruction(id);
+        manual[id] = true;
+        if (typed) { wh.scan(id, typed); input.value = ''; }
+        else if (ins.target && ins.kind !== 'wait') wh.scan(id, ins.target);
+        else if (ins.kind === 'wait') wh.scan(id, ins.target);
+        else {
+          // Idle: pretend the driver scanned the nearest pallet that has room in its aisle.
+          const occ = wh.aisleOccupancy();
+          const pal = freePallets().filter((l) => (occ[l.aisle] || []).length < wh.config.aisleCap)
+            .sort((x, y) => distance(truck.position, x.code) - distance(truck.position, y.code))[0];
+          if (pal) wh.scan(id, pal.code);
+        }
+        delete eta[id];
+      } else if (btn.dataset.act === 'drive') {
+        manual[id] = !manual[id];
+        delete eta[id];
+      } else if (btn.dataset.act === 'pause') {
+        wh.setTruckMode(id, truck.mode === 'paused' ? 'auto' : 'paused');
+      } else if (btn.dataset.act === 'problem') {
+        problemOpen[id] = !problemOpen[id];
+      } else if (btn.dataset.problem) {
+        manual[id] = true;
+        problemOpen[id] = false;
+        wh.reportProblem(id, btn.dataset.problem);
+        delete eta[id];
+      }
+    });
+  });
+  $('terms').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const card = ev.target.closest('.term');
+    const input = card.querySelector('input');
+    const id = card.dataset.truck;
+    if (!input.value.trim()) return;
+    act(() => { manual[id] = true; delete eta[id]; wh.scan(id, input.value); input.value = ''; });
+  });
+
+  $('prio').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-move]');
+    if (!btn) return;
+    act(() => {
+      const list = [...wh.config.priority];
+      const i = list.indexOf(btn.dataset.move);
+      const j = i + Number(btn.dataset.dir);
+      [list[i], list[j]] = [list[j], list[i]];
+      wh.setConfig({ priority: list });
+      wh.log(`Priority now: ${list.map((t) => TASK_TYPES[t].short).join(' › ')}`);
+    });
+  });
+  $('prio').addEventListener('change', (ev) => {
+    const box = ev.target.closest('.enable');
+    if (!box) return;
+    act(() => {
+      wh.setConfig({ enabled: { [box.dataset.type]: box.checked } });
+      wh.log(`${TASK_TYPES[box.dataset.type].label} ${box.checked ? 'switched on' : 'switched off'}`);
+    });
+  });
+  $('capDown').addEventListener('click', () => act(() => { wh.setConfig({ aisleCap: wh.config.aisleCap - 1 }); wh.log(`Max ${wh.config.aisleCap} truck(s) per aisle`); }));
+  $('capUp').addEventListener('click', () => act(() => { wh.setConfig({ aisleCap: wh.config.aisleCap + 1 }); wh.log(`Max ${wh.config.aisleCap} trucks per aisle`); }));
+  $('escalate').addEventListener('change', (ev) => act(() => wh.setConfig({ escalateAfterMin: Number(ev.target.value) })));
+  $('travel').addEventListener('change', (ev) => act(() => wh.setConfig({ travelOptimise: ev.target.checked })));
+  $('override').addEventListener('change', (ev) => act(() => wh.setConfig({ allowSlotOverride: ev.target.checked })));
+
+  $('trucklist').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-mode]');
+    if (btn) act(() => wh.setTruckMode(btn.dataset.truck, btn.dataset.mode));
+  });
+  $('addTruck').addEventListener('click', () => act(() => {
+    if (Object.keys(wh.trucks).length >= 8) throw new Error('The demo stops at 8 trucks');
+    const id = addTruck('auto');
+    wh.log(`${id} joined the shift`);
+    buildTerminals();
+  }));
+  $('blocked').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-unblock]');
+    if (btn) act(() => wh.unblockLocation(btn.dataset.unblock));
+  });
+
+  $('queue').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    act(() => {
+      if (btn.dataset.urgent) wh.setUrgent(Number(btn.dataset.urgent), btn.getAttribute('aria-pressed') !== 'true');
+      if (btn.dataset.cancel) wh.cancelTask(Number(btn.dataset.cancel));
+      if (btn.dataset.release) wh.releaseTask(Number(btn.dataset.release));
+    });
+  });
+
+  $('jobForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const err = $('jobErr');
+    const type = $('jobType').value;
+    const from = $('jobFrom').value.trim().toUpperCase();
+    const to = $('jobTo').value.trim().toUpperCase() || null;
+    try {
+      if (!from) throw new Error('Enter where the pallet is, for example 03-012-2 or DOCK-IN');
+      const spec = { type, from, to, urgent: $('jobUrgent').checked };
+      if (from === 'DOCK-IN') { spec.sku = pick(SKUS); spec.qty = 40; }
+      const t = wh.addTask(spec);
+      err.textContent = `Job #${t.id} added`;
+      err.style.color = 'var(--ok)';
+      $('jobFrom').value = ''; $('jobTo').value = ''; $('jobUrgent').checked = false;
+    } catch (e) {
+      err.textContent = e.message;
+      err.style.color = '';
+    }
+    render(true);
+  });
+  $('jobFill').addEventListener('click', () => {
+    const spec = makeJob($('jobType').value);
+    if (!spec) return;
+    $('jobFrom').value = spec.from;
+    $('jobTo').value = spec.to || '';
+    $('jobErr').textContent = '';
+  });
+  $('jobBurst').addEventListener('click', () => act(() => { for (let i = 0; i < 5; i++) addJob(makeJob(randomType())); }));
+
+  $('play').addEventListener('click', () => {
+    running = !running;
+    $('play').textContent = running ? 'Pause shift' : 'Run shift';
+  });
+  $('reset').addEventListener('click', () => { running = true; $('play').textContent = 'Pause shift'; boot(); });
+
+  const TICK_MS = 250;
+  setInterval(() => {
+    if (running) tick(Number($('speed').value) * TICK_MS / 1000);
+    render();
+  }, TICK_MS);
+
+  boot();
+})();
+</script>
