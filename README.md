@@ -6,6 +6,8 @@ A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, chees
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
+**Try the handheld and office screens: https://snepssen.github.io/SortedWMS/wms.html**. These are the real WMS screens with made-up stock. On Pages there's no server, so the WMS runs inside the browser and changes stay in that browser. A button scans whatever the handheld asks for, since a computer has no scanner.
+
 To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
 
 The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
@@ -154,9 +156,11 @@ Settings, through environment variables:
 | `server/public/` | `handheld.html` (Android scanners) and `admin.html` (office). |
 | `server/print.js` | Sends ZPL to network label printers. |
 | `server/seed.js` | Made-up stock for `npm run start:demo`. |
+| `server/api.js` | The API routes and screen views; used by the server, and in the browser on Pages. |
+| `server/local.js` | The WMS running in the browser for GitHub Pages: the journal is kept in browser storage. |
 | `index.html` | The demo: floor and block stacks, handhelds, process floor and receiving desk, coordinator tabs, job queue, stock. |
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
-| `scripts/build-pages.js` | Builds the demo site for GitHub Pages into `_site/` (`npm run build:pages`). |
+| `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
 
 ## Locations

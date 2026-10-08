@@ -73,6 +73,11 @@
   let view = null, localError = null, busy = false, keyboard = false, typedQty = '', summary = null;
 
   async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: operator || deviceId || 'handheld' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
     const res = await fetch(path, {
       method, headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': operator || deviceId || 'handheld' },
       body: body ? JSON.stringify(body) : undefined,
@@ -244,6 +249,7 @@
     }
   }
 
+  window.hhRefresh = () => refresh(true);
   refresh(true);
   setInterval(refresh, 2000);
 })();

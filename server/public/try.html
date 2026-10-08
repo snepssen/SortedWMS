@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SortedWMS handheld and office</title>
+<meta name="description" content="Try the SortedWMS handheld and office screens in the browser, with demo stock.">
+<style>
+  :root { --bg: #e9edf1; --card: #fff; --line: #d3dae1; --ink: #17202a; --dim: #5d6a76; --acc: #1769c2; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0b0e11; --card: #161d23; --line: #29333c; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; }
+  header .hint { flex: 1 1 320px; }
+  a { color: var(--acc); }
+  button, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  .hint { color: var(--dim); font-size: 13px; }
+  .wrap { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  .phone { flex: 0 0 auto; width: 384px; }
+  .phone .frame { border: 10px solid #222; border-radius: 28px; overflow: hidden; background: #101418; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+  .phone iframe { display: block; width: 100%; height: 700px; border: 0; }
+  .helper { margin-top: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .helper .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .office { flex: 1 1 auto; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .office iframe { display: block; width: 100%; height: calc(100vh - 120px); min-height: 760px; border: 0; }
+  @media (max-width: 900px) {
+    .wrap { flex-direction: column; padding: 12px; }
+    .phone { width: 100%; max-width: 384px; margin: 0 auto; }
+    .office { width: 100%; }
+    .office iframe { height: 900px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SortedWMS: handheld + office</h1>
+  <span class="hint">The real WMS screens, running in your browser with made-up stock. Changes stay in this browser. Each page also opens on its own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="./">simulated shift</a></span>
+  <button id="reset">Reset demo data</button>
+</header>
+<div class="wrap">
+  <div class="phone">
+    <div class="frame"><iframe id="hh" title="Handheld"></iframe></div>
+    <div class="helper">
+      <div class="row"><label for="dev">Handheld</label><select id="dev"></select>
+        <button class="primary" id="scanIt">Scan what it asks for</button></div>
+      <div class="hint" id="helpOut">No scanner here: this button scans the barcode the handheld is asking for. You can also type a code into the scan field and press Enter (⌨ shows the keyboard).</div>
+    </div>
+  </div>
+  <div class="office"><iframe id="office" title="Office"></iframe></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const ls = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } } };
+
+  // The barcode the handheld wants next, read from the warehouse state.
+  function expectedCode(wh, id) {
+    const ins = wh.instruction(id);
+    const name = (c) => (wh.locations[c] && wh.locations[c].kind === 'rack' ? wh.label(c) : c);
+    switch (ins.kind) {
+      case 'pickup': case 'check-pallet': return ins.pallet.sscc;
+      case 'drop': return name(ins.target);
+      case 'check-label': return ins.target;
+      case 'receive': {
+        const list = ins.delivery.list;
+        const next = list && Object.keys(list).find((s) => !ins.delivery.received.includes(s) && !wh.pallets[s]);
+        return next ? `00${next}` : null;
+      }
+      default: return null;
+    }
+  }
+
+  async function devices() {
+    const r = await SortedLocal.fetch('GET', '/api/devices');
+    const list = r.body.filter((d) => d.kind === 'truck');
+    const cur = ls.get('hh.device') || list[0].id;
+    $('#dev').innerHTML = list.map((d) => `<option ${d.id === cur ? 'selected' : ''}>${d.id}</option>`).join('');
+  }
+
+  SortedLocal.ready.then(async () => {
+    if (!ls.get('hh.device')) ls.set('hh.device', 'HH01');
+    await devices();
+    $('#hh').src = 'handheld.html';
+    $('#office').src = 'admin.html';
+  });
+
+  $('#dev').onchange = () => { ls.set('hh.device', $('#dev').value); $('#hh').src = 'handheld.html'; };
+  $('#scanIt').onclick = async () => {
+    const store = await SortedLocal.store();
+    store.sync();
+    const id = $('#dev').value;
+    const code = expectedCode(store.wh, id);
+    if (!code) { $('#helpOut').textContent = `Nothing to scan for ${id} right now (it may be idle, waiting, or in a manual mode: try typing a code).`; return; }
+    const r = await SortedLocal.fetch('POST', `/api/devices/${id}/scan`, { code }, { operator: id });
+    $('#helpOut').textContent = r.status < 400 ? `Scanned ${code}` : r.body.error;
+    const w = $('#hh').contentWindow;
+    if (w && w.hhRefresh) w.hhRefresh();
+  };
+  $('#reset').onclick = async () => {
+    if (!confirm('Start again with fresh demo stock?')) return;
+    await SortedLocal.reset();
+    ls.set('hh.device', 'HH01');
+    await devices();
+    $('#hh').src = 'handheld.html';
+    $('#office').src = 'admin.html';
+  };
+})();
+</script>
+</body>
+</html>

@@ -68,6 +68,11 @@
   const short = (s) => (s ? '…' + s.slice(-6) : '–');
 
   async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: user || 'office' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': user || 'office' }, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
@@ -133,7 +138,7 @@
       <section><h2>Location template: set a category on a range</h2>
         <p class="hint">Either naming works: <span class="mono">AA01A1</span> → <span class="mono">AH10E3</span>, a partial range like <span class="mono">AA</span> → <span class="mono">AD</span> (whole racks), or <span class="mono">31</span> → <span class="mono">34</span> (whole aisles). Pallets left in the wrong category get Auto-Shift relocation jobs.</p>
         <div class="form"><label>From <input id="tFrom" size="9" value="${esc(ls.get('tFrom') || 'AA01A1')}"></label><label>To <input id="tTo" size="9" value="${esc(ls.get('tTo') || 'AH10E3')}"></label>
-          <label>Category <select id="tCat">${catOptions(ls.get('tCat'), true)}</select></label>
+          <label>Category <select id="tCat">${catOptions(ls.get('tCat') ?? Object.keys(S.categories)[0], true)}</select></label>
           <button id="tPrev">Preview</button><button class="primary" id="tApply" disabled>Apply</button></div>
         <div class="out" id="tOut">Preview first, then apply.</div></section>
       <section><h2>Find a pallet or location</h2>
