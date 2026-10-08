@@ -149,8 +149,8 @@
       <h2 style="margin:0">Set up this handheld</h2>
       <label>Truck / handheld ID <input id="sDev" value="${esc(deviceId || '')}" placeholder="e.g. RT07" autocapitalize="characters"></label>
       <label>Operator <input id="sOp" value="${esc(operator)}" placeholder="Your name or number"></label>
-      <div class="hint">Categories this operator works (a new handheld only):</div>
-      <div class="cats">${Object.entries(cats).map(([k, v]) => `<label><input type="checkbox" value="${esc(k)}"> ${esc(v)}</label>`).join('')}</div>
+      <div class="hint">Categories you work this shift${view ? '' : ' (leave empty to keep the truck as it is)'}:</div>
+      <div class="cats">${Object.entries(cats).map(([k, v]) => `<label><input type="checkbox" value="${esc(k)}" ${view && (!view.categories || view.categories.includes(k)) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div>
       <label>Server token (if the office set one) <input id="sTok" value="${esc(token)}" type="password"></label>
       ${error ? `<div class="msg bad">${esc(error)}</div>` : ''}
       <button class="primary" id="sGo">Start</button>
@@ -164,10 +164,11 @@
       if (!deviceId) return renderSetup('Enter the handheld ID');
       try {
         const devices = await api('GET', '/api/devices');
-        if (!devices.some((d) => d.id === deviceId)) {
-          const categories = [...document.querySelectorAll('.cats input:checked')].map((i) => i.value);
-          await api('POST', '/api/devices', { id: deviceId, categories: categories.length ? categories : null });
-        }
+        const picked = [...document.querySelectorAll('.cats input:checked')].map((i) => i.value);
+        const categories = picked.length && picked.length < Object.keys(summary ? summary.categories : {}).length ? picked : null;
+        if (!devices.some((d) => d.id === deviceId)) await api('POST', '/api/devices', { id: deviceId, categories });
+        // A new operator on this truck: their categories. A first set-up with nothing ticked keeps what the truck has.
+        else if (view || picked.length) await api('POST', `/api/devices/${encodeURIComponent(deviceId)}/categories`, { categories });
         store.set('device', deviceId);
         store.set('operator', operator);
         refresh();

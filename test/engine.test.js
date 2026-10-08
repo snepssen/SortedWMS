@@ -177,7 +177,8 @@ test('check & label: scan the pallet, label prints, scan the label, order ready'
   const job = wh.printQueue[0];
   assert.equal(job.printer, 'LP-OUT-02');
   assert.match(job.zpl, /^\^XA[\s\S]*Corner Shop[\s\S]*>;>800\d{18}[\s\S]*\^XZ$/);
-  assert.equal(wh.scan('RT1', p.sscc).ok, false, 'needs the new label, not the pallet again');
+  assert.match(wh.scan('RT1', p.sscc).text, /printing again/, 'the pallet again reprints the label; it does not finish the check');
+  assert.equal(wh.orders.O1.status === 'ready', false);
   assert.ok(wh.scan('RT1', check.labelCode).ok);
   assert.equal(wh.orders.O1.status, 'ready');
   wh.shipOrder('O1');

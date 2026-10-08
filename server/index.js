@@ -23,6 +23,8 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/handheld': 'server/public/handheld.html', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
     '/kit': 'server/public/kit.html', '/kit.html': 'server/public/kit.html',
+    '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
+    '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
     '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/barcode.js': 'src/barcode.js',
   };

@@ -25,6 +25,8 @@ For a local preview of the guided shift, run `npm run build:pages`, then serve `
 
 **Demo kit: https://snepssen.github.io/SortedWMS/kit.html**. A label wall that shows, big enough to scan off a screen, the barcode a handheld needs next, plus a print sheet of sample pallet labels in the real supplier formats. The demo script is in [docs/DEMO.md](docs/DEMO.md).
 
+**How to work with it: [docs/SOP.md](docs/SOP.md)**, the standard operating procedures, step by step for every role.
+
 To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
 
 The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
@@ -182,6 +184,8 @@ Then open, on the same network:
 - **`/handheld`** on the Android scanners. Enter the handheld ID once; the scanner sends Enter after each scan. The screen keeps the scan field focused and hides the on-screen keyboard (⌨ brings it back).
 - **`/keys`** on a new scanner, once: a key test. It shows every key press (key, code, keyCode), whether the Back key reaches the page, and how scans arrive (as key presses or as pasted text, with the symbology prefix and the GS1 separator if the scanner sends them), with a summary to copy. It needs no server: on Pages it's `keys.html`.
 - **`/card`**: the command card to print (also under Settings in the office).
+- **`/station`** on a PC or tablet at each process station (press, plate press, foil wrapper, warm room): scan to start, scan when done, the SOP and a timer on screen, warm-room countdowns.
+- **`/desk`** at the two-person receiving desk: the call-out word, scans and typed fields.
 - **`/admin`** in the office: floor overview, jobs (urgent, cancel, release), location template ranges, find, office transfers, location unknown list, stock per item, minimum days to ship, batch trace (which customers got batch X), orders, deliveries, imports from Excel/CSV, audit trail, dispatch settings, label printer status.
 - **`/`** the demo simulation.
 
@@ -219,6 +223,8 @@ Settings, through environment variables:
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
+| `docs/SOP.md` | Standard operating procedures: every task, step by step, for drivers, the coordinator, station and desk operators. |
+| `docs/WORKFLOW-REVIEW.md` | The step-by-step review behind the SOP: what was fixed, what needs a decision, what to build next. |
 | `docs/DEMO.md` | The demo: set-up with a real MC9401 or without hardware, and a 10-minute run. |
 | `server/public/kit.html` | The demo kit (`/kit`): label wall and print sheet. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |

@@ -66,6 +66,24 @@
     addItem: (wh, a) => wh.addItem(a),
     importItems: (wh, a) => (a.rows || []).map((r) => (wh.items[r.itemNo] ? null : wh.addItem(r))).filter(Boolean).length,
     importLocations: (wh, a) => wh.importLocations(a.rows || []),
+    // Orders from a spreadsheet: one row per line (orderId, customer, lane, itemNo, pallets, process).
+    // Rows of one order are added together; an order that fails is listed and the rest still go in.
+    importOrders: (wh, a) => {
+      const out = { added: 0, errors: [] };
+      const orders = new Map();
+      for (const r of a.rows || []) {
+        const id = String(r.orderId || r.order || '').trim();
+        if (!id) { out.errors.push('A row without an order number'); continue; }
+        if (!orders.has(id)) orders.set(id, { id, customer: r.customer, lane: r.lane, lines: [], verifyLoading: /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || '')) });
+        const line = { itemNo: String(r.itemNo || r.item || '').trim(), pallets: Number(r.pallets) || 1 };
+        if (r.process) line.process = String(r.process).trim();
+        orders.get(id).lines.push(line);
+      }
+      for (const o of orders.values()) {
+        try { wh.addOrder(o); out.added++; } catch (e) { out.errors.push(`${o.id}: ${e.message}`); }
+      }
+      return out;
+    },
     importStock: (wh, a) => {
       const out = { added: 0, errors: [] };
       for (const r of a.rows || []) {

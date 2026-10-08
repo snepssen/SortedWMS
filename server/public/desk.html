@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SortedWMS receiving desk</title>
+<style>
+  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 19px; }
+  header .spacer { flex: 1; }
+  select, input, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  button { background: var(--card); cursor: pointer; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button.warn { border-color: var(--warn); color: var(--warn); }
+  main { padding: 16px; max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .kicker { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .callout { text-align: center; padding: 18px 16px; }
+  .callout .word { font: 900 88px/1 system-ui, sans-serif; letter-spacing: .04em; margin: 6px 0; }
+  .callout .hint { color: var(--dim); }
+  .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 18px; }
+  .msg.ok { background: rgba(19, 138, 74, .12); color: var(--ok); }
+  .msg.bad { background: rgba(198, 47, 40, .12); color: var(--bad); }
+  .scan { display: flex; gap: 8px; }
+  .scan input { flex: 1; font-size: 20px; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+  td.label { width: 160px; color: var(--dim); }
+  td.label.next { color: var(--acc); font-weight: 800; }
+  td.value { font: 700 18px ui-monospace, Menlo, Consolas, monospace; }
+  td.type input { width: 100%; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .empty { color: var(--dim); }
+  .list .item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .list .item:first-of-type { border-top: 0; }
+</style>
+</head>
+<body>
+<header><h1 id="title">Receiving desk</h1><span class="spacer"></span><select id="pick"></select></header>
+<main id="main"></main>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ls = { get: (k) => { try { return localStorage.getItem('desk.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('desk.' + k, v); } catch (e) { /* ignore */ } } };
+  let deskId = ls.get('id') || '';
+  let view = null, lastHtml = '', busy = false, localError = null, doneArmed = 0;
+  const HELP = { BATCH: 'the batch number', PALLET: 'the pallet label (SSCC)', GS1: 'the GS1 label: item, best-before and count' };
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) {
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: deskId || 'desk' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': deskId || 'desk' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  async function act(method, path, body) {
+    if (busy) return;
+    busy = true;
+    localError = null;
+    try { await api(method, path, body); } catch (e) { localError = e.message; }
+    busy = false;
+    await refresh(true);
+  }
+
+  async function render() {
+    const I = view.instruction;
+    const message = localError ? `<div class="msg bad">${esc(localError)}</div>` : view.message ? `<div class="msg ${view.message.ok ? 'ok' : 'bad'}">${esc(view.message.text)}</div>` : '';
+    if (I.kind !== 'receive') {
+      const deliveries = (await api('GET', '/api/deliveries')).filter((d) => d.status === 'open' && d.at === 'desk');
+      return `${message}<div class="card"><div class="kicker">Deliveries for the desk</div><div class="list">${deliveries.map((d) => `<div class="item"><div><b>${esc(d.id)}</b> · ${esc(d.supplier)} · ${d.expected} pallets</div>
+        <button class="primary" data-start="${esc(d.id)}">Start</button></div>`).join('') || '<div class="empty">Nothing waiting. Deliveries announced for the desk in the office show here.</div>'}</div></div>`;
+    }
+    const d = I.delivery;
+    const word = I.callout ? I.callout.word : null;
+    const next = I.callout ? I.callout.fields : [I.field]; // what the call-out word stands for
+    const fields = I.fields.map((f) => `<tr><td class="label ${!f.value && next.includes(f.id) ? 'next' : ''}">${esc(f.label)}</td>
+      <td class="value">${f.value ? esc(f.id === 'expiry' ? f.value.split('-').reverse().join('-') : f.value) : ''}</td>
+      <td class="type">${f.value ? '' : `<form data-field="${f.id}"><input placeholder="${f.id === 'expiry' ? 'type 09112026' : f.id === 'qty' && I.defaultQty ? `${I.defaultQty} (full pallet)` : 'type it'}" autocomplete="off"></form>`}</td></tr>`).join('');
+    return `<div class="card callout"><div class="kicker">Call out</div><div class="word">${esc(word || 'DONE')}</div>
+        <div class="hint">${word ? `The scanner operator scans ${esc(HELP[word] || word)}` : 'Pallet complete'}</div></div>
+      <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" placeholder="Scans land here…" autocomplete="off" spellcheck="false"><button>Enter</button></form>
+      ${message}
+      <div class="card"><div class="row" style="justify-content:space-between"><div class="kicker">Delivery ${esc(d.id)} · ${esc(d.supplier)} · ${d.received} of ${d.expected} pallets</div>
+        <div class="row">${I.defaultQty && !I.fields.find((f) => f.id === 'qty').value ? `<button id="full">Full pallet (${I.defaultQty})</button>` : ''}
+        <button class="warn" id="done">${doneArmed && Date.now() - doneArmed < 30000 ? 'Click again to close the delivery' : 'Delivery done'}</button></div></div>
+        <table>${fields}</table></div>`;
+  }
+
+  async function draw(force) {
+    const html = await render();
+    if (!force && html === lastHtml) return;
+    const typing = document.activeElement && document.activeElement.closest('form[data-field]');
+    if (typing && !force) return; // don't redraw under the keyboard operator
+    lastHtml = html;
+    $('#main').innerHTML = html;
+    document.querySelectorAll('[data-start]').forEach((b) => (b.onclick = () => act('POST', `/api/desks/${deskId}/start`, { deliveryId: b.dataset.start })));
+    const scan = $('#scanForm');
+    if (scan) {
+      const input = $('#scanIn');
+      input.focus({ preventScroll: true });
+      scan.onsubmit = (e) => { e.preventDefault(); const code = input.value.trim(); input.value = ''; if (code) act('POST', `/api/devices/${deskId}/scan`, { code }); };
+    }
+    document.querySelectorAll('form[data-field]').forEach((f) => (f.onsubmit = (e) => {
+      e.preventDefault();
+      const v = f.querySelector('input').value.trim() || (f.dataset.field === 'qty' && view.instruction.defaultQty ? String(view.instruction.defaultQty) : '');
+      if (v) act('POST', `/api/desks/${deskId}/enter`, { field: f.dataset.field, value: v });
+    }));
+    if ($('#full')) $('#full').onclick = () => act('POST', `/api/desks/${deskId}/enter`, { field: 'qty', value: String(view.instruction.defaultQty) });
+    if ($('#done')) $('#done').onclick = () => {
+      if (doneArmed && Date.now() - doneArmed < 30000) { doneArmed = 0; act('POST', `/api/devices/${deskId}/finish-receiving`); } else { doneArmed = Date.now(); draw(true); }
+    };
+  }
+
+  async function refresh(force) {
+    if (!deskId) return;
+    try {
+      view = await api('GET', `/api/devices/${encodeURIComponent(deskId)}`);
+      await draw(force);
+    } catch (e) { $('#main').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; lastHtml = ''; }
+  }
+
+  async function start() {
+    const desks = (await api('GET', '/api/devices')).filter((d) => d.kind === 'desk');
+    if (!desks.some((d) => d.id === deskId)) deskId = desks[0] ? desks[0].id : '';
+    $('#pick').innerHTML = desks.map((d) => `<option ${d.id === deskId ? 'selected' : ''}>${esc(d.id)}</option>`).join('');
+    $('#pick').onchange = () => { deskId = $('#pick').value; ls.set('id', deskId); refresh(true); };
+    if (!deskId) { $('#main').innerHTML = '<div class="empty">No receiving desk in the site set-up.</div>'; return; }
+    ls.set('id', deskId);
+    await refresh(true);
+    setInterval(() => refresh(false), 2000);
+    document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select,form') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+  }
+
+  if (window.SortedLocal) window.SortedLocal.ready.then(start); else start();
+})();
+</script>
+</body>
+</html>
