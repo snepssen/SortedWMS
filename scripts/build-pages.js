@@ -24,9 +24,14 @@ if (cut === -1) throw new Error('index.html: expected a <style> block');
 // The page carries its own charset and viewport tags so it also works served raw;
 // the wrapper adds them below, so drop the page's copies.
 const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name="viewport")[^>]*>\s*/g, '');
-// A way from the simulated shift to the real screens.
-const body = page.slice(cut + '</style>'.length)
-  .replace('<div class="spacer"></div>', '<div class="spacer"></div>\n  <a class="btn" href="walkthrough.html">Guided shift →</a>\n  <a class="btn" href="wms.html">Handheld + office →</a>\n  <a class="btn" href="sop.html">SOP →</a>');
+// A way from the simulated shift to the real screens and the SOP, which only exist on Pages.
+const cards = [
+  '<a class="start-card" href="wms.html"><b>Handheld + office →</b><span>Try the real screens: handheld and office side by side. A button scans whatever the handheld asks for.</span></a>',
+  '<a class="start-card" href="sop.html"><b>How the floor works →</b><span>The standard operating procedures, by role: driver, coordinator, station, desk.</span></a>',
+].join('\n    ');
+const marker = /<!-- pages-cards:[^>]*-->/;
+if (!marker.test(page)) throw new Error('index.html: expected the pages-cards marker');
+const body = page.slice(cut + '</style>'.length).replace(marker, cards);
 
 const html = `<!doctype html>
 <html lang="en">

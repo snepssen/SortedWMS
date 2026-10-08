@@ -20,6 +20,7 @@
   .cmd .twice { font-size: 11px; font-weight: 700; border: 1.5px solid #000; border-radius: 2mm; padding: 0 1.5mm; }
   .cmd .code { font: 600 11px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
   .cmd svg { display: block; max-width: 100%; }
+  @media screen and (max-width: 760px) { .sheet { width: auto; padding: 16px; } .grid { grid-template-columns: minmax(0, 1fr); } }
   @media print {
     .bar { display: none; }
     .sheet { padding: 0; }

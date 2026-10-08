@@ -16,12 +16,12 @@
   select, input, button { font: inherit; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   button { background: var(--card); cursor: pointer; }
   main { padding: 12px 16px 20px; display: grid; gap: 14px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); max-width: 1200px; margin: 0 auto; }
-  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); } }
   .wide { grid-column: 1 / -1; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
   .kicker { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: 6px; }
   .scan { display: flex; gap: 8px; }
-  .scan input { flex: 1; font-size: 22px; }
+  .scan input { flex: 1; min-width: 0; font-size: 22px; }
   .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 20px; }
   .msg.ok { background: rgba(60, 207, 122, .14); color: var(--ok); }
   .msg.bad { background: rgba(255, 90, 82, .16); color: var(--bad); }

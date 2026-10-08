@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS office</title>
 <style>
-  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --chip: #eef2f5; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; } }
+  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --chip: #eef2f5; --on-acc: #fff }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; --on-acc: #08121c } }
   * { box-sizing: border-box; }
+  a { color: var(--acc); }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { font-size: 17px; margin: 0; }
@@ -20,7 +21,7 @@
   h2 { font-size: 15px; margin: 0 0 10px; }
   .hint { color: var(--dim); font-size: 13px; }
   button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-  button.primary, a.btn { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button.primary, a.btn { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 600; }
   a.btn { border-radius: 8px; padding: 6px 12px; text-decoration: none; }
   button.small { padding: 2px 8px; font-size: 12px; }
   input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }

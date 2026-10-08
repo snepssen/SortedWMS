@@ -63,6 +63,17 @@
     ['scanner', 'Find the displaced pallet', 'YOG-SPARE has been found elsewhere. Scan its SSCC.', 'Scan found pallet', (d, run) => run('scan', { id: d.truckId, code: d.fourth })],
     ['scanner', 'Restore its location', 'Scan AA03A1. YOG-SPARE returns to the stock map and the unknown-location list clears.', 'Scan AA03A1', (d, run) => run('scan', { id: d.truckId, code: 'AA03A1' })],
   ]);
+  const countSteps = operationSteps([
+    ['office', 'Load opening stock', 'The system has three yoghurt pallets in AA01A1, AA01A2 and AA01A3. On the floor, two of them have been swapped.', 'Load stock', (d, run) => run('importStock', { rows: [stock(d, 'AA01A1', d.first, 'YOG-EARLY', '2026-11-20'), stock(d, 'AA01A2', d.second, 'YOG-LATER', '2026-12-20'), stock(d, 'AA01A3', d.third, 'YOG-SPARE', '2027-01-20')] })],
+    ['admin', 'Assign the reach truck', 'RT-YOG works yoghurt in Auto. It has nothing else to do, so it is free for counts.', 'Assign truck', (d, run) => run('addTruck', { id: d.truckId, categories: ['YOG'] })],
+    ['office', 'Plan stock counts', 'Count AA01A1 to AA01A3. Count jobs only go to a truck with nothing else to do, so they never hold up a pick. No stock-take, no count sheets.', 'Plan counts', (d, run) => run('planCounts', { from: 'AA01A1', to: 'AA01A3' })],
+    ['scanner', 'Count AA01A1', 'The handheld names the location, not what should be in it: the driver records what is really there. Scan the location label.', 'Scan location', (d) => d.scanExpected()],
+    ['scanner', 'Scan what is there', 'YOG-EARLY is where the system has it. Count OK, and the next count is already on the screen.', 'Scan pallet', (d, run) => run('scan', { id: d.truckId, code: d.first })],
+    ['scanner', 'Count AA01A2', 'Scan the location label.', 'Scan location', (d) => d.scanExpected()],
+    ['scanner', 'A different pallet', 'YOG-SPARE stands here. The system corrects itself on the spot. YOG-LATER, which it expected here, goes on the location-unknown list, and any pick for it would be held.', 'Scan pallet', (d, run) => run('scan', { id: d.truckId, code: d.third })],
+    ['scanner', 'Count AA01A3', 'Scan the location label.', 'Scan location', (d) => d.scanExpected()],
+    ['scanner', 'The missing pallet', 'YOG-LATER stands here. Scanning it puts it back on the map: the location-unknown list is empty again.', 'Scan pallet', (d, run) => run('scan', { id: d.truckId, code: d.second })],
+  ]);
   const qualitySteps = operationSteps([
     ['office', 'Announce chilled receiving', 'One yoghurt pallet is arriving with a supplier pallet list.', 'Announce delivery', (d, run) => run('addDelivery', { id: 'QUALITY-IN', supplier: 'Demo dairy', category: 'YOG', at: 'desk', list: [{ sscc: d.first, itemNo: 'Y1001', batch: 'YOG-REVIEW', expiry: '2026-11-20', qty: 96 }] })],
     ['office', 'Open the receiving desk', 'DESK1 takes the announced delivery.', 'Open delivery', (d, run) => run('deskStart', { id: 'DESK1', deliveryId: 'QUALITY-IN' })],
@@ -177,6 +188,7 @@
   const scenarios = {
     shipping: { label: 'Receiving to shipping', steps, truckId: 'RT-PRO', complete: 'Received, processed, shipped and traced', outcome: 'Fresh Market received PRO-LATER. PRO-EARLY remains blocked in storage.' },
     shift: { label: 'Auto-Shift & partitioning', steps: shiftSteps, truckId: 'RT-YOG', complete: 'Replenished and relocated', outcome: 'YOG-EARLY is on the ground in yoghurt storage. The repartitioned position is empty; YOG-LATER stays above.' },
+    counts: { label: 'Stock counts & accuracy', steps: countSteps, truckId: 'RT-YOG', complete: 'Counted and corrected', outcome: 'Three locations counted in six scans. Two differences were found and corrected on the spot; nothing is on the location-unknown list. The office shows each count and the stock accuracy.' },
     manual: { label: 'Manual work & corrections', steps: manualSteps, truckId: 'RT-YOG', complete: 'Picked, put away and reconciled', outcome: '4602 is ready. The pick for 4601 follows its corrected location. YOG-SPARE is found and the location-unknown list is empty.' },
     quality: { label: 'Temperature & quality holds', steps: qualitySteps, truckId: 'RT-YOG', complete: 'Inspected, held and reviewed', outcome: '4701 took eligible replacement stock. After a recorded quality decision, 4702 allocated YOG-REVIEW. Both readings and the release decision remain in the history.' },
     recall: { label: 'Batch recall & traceability', steps: recallSteps, truckId: 'RT-YOG', complete: 'Held, traced and reviewed', outcome: 'Fresh Market was identified as an earlier recipient. City Deli stopped at shipping until release; Corner Shop switched to another batch. The late receipt was caught, and the independent temperature hold remains.' },
@@ -224,6 +236,10 @@
       if (this.scenarioId === 'quality' && this.index === 2) return `00${this.first}`;
       if (this.scenarioId === 'recall' && this.index === 17) return `00${this.fifth}`;
       if (this.scenarioId === 'shipping' && [4, 5].includes(this.index)) return `00${this.index === 4 ? this.first : this.second}`;
+      if (this.scenarioId === 'counts') {
+        const codes = { 4: this.first, 6: this.third, 8: this.second };
+        if (codes[this.index]) return codes[this.index];
+      }
       if (this.scenarioId === 'manual') {
         const codes = { 3: 'O4602', 8: 'CMD-PUTAWAY', 10: this.third, 12: 'CMD-TRANSFER', 13: this.first, 14: 'AA02A1', 15: this.fourth, 16: 'AA03A1' };
         if (codes[this.index]) return codes[this.index];
@@ -236,7 +252,7 @@
       const palletCount = Object.keys(this.wh.pallets).length;
       const result = Commands.COMMANDS[op](this.wh, args, by);
       const receivedWithWarning = op === 'scan' && Object.keys(this.wh.pallets).length > palletCount;
-      if (result && result.ok === false && !receivedWithWarning && !(op === 'scan' && args.code === 'CMD-DAMAGED' && this.wh.pallets[this.first].status === 'blocked')) throw new Error(result.text);
+      if (result && result.ok === false && !result.difference && !receivedWithWarning && !(op === 'scan' && args.code === 'CMD-DAMAGED' && this.wh.pallets[this.first].status === 'blocked')) throw new Error(result.text);
       const actor = op === 'scanLoading' ? args.device : ['scan', 'deskStart', 'stationScan'].includes(op) ? args.id : by;
       this.journal.push({ op, args, by: actor, title: this.step.title, t: this.time, result: result && result.text });
       return result;

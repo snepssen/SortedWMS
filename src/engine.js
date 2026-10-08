@@ -1740,7 +1740,7 @@
       if (this.transfers.length > 1000) this.transfers.length = 1000;
       this.log(`Transfer …${sscc.slice(-6)}: ${from} → ${code} by ${by}${notes.length ? ` (${notes.join('; ')})` : ''}`);
       this.dispatch();
-      return { ok: true, text: `Recorded at ${code}${notes.length ? `. ${notes.join('. ')}` : ''}` };
+      return { ok: true, text: `Recorded at ${code}${notes.length ? `. ${notes.map((n) => n[0].toUpperCase() + n.slice(1)).join('. ')}` : ''}` };
     }
 
     /** Pallets whose location is unknown (reported missing, or displaced by a transfer). */
@@ -2945,7 +2945,8 @@
       this._finish(truck, task);
       this.dispatch();
       const next = truck.taskId ? this.tasks[truck.taskId] : null;
-      return this._say(truck, result === 'ok', `${text}.${next ? ` Next: ${TASK_TYPES[next.type].short} at ${next.from}` : ''}`);
+      const said = this._say(truck, result === 'ok', `${text}.${next ? ` Next: ${TASK_TYPES[next.type].short} at ${next.from}` : ''}`);
+      return result === 'ok' ? said : { ...said, difference: result }; // a difference is news, not a wrong scan
     }
 
     /** A coordinator-style button on the handheld for a held pallet: move it, or let it go. */

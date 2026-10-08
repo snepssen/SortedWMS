@@ -6,7 +6,7 @@ A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, chees
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
-**Guided scenarios:** `walkthrough.html` has eight selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
+**Guided scenarios:** `walkthrough.html` has nine selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
 
 - **Receiving to shipping (22 steps):** protein drinks through partitioning, receiving, Auto put-away, FEFO allocation, damage replacement, pallet change, check & label, shipping and batch trace.
 - **Auto-Shift & partitioning (8 steps):** bring the next-out yoghurt pallet down, change its location's partition, then relocate it into yoghurt storage.

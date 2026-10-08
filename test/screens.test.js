@@ -114,7 +114,7 @@ test('a pallet set down at its station without the drop scan: a transfer records
   assert.match(wh.stationScan('PRESS', p.sscc).text, /truck job to here/);
   wh.locations['ST-PRESS'].pallets.pop(); p.loc = realLoc;
   const r = await call('POST', '/api/transfer', { sscc: p.sscc, to: 'ST-PRESS' });
-  assert.match(r.text, /arrived at Pallet change/);
+  assert.match(r.text, /Arrived at Pallet change/);
   assert.equal(move.status, 'cancelled');
   assert.match(wh.stationScan('PRESS', p.sscc).text, /^Started/);
   assert.match(wh.stationScan('PRESS', p.sscc).text, /^Done in/);
