@@ -145,6 +145,35 @@
     ['office', 'Seal and dispatch', 'Record DEMO-SEAL-07. Completeness, locations, checks and shipping eligibility are validated together before stock is removed.', 'Seal & dispatch', (d, run) => run('shipOrder', { id: '5001', seal: 'DEMO-SEAL-07' })],
     ['office', 'Trace the sealed shipment', 'The recipient, trailer, seal and scan history remain available after departure.', 'Review shipment trace', (d) => { d.trace = d.wh.trace('YOG-LOAD-A'); }],
   ]);
+  const readinessCheck = (patch = {}) => ({ id: '5101', temperature: 4, refrigerationOn: true, clean: true, dry: true, odorFree: true, damageFree: true, reason: 'Simulated manual trailer inspection.', ...patch });
+  const readinessSteps = operationSteps([
+    ['office', 'Prepare refrigerated stock', 'One yoghurt pallet is available for Fresh Market.', 'Load stock', (d, run) => run('importStock', { rows: [stock(d, 'AA01A1', d.first, 'YOG-COLD', '2026-11-20')] })],
+    ['admin', 'Assign picking', 'RT-YOG picks and labels the outbound order.', 'Assign truck', (d, run) => run('addTruck', { id: d.truckId, categories: ['YOG'] })],
+    ['office', 'Require verified loading', 'Order 5101 needs a checked pallet, a trailer and a seal.', 'Release order 5101', (d, run) => run('addOrder', { id: '5101', customer: 'Fresh Market', lane: 'OUT-01', verifyLoading: true, lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
+    ['scanner', 'Pick the allocated pallet', 'Scan the pallet SSCC.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Stage at OUT-01', 'Confirm its shipping lane.', 'Scan shipping lane', (d) => d.scanExpected()],
+    ['scanner', 'Check the pallet', 'Generate the shipping label.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Confirm its label', 'Checked stock is ready for trailer assignment, not departure.', 'Scan shipping label', (d) => d.scanExpected()],
+    ['office', 'Set the trailer inspection policy', 'COLD-08 requires a manual air reading and five condition checks. The example 2 to 6 C limits and one-minute validity are demonstration settings, not product requirements. They cannot change during this manifest.', 'Open refrigerated manifest', (d, run) => run('startLoading', { id: '5101', trailer: 'COLD-08', inspectionPolicy: { min: 2, max: 6, validMinutes: 1 } })],
+    ['scanner', 'Stop loading without inspection', 'Stock stays on OUT-01 until trailer readiness is established.', 'Verify loading is stopped', (d) => rejected(d, () => d.wh.scanLoading('5101', 'LOAD-01', d.first), /inspection required/)],
+    ['office', 'Record a failed trailer check', 'The simulated trailer air reading is 9 C and refrigeration is off. This creates a trailer hold, not a goods-temperature reading.', 'Record failed check', (d, run) => run('recordTrailerInspection', readinessCheck({ temperature: 9, refrigerationOn: false, reason: 'Simulated warm trailer; refrigeration was off.' }))],
+    ['office', 'Recheck after correction', 'All conditions now pass at 4 C. The original trailer hold remains until a separate release decision.', 'Record passing check', (d, run) => run('recordTrailerInspection', readinessCheck())],
+    ['office', 'Approve trailer release', 'A fresh passing check permits a reasoned release. Independent pallet holds would remain in force.', 'Release trailer hold', (d, run) => run('releaseTrailerHold', { id: '5101', reason: 'Demo refrigeration restored and trailer inspected; approved for loading.' })],
+    ['scanner', 'Identify the pallet', 'The first scan starts a pending load; stock has not moved.', 'Scan pallet', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: d.first })],
+    ['scanner', 'Expire the check between scans', 'Advance the demonstration clock by 61 seconds, then scan the trailer. The destination gate refuses the expired check and retains the pending pallet.', 'Verify expired check is stopped', (d) => { d.time += 61000; rejected(d, () => d.wh.scanLoading('5101', 'LOAD-01', 'TRAILER-COLD-08'), /expired/); }],
+    ['office', 'Record a fresh inspection', 'A new complete passing check renews readiness. No hold was created by expiry alone.', 'Renew trailer check', (d, run) => run('recordTrailerInspection', readinessCheck({ reason: 'Fresh demo check after validity expired.' }))],
+    ['scanner', 'Confirm loading', 'Scan TRAILER-COLD-08. The checked pallet moves onto the trailer.', 'Scan trailer', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: 'TRAILER-COLD-08' })],
+    ['office', 'Report a concern after loading', 'The next check reports a wet trailer. A new trailer hold records the SSCC loaded at that time.', 'Record condition failure', (d, run) => run('recordTrailerInspection', readinessCheck({ dry: false, reason: 'Simulated wet floor discovered after loading.' }))],
+    ['office', 'Stop held departure', 'A complete manifest and seal cannot bypass trailer readiness.', 'Verify dispatch is stopped', (d) => rejected(d, () => d.wh.shipOrder('5101', { seal: 'COLD-SEAL-08' }), /Trailer hold/)],
+    ['scanner', 'Identify stock for unloading', 'Unloading remains available while the trailer is held.', 'Scan pallet for unloading', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: d.first, unload: true })],
+    ['scanner', 'Confirm return to staging', 'Scan OUT-01. The trailer hold remains recorded.', 'Scan OUT-01', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: 'OUT-01', unload: true })],
+    ['office', 'Reinspect the corrected trailer', 'A complete passing check follows the simulated floor correction. This does not itself release the hold.', 'Record passing check', (d, run) => run('recordTrailerInspection', readinessCheck({ reason: 'Demo trailer dried and fully reinspected.' }))],
+    ['office', 'Approve return to loading', 'Record the separate release decision.', 'Release trailer hold', (d, run) => run('releaseTrailerHold', { id: '5101', reason: 'Demo condition investigation completed; trailer accepted.' })],
+    ['scanner', 'Identify stock to reload', 'Scan the staged pallet again.', 'Scan pallet', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: d.first })],
+    ['scanner', 'Confirm reloading', 'Confirm the trailer again. The earlier unload remains in history.', 'Scan trailer', (d, run) => run('scanLoading', { id: '5101', device: 'LOAD-01', code: 'TRAILER-COLD-08' })],
+    ['office', 'Seal and dispatch', 'Departure rechecks fresh readiness and all pallet restrictions. The shipment keeps its policy, last inspection, release history and seal.', 'Seal & dispatch', (d, run) => run('shipOrder', { id: '5101', seal: 'COLD-SEAL-08' })],
+    ['office', 'Review departure evidence', 'The batch trace identifies Fresh Market and the seal. The manifest preserves trailer inspections and release decisions at departure, even after their operational validity ends.', 'Review shipment trace', (d) => { d.trace = d.wh.trace('YOG-COLD'); }],
+  ]);
   const scenarios = {
     shipping: { label: 'Receiving to shipping', steps, truckId: 'RT-PRO', complete: 'Received, processed, shipped and traced', outcome: 'Fresh Market received PRO-LATER. PRO-EARLY remains blocked in storage.' },
     shift: { label: 'Auto-Shift & partitioning', steps: shiftSteps, truckId: 'RT-YOG', complete: 'Replenished and relocated', outcome: 'YOG-EARLY is on the ground in yoghurt storage. The repartitioned position is empty; YOG-LATER stays above.' },
@@ -152,7 +181,8 @@
     quality: { label: 'Temperature & quality holds', steps: qualitySteps, truckId: 'RT-YOG', complete: 'Inspected, held and reviewed', outcome: '4701 took eligible replacement stock. After a recorded quality decision, 4702 allocated YOG-REVIEW. Both readings and the release decision remain in the history.' },
     recall: { label: 'Batch recall & traceability', steps: recallSteps, truckId: 'RT-YOG', complete: 'Held, traced and reviewed', outcome: 'Fresh Market was identified as an earlier recipient. City Deli stopped at shipping until release; Corner Shop switched to another batch. The late receipt was caught, and the independent temperature hold remains.' },
     quarantine: { label: 'Physical quarantine & release', steps: quarantineSteps, truckId: 'RT-YOG', complete: 'Segregated, reviewed and returned', outcome: 'The held pallet was scanned into quarantine, reviewed, then scanned back into normal storage before allocation to City Deli. Fresh Market used eligible replacement stock, and the quarantine position is free again.' },
-    loading: { label: 'Trailer loading & dispatch', steps: loadingSteps, truckId: 'RT-YOG', complete: 'Verified, sealed and dispatched', outcome: 'Fresh Market received two verified pallets on DEMO-07 under seal DEMO-SEAL-07. A wrong trailer, incomplete manifest and late quality hold stopped departure. Unloading, review and reloading remain in the history.' },
+    loading: { label: 'Trailer loading & dispatch', steps: loadingSteps, truckId: 'RT-YOG', loadingOrderId: '5001', complete: 'Verified, sealed and dispatched', outcome: 'Fresh Market received two verified pallets on DEMO-07 under seal DEMO-SEAL-07. A wrong trailer, incomplete manifest and late quality hold stopped departure. Unloading, review and reloading remain in the history.' },
+    readiness: { label: 'Trailer readiness & refrigeration', steps: readinessSteps, truckId: 'RT-YOG', loadingOrderId: '5101', complete: 'Inspected, released and dispatched', outcome: 'Missing and expired checks stopped loading; refrigeration and condition failures held the trailer. Stock could still unload. Fresh checks and explicit releases allowed sealed departure, with the complete inspection history retained.' },
   };
 
   class Walkthrough {
@@ -183,6 +213,10 @@
       return this.run('scan', { id: this.truckId, code });
     }
     get scanCode() {
+      if (this.scenarioId === 'readiness' && this.index >= 8) {
+        const codes = { 8: this.first, 12: this.first, 13: 'TRAILER-COLD-08', 15: 'TRAILER-COLD-08', 18: this.first, 19: 'OUT-01', 22: this.first, 23: 'TRAILER-COLD-08' };
+        return codes[this.index] || null;
+      }
       if (this.scenarioId === 'loading' && this.index >= 12) {
         const codes = { 12: this.first, 13: 'TRAILER-DEMO-99', 14: 'TRAILER-DEMO-07', 16: this.second, 17: 'TRAILER-DEMO-07', 20: this.first, 21: 'OUT-01', 23: this.first, 24: 'TRAILER-DEMO-07' };
         return codes[this.index] || null;
@@ -209,7 +243,7 @@
     }
     next() {
       if (!this.step) return;
-      if (this.scenarioId === 'loading') this.notice = null;
+      if (this.scenario.loadingOrderId) this.notice = null;
       const run = (op, args) => this.run(op, args);
       if (this.step.execute) { this.step.execute(this, run); this.index++; return; }
       switch (this.index) {

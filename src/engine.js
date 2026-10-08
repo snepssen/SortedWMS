@@ -952,10 +952,13 @@
       });
     }
 
-    startLoading(id, trailer, by = 'office') {
+    startLoading(id, trailer, by = 'office', { inspectionPolicy = null } = {}) {
       const order = this.orders[id];
       if (!order || order.status !== 'ready') throw new Error('Order must be checked and ready before loading');
       if (order.loading) throw new Error('This order already has a trailer; unload or complete its existing manifest');
+      if (inspectionPolicy !== null && (typeof inspectionPolicy !== 'object' || Array.isArray(inspectionPolicy)
+        || ![inspectionPolicy.min, inspectionPolicy.max].every((n) => typeof n === 'number' && Number.isFinite(n)) || inspectionPolicy.min > inspectionPolicy.max
+        || !Number.isInteger(inspectionPolicy.validMinutes) || inspectionPolicy.validMinutes < 1 || inspectionPolicy.validMinutes > 1440)) throw new Error('Trailer policy requires finite minimum <= maximum and validity of 1 to 1440 whole minutes');
       if (typeof trailer !== 'string' || !/^[A-Z0-9][A-Z0-9-]{0,29}$/.test(trailer.trim().toUpperCase())) throw new Error('Trailer ID must be 1 to 30 letters, digits or hyphens');
       trailer = trailer.trim().toUpperCase();
       const location = `TRAILER-${trailer}`;
@@ -969,8 +972,50 @@
       this.locations[location] = { code: location, kind: 'trailer', aisle: null, pallets: [], blocked: false };
       order.verifyLoading = true;
       order.loading = { trailer, location, startedAt: this.now(), by, pending: {}, history: [{ kind: 'opened', t: this.now(), by }] };
+      if (inspectionPolicy) order.loading.inspectionPolicy = { min: inspectionPolicy.min, max: inspectionPolicy.max, validMinutes: inspectionPolicy.validMinutes };
       this.log(`Order ${id}: loading opened on trailer ${trailer} by ${by}`);
       return order.loading;
+    }
+
+    trailerReadiness(id) {
+      const loading = this.orders[id]?.loading;
+      if (!loading?.inspectionPolicy) return { required: false, status: 'not-required', reason: null, releaseAllowed: false };
+      const latest = loading.history.filter((e) => e.kind === 'trailer-inspection').at(-1) || null;
+      const validUntil = latest ? latest.t + loading.inspectionPolicy.validMinutes * MINUTE : null;
+      const at = loading.closedAt == null ? this.now() : loading.closedAt;
+      const current = Boolean(latest?.passed && at >= latest.t && at < validUntil);
+      const hold = loading.trailerHold || null;
+      const status = hold ? 'held' : !latest?.passed ? 'inspection-required' : !current ? 'expired' : 'ready';
+      const reason = hold ? `Trailer hold: ${hold.issues.join('; ')}` : status === 'inspection-required' ? 'Trailer inspection required before loading or departure' : status === 'expired' ? 'Trailer inspection expired; record a fresh check' : null;
+      return { required: true, status, reason, policy: loading.inspectionPolicy, latest, validUntil, hold, releaseAllowed: Boolean(hold && current && loading.closedAt == null) };
+    }
+
+    recordTrailerInspection(id, { temperature, refrigerationOn, clean, dry, odorFree, damageFree, reason }, by = 'inspector') {
+      const order = this.orders[id], loading = order?.loading;
+      if (!loading?.inspectionPolicy || order.status === 'shipped') throw new Error('No open trailer inspection policy for this order');
+      if (typeof temperature !== 'number' || !Number.isFinite(temperature)) throw new Error('Trailer temperature must be a finite number');
+      if (![refrigerationOn, clean, dry, odorFree, damageFree].every((v) => typeof v === 'boolean')) throw new Error('Record every trailer condition as true or false');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('An inspection note is required');
+      const { min, max, validMinutes } = loading.inspectionPolicy;
+      const issues = [temperature < min || temperature > max ? `Temperature ${temperature} C outside ${min} to ${max} C` : null,
+        !refrigerationOn && 'Refrigeration not running', !clean && 'Trailer not clean', !dry && 'Trailer not dry', !odorFree && 'Odor concern', !damageFree && 'Damage concern'].filter(Boolean);
+      const event = { kind: 'trailer-inspection', t: this.now(), by, temperature, min, max, validMinutes, refrigerationOn, clean, dry, odorFree, damageFree, reason: reason.trim(), issues, passed: !issues.length,
+        loaded: this.locations[loading.location].pallets.slice() };
+      loading.history.push(event);
+      if (issues.length) loading.trailerHold = { t: event.t, by, reason: event.reason, issues: issues.slice() };
+      this.log(`Order ${id}: trailer ${loading.trailer} inspection ${event.passed ? 'passed' : 'held'} by ${by}: ${event.reason}`);
+      return { ok: true, held: Boolean(loading.trailerHold), text: issues.length ? `Trailer held: ${issues.join('; ')}` : loading.trailerHold ? 'Passing check recorded; trailer hold still requires a release decision' : 'Trailer inspection passed' };
+    }
+
+    releaseTrailerHold(id, reason, by = 'office') {
+      const order = this.orders[id], loading = order?.loading;
+      if (!loading?.trailerHold || order.status === 'shipped') throw new Error('No open trailer hold for this order');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A trailer release reason is required');
+      if (!this.trailerReadiness(id).releaseAllowed) throw new Error('Record a fresh passing trailer inspection before release');
+      loading.history.push({ kind: 'trailer-release', t: this.now(), reason: reason.trim(), by });
+      loading.trailerHold = null;
+      this.log(`Order ${id}: trailer hold released by ${by}: ${reason.trim()}`);
+      return { ok: true, text: 'Trailer hold released; independent pallet holds remain unchanged' };
     }
 
     scanLoading(id, device, raw, unload = false, by = 'loader') {
@@ -995,6 +1040,8 @@
         if (p.loc !== (returning ? loading.location : order.lane)) throw new Error(returning ? 'Pallet is not on this trailer' : `Pallet is not staged on ${order.lane}, or is already loaded`);
         if (!returning) {
           if (order.status !== 'ready') throw new Error('Order is not ready to load');
+          const readiness = this.trailerReadiness(id);
+          if (readiness.reason) throw new Error(readiness.reason);
           const problem = this._checkProblem(p, order);
           if (problem || !p.checked) throw new Error(problem || 'Pallet must be checked and labelled before loading');
         }
@@ -1028,6 +1075,8 @@
         this._loadingPallets(order);
         if (Object.keys(order.loading.pending).length) throw new Error('Complete or cancel pending loading scans before dispatch');
         if (typeof seal !== 'string' || !seal.trim() || seal.trim().length > 40) throw new Error('A seal ID of 1 to 40 characters is required');
+        const readiness = this.trailerReadiness(id);
+        if (readiness.reason) throw new Error(readiness.reason);
       }
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const pallet = this.pallets[sscc];
@@ -1050,7 +1099,8 @@
         order.loading.closedAt = this.now();
         order.loading.history.push({ kind: 'dispatched', seal: seal.trim(), t: this.now(), by });
       }
-      (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped, ...(order.loading ? { trailer: order.loading.trailer, seal: order.loading.seal, loadingHistory: order.loading.history.map((e) => ({ ...e })) } : {}) });
+      (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped, ...(order.loading ? { trailer: order.loading.trailer, seal: order.loading.seal, loadingHistory: order.loading.history.map((e) => ({ ...e })) } : {}),
+        ...(order.loading?.inspectionPolicy ? { trailerInspection: { ...this.trailerReadiness(id).latest }, inspectionPolicy: { ...order.loading.inspectionPolicy } } : {}) });
       this.log(`Order ${id} loaded and shipped`);
     }
 

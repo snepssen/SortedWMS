@@ -61,8 +61,17 @@ test('browser loading scans survive a second page and enforce verified departure
       if (i.task && i.task.orderId === '4501') await post(`/api/devices/${d.id}/scan`, { code: ['pickup', 'check-pallet'].includes(i.kind) ? i.pallet.sscc : i.target });
     }
   }
-  await post('/api/orders/4501/loading', { trailer: 'BROWSER-7' });
+  await post('/api/orders/4501/loading', { trailer: 'BROWSER-7', inspectionPolicy: { min: 2, max: 6, validMinutes: 60 } });
   const report = (await L.fetch('GET', '/api/orders/4501/loading')).body;
+  assert.strictEqual((await L.fetch('POST', '/api/orders/4501/loading/scan', { device: 'LOAD-01', code: report.pallets[0].sscc })).status, 400);
+  const check = { temperature: 4, refrigerationOn: true, clean: true, dry: true, odorFree: true, damageFree: true, reason: 'Browser inspection' };
+  await post('/api/orders/4501/loading/inspection', { ...check, clean: false });
+  const heldPage = browser(a.storage).win.SortedLocal;
+  assert.strictEqual((await heldPage.fetch('GET', '/api/orders/4501/loading')).body.trailerReadiness.status, 'held');
+  assert.strictEqual((await heldPage.fetch('POST', '/api/orders/4501/loading/release', { reason: 'Too soon' })).status, 400);
+  await post('/api/orders/4501/loading/inspection', check);
+  assert.strictEqual((await heldPage.fetch('GET', '/api/orders/4501/loading')).body.trailerReadiness.status, 'held');
+  await post('/api/orders/4501/loading/release', { reason: 'Cleaned, inspected and approved' });
   await post('/api/orders/4501/loading/scan', { device: 'LOAD-01', code: report.pallets[0].sscc });
   const b = browser(a.storage), B = b.win.SortedLocal;
   const restored = (await B.fetch('GET', '/api/orders/4501/loading')).body;

@@ -127,6 +127,7 @@
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
     on('GET', '/api/orders', () => Object.values(wh().orders).map((o) => ({ ...o,
+      trailerReadiness: wh().trailerReadiness(o.id),
       shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),
     })));
     on('GET', '/api/orders/:id/loading', ({ id }) => {
@@ -134,7 +135,7 @@
       const o = wh().orders[id];
       if (!o) return { status: 404, error: `No order ${id}` };
       const pallets = o.lines.flatMap((l) => l.allocated).map((s) => palletView(wh(), wh().pallets[s]));
-      return { id: o.id, customer: o.customer, status: o.status, lane: o.lane, verifyLoading: o.verifyLoading || false, loading: o.loading || null,
+      return { id: o.id, customer: o.customer, status: o.status, lane: o.lane, verifyLoading: o.verifyLoading || false, loading: o.loading || null, trailerReadiness: wh().trailerReadiness(o.id),
         total: o.lines.reduce((n, l) => n + l.pallets, 0), loaded: pallets.filter((p) => o.loading && p.loc === o.loading.location).length, pallets };
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
@@ -216,7 +217,9 @@
     on('POST', '/api/pallets/:sscc/process', ({ sscc }, q, b, by) => run('startProcess', { sscc, route: b.route }, by));
     on('POST', '/api/items/:itemNo/min-ship-days', ({ itemNo }, q, b, by) => run('setMinShipDays', { itemNo, days: b.days }, by));
     on('POST', '/api/orders', (_, q, b, by) => run('addOrder', b, by));
-    on('POST', '/api/orders/:id/loading', ({ id }, q, b, by) => run('startLoading', { id: decodeURIComponent(id), trailer: b.trailer }, by));
+    on('POST', '/api/orders/:id/loading', ({ id }, q, b, by) => run('startLoading', { id: decodeURIComponent(id), trailer: b.trailer, inspectionPolicy: b.inspectionPolicy }, by));
+    on('POST', '/api/orders/:id/loading/inspection', ({ id }, q, b, by) => run('recordTrailerInspection', { ...b, id: decodeURIComponent(id) }, by));
+    on('POST', '/api/orders/:id/loading/release', ({ id }, q, b, by) => run('releaseTrailerHold', { id: decodeURIComponent(id), reason: b.reason }, by));
     on('POST', '/api/orders/:id/loading/scan', ({ id }, q, b, by) => run('scanLoading', { ...b, id: decodeURIComponent(id) }, by));
     on('POST', '/api/orders/:id/ship', ({ id }, q, b, by) => run('shipOrder', { id: decodeURIComponent(id), seal: b.seal }, by));
     on('POST', '/api/deliveries', (_, q, b, by) => run('addDelivery', b, by));

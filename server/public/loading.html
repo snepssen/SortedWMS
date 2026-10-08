@@ -23,6 +23,10 @@
   button:disabled { opacity: .45; cursor: default; }
   .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
   .row label { flex: 1 1 160px; } .row .wide { flex: 2 1 240px; }
+  .checks { display: flex; gap: 12px 24px; flex-wrap: wrap; margin: 16px 0; }
+  label.check { flex-direction: row; align-items: center; color: var(--ink); }
+  .check input { width: 20px; min-height: 20px; margin: 0; accent-color: var(--green); }
+  fieldset { border: 0; padding: 0; margin: 12px 0; min-width: 0; }
   .small { color: var(--dim); font-size: 14px; } .mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
   .summary { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .count { font-size: 24px; font-weight: 700; }
@@ -41,6 +45,7 @@
   .ok { color: var(--green); } .bad { color: var(--red); }
   #message { padding: 12px 0; min-height: 48px; font-weight: 600; overflow-wrap: anywhere; }
   details { margin-top: 12px; } details label { max-width: 400px; margin-top: 8px; }
+  #releaseForm { margin-top: 16px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { header { padding: 12px 16px; gap: 8px; } main { padding: 0 16px 24px; } h1 { font-size: 24px; } .scan-row { flex-wrap: nowrap; } .scan-row label { flex-basis: auto; } }
 </style>
@@ -54,7 +59,17 @@
     <label>Operator <input id="operator" maxlength="40"></label>
   </div><details><summary>Connection</summary><label>Server token <input id="token" type="password"></label></details></section>
   <div id="message" role="status" aria-live="polite"></div>
-  <section id="open" hidden><h2>Assign trailer</h2><form id="openForm" class="row"><label>Trailer ID <input id="trailer" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,29}" required></label><button class="primary" id="openButton">Open manifest</button></form><p id="openStatus" class="small"></p></section>
+  <section id="open" hidden><h2>Assign trailer</h2><form id="openForm">
+    <label>Trailer ID <input id="trailer" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,29}" required></label>
+    <div class="checks"><label class="check"><input id="requireInspection" type="checkbox" checked> Require trailer inspection</label></div>
+    <fieldset id="policy" class="row"><label>Minimum air temperature (C) <input id="airMin" type="number" step="0.1" value="2" required></label><label>Maximum air temperature (C) <input id="airMax" type="number" step="0.1" value="6" required></label><label>Check validity (minutes) <input id="validMinutes" type="number" min="1" max="1440" value="60" required></label></fieldset>
+    <button class="primary" id="openButton">Open manifest</button></form><p id="openStatus" class="small"></p></section>
+  <section id="inspection" hidden><h2>Trailer readiness</h2><p id="readinessStatus" role="status"></p><p id="inspectionPolicy" class="small"></p>
+    <form id="inspectionForm"><label>Trailer air temperature (C) <input id="airTemperature" type="number" step="0.1" required></label>
+      <div class="checks"><label class="check"><input id="refrigerationOn" type="checkbox"> Refrigeration running</label><label class="check"><input id="clean" type="checkbox"> Clean</label><label class="check"><input id="dry" type="checkbox"> Dry</label><label class="check"><input id="odorFree" type="checkbox"> No odor concern</label><label class="check"><input id="damageFree" type="checkbox"> No damage concern</label></div>
+      <div class="row"><label class="wide">Inspection note <input id="inspectionNote" required></label><button class="primary">Record inspection</button></div></form>
+    <form id="releaseForm" class="row" hidden><label class="wide">Trailer hold release reason <input id="releaseReason" required></label><button id="releaseButton">Release trailer hold</button></form>
+  </section>
   <section id="work" hidden>
     <div class="summary"><div><h2 id="customer"></h2><div id="trip" class="small"></div></div><div id="count" class="count"></div></div>
     <progress id="progress" value="0" max="1" aria-label="Pallets loaded"></progress>
@@ -75,7 +90,7 @@
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const table = (head, rows) => `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.join('') : '<tr><td>No scans yet</td></tr>'}</tbody></table>`;
-  let selected = new URLSearchParams(location.search).get('order') || '', view = null, busy = false;
+  let selected = new URLSearchParams(location.search).get('order') || '', view = null, busy = false, expiryTimer;
   const rememberScanner = () => { try { for (const k of ['device', 'operator']) localStorage.setItem('load.' + k, $('#' + k).value); } catch (e) { /* storage optional */ } };
   try { for (const k of ['device', 'operator']) if (localStorage.getItem('load.' + k)) $('#' + k).value = localStorage.getItem('load.' + k); } catch (e) { /* storage optional */ }
   if (window.SortedLocal) $('#office').href = 'admin.html';
@@ -94,6 +109,18 @@
   }
   function render() {
     const l = view && view.loading, shipped = view && view.status === 'shipped';
+    clearTimeout(expiryTimer);
+    const readiness = view && view.trailerReadiness;
+    $('#inspection').hidden = !readiness?.required;
+    if (readiness?.required) {
+      $('#readinessStatus').textContent = readiness.reason || (shipped ? 'Passed at departure' : 'Ready for loading and departure');
+      $('#readinessStatus').className = readiness.reason ? 'bad' : 'ok';
+      $('#inspectionPolicy').textContent = `${readiness.policy.min} to ${readiness.policy.max} C / valid ${readiness.policy.validMinutes} minutes${readiness.latest ? ' / last air reading ' + readiness.latest.temperature + ' C / checked by ' + readiness.latest.by + (readiness.latest.passed ? ' / passing check valid until ' + new Date(readiness.validUntil).toLocaleString() : ' / failed check') : ''}`;
+      $('#inspectionForm').hidden = shipped;
+      $('#releaseForm').hidden = !readiness.hold || shipped;
+      $('#releaseButton').disabled = !readiness.releaseAllowed;
+      if (!shipped && readiness.validUntil > Date.now()) expiryTimer = setTimeout(() => refresh().catch((e) => message(e.message, false)), readiness.validUntil - Date.now() + 25);
+    }
     $('#open').hidden = !view || Boolean(l) || shipped;
     $('#work').hidden = !l;
     $('#manifestSection').hidden = !view;
@@ -121,9 +148,9 @@
     document.querySelectorAll('[name=direction]').forEach((i) => { i.disabled = Boolean(pending); if (pending) i.checked = i.value === (pending.unload ? 'unload' : 'load'); });
     const waiting = Object.keys(l.pending);
     $('#otherPending').textContent = waiting.filter((id) => id !== device).map((id) => `Pending on ${id}: ${l.pending[id].sscc}`).join('; ');
-    $('#dispatchButton').disabled = view.status !== 'ready' || view.loaded !== view.total || view.pallets.some((p) => p.shipState !== 'ok') || Object.keys(l.pending).length > 0;
-    $('#dispatchStatus').textContent = view.pallets.some((p) => p.shipState !== 'ok') ? 'Shipping eligibility held; review the manifest.' : waiting.length ? `Pending confirmation: ${waiting.join(', ')}` : view.loaded !== view.total ? `${view.total - view.loaded} pallet(s) not loaded.` : view.status !== 'ready' ? 'Order is not ready.' : 'Manifest complete. Ready for seal and departure.';
-    $('#history').innerHTML = table(['Time', 'Action', 'SSCC / seal', 'Scanner', 'Operator'], l.history.slice().reverse().map((e) => `<tr><td>${esc(new Date(e.t).toLocaleTimeString())}</td><td>${esc(e.kind)}</td><td class="mono">${esc(e.sscc || e.seal || '')}</td><td>${esc(e.device || '')}</td><td>${esc(e.by)}</td></tr>`));
+    $('#dispatchButton').disabled = Boolean(readiness?.reason) || view.status !== 'ready' || view.loaded !== view.total || view.pallets.some((p) => p.shipState !== 'ok') || Object.keys(l.pending).length > 0;
+    $('#dispatchStatus').textContent = readiness?.reason || (view.pallets.some((p) => p.shipState !== 'ok') ? 'Shipping eligibility held; review the manifest.' : waiting.length ? `Pending confirmation: ${waiting.join(', ')}` : view.loaded !== view.total ? `${view.total - view.loaded} pallet(s) not loaded.` : view.status !== 'ready' ? 'Order is not ready.' : 'Manifest complete. Ready for seal and departure.');
+    $('#history').innerHTML = table(['Time', 'Action', 'SSCC / seal', 'Scanner', 'Operator', 'Details'], l.history.slice().reverse().map((e) => `<tr><td>${esc(new Date(e.t).toLocaleTimeString())}</td><td>${esc(e.kind)}</td><td class="mono">${esc(e.sscc || e.seal || '')}</td><td>${esc(e.device || '')}</td><td>${esc(e.by)}</td><td class="wrap">${esc(e.kind === 'trailer-inspection' ? `${e.temperature} C (${e.min} to ${e.max} C); ${e.passed ? 'All conditions passed' : e.issues.join('; ')}. ${e.reason}. Loaded at check: ${e.loaded.join(', ') || 'none'}` : e.reason || '')}</td></tr>`));
   }
   async function refresh() {
     const orders = await api('GET', '/api/orders');
@@ -136,13 +163,16 @@
     if (busy) return;
     busy = true;
     rememberScanner();
-    try { const result = await action(); message(result && result.text || 'Manifest opened'); }
+    try { const result = await action(); message(result && result.text || 'Manifest opened', !result?.held); }
     catch (e) { message(e.message, false); }
     finally { try { await refresh(); } catch (e) { message('Connection unavailable: ' + e.message, false); } busy = false; }
   }
-  $('#order').onchange = () => { selected = $('#order').value; message(''); refresh().catch((e) => message(e.message, false)); };
+  $('#order').onchange = () => { selected = $('#order').value; $('#inspectionForm').reset(); $('#releaseForm').reset(); $('#dispatchForm').reset(); message(''); refresh().catch((e) => message(e.message, false)); };
   for (const k of ['device', 'operator', 'token']) $('#' + k).onchange = () => { rememberScanner(); refresh().catch((e) => message(e.message, false)); };
-  $('#openForm').onsubmit = (e) => { e.preventDefault(); act(() => api('POST', `/api/orders/${encodeURIComponent(selected)}/loading`, { trailer: $('#trailer').value })); };
+  $('#requireInspection').onchange = () => { $('#policy').disabled = !$('#requireInspection').checked; };
+  $('#openForm').onsubmit = (e) => { e.preventDefault(); act(() => api('POST', `/api/orders/${encodeURIComponent(selected)}/loading`, { trailer: $('#trailer').value, inspectionPolicy: $('#requireInspection').checked ? { min: Number($('#airMin').value), max: Number($('#airMax').value), validMinutes: Number($('#validMinutes').value) } : null })); };
+  $('#inspectionForm').onsubmit = (e) => { e.preventDefault(); act(async () => { const result = await api('POST', `/api/orders/${encodeURIComponent(selected)}/loading/inspection`, { temperature: Number($('#airTemperature').value), reason: $('#inspectionNote').value, ...Object.fromEntries(['refrigerationOn', 'clean', 'dry', 'odorFree', 'damageFree'].map((k) => [k, $('#' + k).checked])) }); $('#inspectionForm').reset(); return result; }); };
+  $('#releaseForm').onsubmit = (e) => { e.preventDefault(); act(async () => { const result = await api('POST', `/api/orders/${encodeURIComponent(selected)}/loading/release`, { reason: $('#releaseReason').value }); $('#releaseForm').reset(); return result; }); };
   const scan = (code) => api('POST', `/api/orders/${encodeURIComponent(selected)}/loading/scan`, { device: $('#device').value.trim(), code, unload: $('[name=direction]:checked').value === 'unload' });
   $('#scanForm').onsubmit = (e) => { e.preventDefault(); const code = $('#scan').value; $('#scan').value = ''; act(() => scan(code)).finally(() => $('#scan').focus()); };
   $('#cancel').onclick = () => act(() => scan('CMD-CANCEL'));

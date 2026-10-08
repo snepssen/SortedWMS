@@ -55,7 +55,9 @@
 
     // Orders and deliveries
     addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading }),
-    startLoading: (wh, a, by) => wh.startLoading(String(req(a.id, 'id')), req(a.trailer, 'trailer'), by),
+    startLoading: (wh, a, by) => wh.startLoading(String(req(a.id, 'id')), req(a.trailer, 'trailer'), by, { inspectionPolicy: a.inspectionPolicy === undefined ? null : a.inspectionPolicy }),
+    recordTrailerInspection: (wh, a, by) => wh.recordTrailerInspection(String(req(a.id, 'id')), a, by),
+    releaseTrailerHold: (wh, a, by) => wh.releaseTrailerHold(String(req(a.id, 'id')), req(a.reason, 'reason'), by),
     scanLoading: (wh, a, by) => wh.scanLoading(String(req(a.id, 'id')), req(a.device, 'device'), req(a.code, 'code'), a.unload === undefined ? false : a.unload, by),
     shipOrder: (wh, a, by) => wh.shipOrder(String(req(a.id, 'id')), { seal: a.seal }, by),
     addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock' }),

@@ -37,6 +37,87 @@ function unchanged(wh, action, pattern) {
   assert.equal(JSON.stringify(wh), before);
 }
 
+const policy = { min: 2, max: 6, validMinutes: 1 };
+const passing = { temperature: 4, refrigerationOn: true, clean: true, dry: true, odorFree: true, damageFree: true, reason: 'Manual demo inspection' };
+
+test('trailer policies validate atomically and are copied into a non-downgradable session', () => {
+  const { wh, order, pallets: [p] } = setup(1);
+  for (const invalid of [false, [], {}, { ...policy, min: 7 }, { ...policy, max: Infinity }, { ...policy, validMinutes: 0 }, { ...policy, validMinutes: 1441 }, { ...policy, validMinutes: 1.5 }]) {
+    unchanged(wh, () => wh.startLoading('5001', 'COLD-1', 'office', { inspectionPolicy: invalid }), /Trailer policy/);
+  }
+  const input = { ...policy };
+  wh.startLoading('5001', 'COLD-1', 'office', { inspectionPolicy: input });
+  input.max = 100;
+  assert.deepEqual(order.loading.inspectionPolicy, policy);
+  assert.equal(wh.trailerReadiness('5001').status, 'inspection-required');
+  unchanged(wh, () => load(wh, p), /inspection required/);
+  unchanged(wh, () => wh.startLoading('5001', 'COLD-2'), /already has a trailer/);
+  for (const patch of [{ temperature: NaN }, { temperature: '4' }, { reason: ' ' }, { clean: undefined }, { dry: 1 }]) {
+    unchanged(wh, () => wh.recordTrailerInspection('5001', { ...passing, ...patch }), /temperature|note|condition/);
+  }
+});
+
+test('failed trailer checks are sticky; a passing check alone cannot clear a hold', () => {
+  const { wh, order, pallets: [p] } = setup(1);
+  wh.startLoading('5001', 'COLD-1', 'office', { inspectionPolicy: policy });
+  const failed = wh.recordTrailerInspection('5001', { ...passing, temperature: 9, refrigerationOn: false, clean: false, dry: false, odorFree: false, damageFree: false }, 'inspector-1');
+  assert.equal(failed.held, true);
+  assert.equal(order.loading.trailerHold.issues.length, 6);
+  unchanged(wh, () => wh.releaseTrailerHold('5001', 'Reviewed'), /fresh passing/);
+  wh.recordTrailerInspection('5001', passing, 'inspector-2');
+  assert.equal(wh.trailerReadiness('5001').releaseAllowed, true);
+  unchanged(wh, () => load(wh, p), /Trailer hold/);
+  unchanged(wh, () => wh.releaseTrailerHold('5001', ' '), /release reason/);
+  wh.clock = () => now() + 60000;
+  unchanged(wh, () => wh.releaseTrailerHold('5001', 'Reviewed'), /fresh passing/);
+  wh.recordTrailerInspection('5001', passing);
+  wh.recordTemperature(p.sscc, 9, 2, 6, 'Independent goods concern');
+  wh.placeBatchHold(p.itemNo, p.batch, 'Independent recall');
+  wh.releaseTrailerHold('5001', 'Trailer corrected and checked', 'coordinator');
+  assert.equal(wh.trailerReadiness('5001').status, 'ready');
+  assert.ok(p.qualityHold);
+  assert.equal(wh.batchRecall(p.itemNo, p.batch).active, true);
+  unchanged(wh, () => load(wh, p), /Quality hold|Batch recall/);
+  assert.equal(order.loading.history.at(-1).by, 'coordinator');
+});
+
+test('readiness expires at the boundary, rechecks destination scans and never prevents unloading', () => {
+  const { wh, order, pallets: [p] } = setup(1);
+  wh.startLoading('5001', 'COLD-1', 'office', { inspectionPolicy: policy });
+  wh.recordTrailerInspection('5001', { ...passing, temperature: 2 });
+  wh.scanLoading('5001', 'LOAD-01', p.sscc);
+  wh.clock = () => now() + 60000;
+  unchanged(wh, () => wh.scanLoading('5001', 'LOAD-01', 'TRAILER-COLD-1'), /expired/);
+  assert.equal(p.loc, 'OUT-01');
+  wh.recordTrailerInspection('5001', { ...passing, temperature: 6 });
+  wh.scanLoading('5001', 'LOAD-01', 'TRAILER-COLD-1');
+  wh.clock = () => now() + 59999;
+  unchanged(wh, () => wh.shipOrder('5001', { seal: 'S1' }), /expired/);
+  wh.clock = () => now() + 120000;
+  unchanged(wh, () => wh.shipOrder('5001', { seal: 'S1' }), /expired/);
+  wh.recordTrailerInspection('5001', { ...passing, dry: false });
+  assert.deepEqual(order.loading.history.at(-1).loaded, [p.sscc]);
+  unchanged(wh, () => wh.shipOrder('5001', { seal: 'S1' }), /Trailer hold/);
+  wh.scanLoading('5001', 'LOAD-01', p.sscc, true);
+  wh.scanLoading('5001', 'LOAD-01', 'CMD-CANCEL');
+  wh.scanLoading('5001', 'LOAD-01', p.sscc, true);
+  wh.scanLoading('5001', 'LOAD-01', 'OUT-01', true);
+  wh.recordTrailerInspection('5001', passing);
+  wh.releaseTrailerHold('5001', 'Dry and inspected');
+  load(wh, p);
+  wh.shipOrder('5001', { seal: 'S1' });
+  const shipment = wh.shipments[0];
+  assert.equal(shipment.trailerInspection.temperature, 4);
+  assert.deepEqual(shipment.inspectionPolicy, policy);
+  wh.clock = () => now() + 86400000;
+  assert.equal(wh.trailerReadiness('5001').status, 'ready', 'departure evidence does not expire retrospectively');
+  unchanged(wh, () => wh.recordTrailerInspection('5001', passing), /No open/);
+  stage(wh, '5002', 1);
+  wh.startLoading('5002', 'COLD-1', 'office', { inspectionPolicy: policy });
+  assert.equal(wh.trailerReadiness('5002').status, 'inspection-required');
+  assert.equal(wh.trailerReadiness('5001').status, 'ready');
+});
+
 test('verified loading requires a ready, fully allocated manifest and a unique trailer', () => {
   const { wh, order } = setup();
   unchanged(wh, () => wh.shipOrder(order.id), /Open a trailer manifest/);
@@ -178,8 +259,17 @@ test('loading API, pending scans, actors and trailer inventory survive journal a
     const api = createApi({ store, printers: { flush() {}, results: [] } });
     const post = (path, body, by = 'operator-1') => api.handle('POST', `/api/orders/${route}/${path}`, body, by);
     assert.equal(post('ship', { seal: 'S1' }).status, 400);
-    assert.equal(post('loading', { trailer: 'DEMO-07' }, 'office-1').status, 200);
+    assert.equal(post('loading', { trailer: 'DEMO-07', inspectionPolicy: policy }, 'office-1').status, 200);
+    assert.equal(post('loading/inspection', { ...passing, temperature: 9 }, 'inspector-1').status, 200);
+    const held = JSON.stringify(store.wh);
+    store.load();
+    assert.equal(JSON.stringify(store.wh), held);
+    assert.equal(api.handle('GET', `/api/orders/${route}/loading`).body.trailerReadiness.status, 'held');
+    assert.equal(post('loading/release', { reason: 'Too soon' }).status, 400);
+    assert.equal(post('loading/inspection', passing, 'inspector-2').status, 200);
+    assert.equal(post('loading/release', { reason: 'Trailer corrected and reinspected' }, 'quality-1').status, 200);
     assert.equal(post('loading/scan', { device: 'LOAD-01', code: '387999990000091016' }).status, 200);
+    store.snapshot();
     const before = JSON.stringify(store.wh);
     store.load();
     assert.equal(JSON.stringify(store.wh), before);
@@ -196,6 +286,10 @@ test('loading API, pending scans, actors and trailer inventory survive journal a
     store.load();
     assert.equal(JSON.stringify(store.wh), shipped);
     assert.equal(store.wh.shipments[0].seal, 'S1');
+    assert.equal(store.wh.shipments[0].trailerInspection.by, 'inspector-2');
+    assert.equal(store.wh.shipments[0].loadingHistory.find((e) => e.kind === 'trailer-release').by, 'quality-1');
+    const restoredShipment = Warehouse.restore(store.wh.toJSON(), { clock: () => now() + 86400000 });
+    assert.equal(restoredShipment.trailerReadiness(id).status, 'ready');
   } finally { store.close(); }
 });
 
@@ -222,6 +316,25 @@ test('guided loading rejects unsafe departure, unloads held stock, reloads and t
   assert.equal(d.wh.orders['5001'].status, 'shipped');
   assert.equal(d.trace.shipped[0].seal, 'DEMO-SEAL-07');
   assert.equal(d.wh.orders['5001'].loading.history.filter((e) => e.kind === 'unloaded').length, 1);
+});
+
+test('guided trailer readiness stops missing, expired and held loads and preserves departure evidence', () => {
+  const d = new Walkthrough(site, 'readiness');
+  assert.equal(d.steps.length, 26);
+  while (d.step) {
+    const i = d.index;
+    d.next();
+    if ([8, 13].includes(i)) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
+    if (i === 10) assert.equal(d.wh.trailerReadiness('5101').status, 'held');
+    if (i === 16) assert.deepEqual(d.wh.orders['5101'].loading.history.at(-1).loaded, [d.first]);
+    if (i === 19) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
+  }
+  assert.equal(d.wh.orders['5101'].status, 'shipped');
+  assert.equal(d.trace.shipped[0].seal, 'COLD-SEAL-08');
+  assert.equal(d.wh.shipments[0].loadingHistory.filter((e) => e.kind === 'trailer-inspection').length, 5);
+  assert.equal(d.wh.shipments[0].loadingHistory.filter((e) => e.kind === 'trailer-release').length, 2);
+  d.time += 86400000;
+  assert.equal(d.wh.trailerReadiness('5101').status, 'ready');
 });
 
 test('loading screen and changed inline scripts parse and the server serves the scanner page', async () => {
