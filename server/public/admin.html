@@ -160,12 +160,26 @@
 
   async function renderStock() {
     const stock = await api('GET', '/api/stock');
+    const quality = await api('GET', '/api/quality');
     return `<div class="grid">
       <section style="grid-column:1/-1"><h2>Stock per item</h2>${table(['Item', 'Name', 'Category', 'Can ship', 'Cases', 'Batches', 'Short-dated', 'Blocked', 'Next out', 'Min. days', ''], stock.map((r) => `<tr>
         <td>${esc(r.item.itemNo)}</td><td>${esc(r.item.name)}</td><td>${esc(S.categories[r.item.category] || r.item.category)}</td>
         <td>${r.available}</td><td>${r.qty}</td><td>${r.batches}</td><td>${r.short ? `<span class="tag held">${r.short}</span>` : 0}</td><td>${r.blocked ? `<span class="tag bad">${r.blocked}</span>` : 0}</td>
         <td>${r.next ? `${esc(r.next.batch)} · ${dmy(r.next.expiry)} · ${esc(r.next.locName || '')}` : ''}</td>
         <td><input data-minship="${esc(r.item.itemNo)}" value="${r.item.minShipDays}" size="3"></td><td><button class="small" data-minship-save="${esc(r.item.itemNo)}">Save</button></td></tr>`))}</section>
+      <section style="grid-column:1/-1"><h2>Temperature inspection</h2>
+        <form id="qualityForm" class="form">
+          <label>Pallet SSCC <input id="qSscc" required></label>
+          <label>Measured C <input id="qTemperature" type="number" step="any" required></label>
+          <label>Minimum C <input id="qMin" type="number" step="any" required></label>
+          <label>Maximum C <input id="qMax" type="number" step="any" required></label>
+          <label>Inspection note <input id="qReason" required></label>
+          <button type="submit">Record inspection</button>
+        </form><div id="qualityOut" class="out" style="display:none"></div>
+        <h3>Quality holds</h3><label>Release reason <input id="qReleaseReason"></label>
+        ${table(['Pallet', 'Batch', 'Location', 'Measured C', 'Limits C', 'Reason', ''], quality.filter((p) => p.qualityHold).map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.batch)}</td><td>${esc(p.locName || 'On truck')}</td><td>${p.qualityHold.temperature}</td><td>${p.qualityHold.min} to ${p.qualityHold.max}</td><td>${esc(p.qualityHold.reason)}</td><td><button data-quality-release="${esc(p.sscc)}">Release hold</button></td></tr>`))}
+        <h3>Inspection & release history</h3>${table(['When', 'Pallet', 'Action', 'Measured C', 'Limits C', 'Reason', 'By'], quality.flatMap((p) => p.qualityHistory.map((e) => ({ p, e }))).sort((a, b) => b.e.t - a.e.t).map(({ p, e }) => `<tr><td>${when(e.t)}</td><td class="mono">${esc(p.sscc)}</td><td>${e.kind === 'release' ? 'Released' : e.outside ? 'Quality hold' : 'Reading recorded'}</td><td>${e.temperature == null ? '' : e.temperature}</td><td>${e.min == null ? '' : `${e.min} to ${e.max}`}</td><td>${esc(e.reason)}</td><td>${esc(e.by)}</td></tr>`))}
+      </section>
       <section><h2>Batch trace (recall)</h2><div class="form"><input id="trcIn" placeholder="Batch number" style="flex:1"><button id="trcGo">Trace</button></div><div id="trcOut"></div></section>
     </div>`;
   }
@@ -284,6 +298,17 @@
     on('#lkGo', () => { $('#lkOut').style.display = ''; act('#lkOut', async () => { const r = await api('GET', `/api/lookup/${encodeURIComponent(val('#lkIn'))}`); return r.text; }); });
     on('#trGo', () => { $('#trOut').style.display = ''; act('#trOut', async () => { const r = await api('POST', '/api/transfer', { sscc: val('#trS').replace(/^00/, ''), to: val('#trTo') }); if (!r.ok) throw new Error(r.text); return r.text; }); });
     // Stock
+    const qualityAction = async (fn) => {
+      let message = 'Recorded', ok = true;
+      try { await fn(); await draw(); } catch (e) { message = e.message; ok = false; }
+      const out = $('#qualityOut');
+      if (out) { out.style.display = ''; out.className = `out ${ok ? 'ok' : 'bad'}`; out.textContent = message; }
+    };
+    if ($('#qualityForm')) $('#qualityForm').onsubmit = (e) => {
+      e.preventDefault();
+      qualityAction(() => api('POST', `/api/pallets/${encodeURIComponent($('#qSscc').value.trim())}/temperature`, { temperature: Number($('#qTemperature').value), min: Number($('#qMin').value), max: Number($('#qMax').value), reason: $('#qReason').value }));
+    };
+    document.querySelectorAll('[data-quality-release]').forEach((b) => (b.onclick = () => qualityAction(() => api('POST', `/api/pallets/${b.dataset.qualityRelease}/quality-release`, { reason: $('#qReleaseReason').value }))));
     document.querySelectorAll('[data-minship-save]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/items/${b.dataset.minshipSave}/min-ship-days`, { days: Number($(`[data-minship="${b.dataset.minshipSave}"]`).value) }))));
     on('#trcGo', async () => {
       try {

@@ -21,6 +21,7 @@
     return {
       sscc: p.sscc, itemNo: p.itemNo, name: item && item.name, category: item && item.category, batch: p.batch, expiry: p.expiry,
       qty: p.qty, status: p.status, blockReason: p.blockReason, shipState: wh.shipState(p), loc: p.loc, locName: placeName(wh, p.loc),
+      qualityHold: p.qualityHold || null, qualityHistory: p.qualityHistory || [],
       orderId: p.orderId, inProcess: p.proc ? p.proc.route : null,
     };
   }
@@ -127,6 +128,7 @@
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
     on('GET', '/api/items', () => Object.values(wh().items));
     on('GET', '/api/stock', () => wh().stockSummary().map((r) => ({ ...r, next: palletView(wh(), r.next) })));
+    on('GET', '/api/quality', () => Object.values(wh().pallets).filter((p) => p.qualityHistory && p.qualityHistory.length).map((p) => palletView(wh(), p)));
     on('GET', '/api/lookup/:code', ({ code }) => {
       const r = wh().lookup(decodeURIComponent(code));
       if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
@@ -177,6 +179,8 @@
     });
     on('POST', '/api/locations/:code/unblock', ({ code }, q, b, by) => run('unblockLocation', { code: wh().resolve(decodeURIComponent(code)) }, by));
     on('POST', '/api/pallets/:sscc/status', ({ sscc }, q, b, by) => run('setPalletStatus', { sscc, status: b.status, reason: b.reason }, by));
+    on('POST', '/api/pallets/:sscc/temperature', ({ sscc }, q, b, by) => run('recordTemperature', { sscc, temperature: b.temperature, min: b.min, max: b.max, reason: b.reason }, by));
+    on('POST', '/api/pallets/:sscc/quality-release', ({ sscc }, q, b, by) => run('releaseQualityHold', { sscc, reason: b.reason }, by));
     on('POST', '/api/pallets/:sscc/allow-short', ({ sscc }, q, b, by) => run('allowShortShip', { sscc }, by));
     on('POST', '/api/pallets/:sscc/process', ({ sscc }, q, b, by) => run('startProcess', { sscc, route: b.route }, by));
     on('POST', '/api/items/:itemNo/min-ship-days', ({ itemNo }, q, b, by) => run('setMinShipDays', { itemNo, days: b.days }, by));

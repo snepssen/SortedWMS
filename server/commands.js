@@ -35,6 +35,8 @@
     releaseTask: (wh, a) => wh.releaseTask(req(a.taskId, 'taskId')),
     unblockLocation: (wh, a) => wh.unblockLocation(req(a.code, 'code')),
     setPalletStatus: (wh, a) => wh.setPalletStatus(req(a.sscc, 'sscc'), req(a.status, 'status'), a.reason || null),
+    recordTemperature: (wh, a, by) => wh.recordTemperature(req(a.sscc, 'sscc'), a.temperature, a.min, a.max, req(a.reason, 'reason'), by),
+    releaseQualityHold: (wh, a, by) => wh.releaseQualityHold(req(a.sscc, 'sscc'), req(a.reason, 'reason'), by),
     allowShortShip: (wh, a) => wh.allowShortShip(req(a.sscc, 'sscc')),
     setMinShipDays: (wh, a) => wh.setMinShipDays(req(a.itemNo, 'itemNo'), Number(a.days)),
     transferPallet: (wh, a, by) => wh.transferPallet(req(a.sscc, 'sscc'), wh.resolve(req(a.to, 'to')), { by }),

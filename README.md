@@ -6,6 +6,17 @@ A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, chees
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
+**Guided scenarios:** `walkthrough.html` has four selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
+
+- **Receiving to shipping (22 steps):** protein drinks through partitioning, receiving, Auto put-away, FEFO allocation, damage replacement, pallet change, check & label, shipping and batch trace.
+- **Auto-Shift & partitioning (8 steps):** bring the next-out yoghurt pallet down, change its location's partition, then relocate it into yoghurt storage.
+- **Manual work & corrections (17 steps):** choose one of two orders, pick and label it, put away a dock pallet, correct a misplaced pallet, and recover stock displaced onto the location-unknown list. A pending pick follows the corrected location.
+- **Temperature & quality holds (12 steps):** receive a yoghurt pallet, record an out-of-range temperature, store it on hold, allocate eligible replacement stock, record a follow-up, and release it with a review reason. The example limits are demonstration values, not product requirements.
+
+Switch between Admin, Office, Scanner and Station to inspect the same warehouse state, including jobs, stock, corrections and the audit. These are demonstration views, not access-controlled roles. Browser labels are generated but are not sent to a printer. Trailer loading verification and the broader refrigerated workflows remain future work.
+
+For a local preview of the guided shift, run `npm run build:pages`, then serve `_site/` with a static HTTP server. The guided shift needs HTTP to load the example site configuration.
+
 **Try the handheld and office screens: https://snepssen.github.io/SortedWMS/wms.html**. These are the real WMS screens with made-up stock. On Pages there's no server, so the WMS runs inside the browser and changes stay in that browser. A button scans whatever the handheld asks for, since a computer has no scanner.
 
 To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
@@ -49,6 +60,7 @@ Each truck is set to the **categories its operator works** (yoghurt, cheese, pro
   - Raising the minimum swaps any planned picks onto good pallets.
   - The manager can let a single short pallet ship anyway (e.g. a customer accepts it).
 - **Blocked stock never ships.** That covers pallets reported damaged, or expired on arrival. The coordinator can release them.
+- **Temperature checks and quality holds:** Stock & trace in the office records a pallet's measured temperature, the limits used, an inspection note and the operator. Out-of-range readings create a separate quality hold. In-range follow-ups do not clear it; release requires a recorded reason and leaves independent damage blocks intact. Uncollected picks get replacement stock, and shipment checks eligibility again before removing any pallets. These are recorded spot checks, not continuous temperature monitoring or a physical quarantine-zone workflow.
 
 ### Working without Auto
 Each handheld has a mode bar. Auto is the default; the others are for when a driver works on their own:

@@ -455,7 +455,7 @@
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
     shipState(pallet) {
-      if (pallet.status === 'blocked') return 'blocked';
+      if (pallet.status === 'blocked' || pallet.qualityHold) return 'blocked';
       const days = daysBetween(this.today(), pallet.expiry);
       if (days < 0) return 'expired';
       if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
@@ -562,6 +562,43 @@
       this.log(`Pallet …${sscc.slice(-6)} ${status === 'blocked' ? `blocked: ${pallet.blockReason}` : 'released for use'}`);
       this.planGround();
       this.dispatch();
+    }
+
+    recordTemperature(sscc, temperature, min, max, reason, by = 'office') {
+      const pallet = this._pallet(sscc);
+      if (pallet.status === 'shipped') throw new Error('Cannot inspect shipped stock');
+      if (![temperature, min, max].every((n) => typeof n === 'number' && Number.isFinite(n)) || min > max) throw new Error('Temperature and limits must be finite numbers, with minimum <= maximum');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('An inspection note is required');
+      const outside = temperature < min || temperature > max;
+      const event = { kind: 'temperature', t: this.now(), temperature, min, max, reason: reason.trim(), by, outside };
+      (pallet.qualityHistory || (pallet.qualityHistory = [])).push(event);
+      if (outside) {
+        pallet.qualityHold = event;
+        // Reallocate picks that have not been collected; a carried pallet may still be dropped safely.
+        for (const task of Object.values(this.tasks)) {
+          if (task.sscc !== sscc || task.type !== 'PICK' || !['open', 'active'].includes(task.status) || task.step !== 0) continue;
+          this._unassign(task);
+          task.status = 'held';
+          task.heldReason = 'Quality hold';
+          this._replacePick(task);
+        }
+      }
+      this.log(`Pallet …${sscc.slice(-6)}: ${temperature} C (limits ${min} to ${max} C), ${outside ? 'quality hold' : 'reading recorded'}: ${event.reason}`);
+      this.dispatch();
+      return event;
+    }
+
+    releaseQualityHold(sscc, reason, by = 'office') {
+      const pallet = this._pallet(sscc);
+      if (!pallet.qualityHold) throw new Error('Pallet has no active quality hold');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A release reason is required');
+      const event = { kind: 'release', t: this.now(), reason: reason.trim(), by };
+      pallet.qualityHistory.push(event);
+      pallet.qualityHold = null;
+      this.log(`Pallet …${sscc.slice(-6)} quality hold released by ${by}: ${event.reason}`);
+      this.planGround();
+      this.dispatch();
+      return event;
     }
 
     palletAt(code) {
@@ -750,6 +787,11 @@
       const order = this.orders[id];
       if (!order) throw new Error(`No order ${id}`);
       if (order.status !== 'ready') throw new Error(`Order ${id} is not ready to load`);
+      for (const sscc of order.lines.flatMap((l) => l.allocated)) {
+        const pallet = this.pallets[sscc];
+        if (this.shipState(pallet) !== 'ok') throw new Error(`Pallet …${sscc.slice(-6)} cannot ship: ${pallet.qualityHold ? 'quality hold' : this.shipState(pallet)}`);
+        if (pallet.loc !== order.lane) throw new Error(`Pallet …${sscc.slice(-6)} is not on ${order.lane}`);
+      }
       const shipped = [];
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const p = this.pallets[sscc];
@@ -1357,7 +1399,7 @@
       const f = [];
       const state = this.shipState(p);
       if (p.status === 'missing') f.push('location unknown');
-      else if (state === 'blocked') f.push(`BLOCKED${p.blockReason ? `: ${p.blockReason}` : ''}`);
+      else if (state === 'blocked') f.push(`BLOCKED${p.qualityHold ? `: Quality hold - ${p.qualityHold.reason}` : p.blockReason ? `: ${p.blockReason}` : ''}`);
       else if (state !== 'ok') f.push(`${state === 'expired' ? 'expired' : 'too short-dated to ship'}`);
       if (p.orderId && p.status !== 'shipped') f.push(`order ${p.orderId}`);
       if (p.proc) f.push(`in process: ${this.routes[p.proc.route] ? this.routes[p.proc.route].name : p.proc.route}`);
@@ -1893,6 +1935,7 @@
 
     _matchPickup(truck, task, code) {
       const pallet = this.pallets[task.sscc];
+      if (task.type === 'PICK' && this.shipState(pallet) !== 'ok') return { ok: false, text: `Pallet cannot ship (${pallet.qualityHold ? 'quality hold' : this.shipState(pallet)})` };
       const fromLoc = this.locations[task.from];
       if (code === task.sscc) return { ok: true, text: '' };
       if (fromLoc.kind === 'rack' && code === task.from) return { ok: true, text: '' };
@@ -2036,7 +2079,7 @@
     _checkProblem(pallet, order) {
       if (pallet.orderId !== order.id) return 'Pallet is not allocated to this order';
       const state = this.shipState(pallet);
-      if (state === 'blocked') return `Pallet is blocked (${pallet.blockReason})`;
+      if (state === 'blocked') return `Pallet is blocked (${pallet.qualityHold ? 'Quality hold: ' + pallet.qualityHold.reason : pallet.blockReason})`;
       if (state === 'expired') return 'Pallet is past its expiry date';
       if (state === 'short') return `Only ${this.daysLeft(pallet)} days left, minimum to ship is ${this.items[pallet.itemNo].minShipDays}`;
       if (!order.lines.some((l) => l.itemNo === pallet.itemNo)) return 'Wrong item for this order';

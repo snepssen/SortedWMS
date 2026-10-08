@@ -1599,7 +1599,7 @@ td .acts { display: flex; gap: 4px; }
     setHTML($('stock'), wh.stockSummary().map((r) => {
       const n = r.next;
       const loc = n && wh.locations[n.loc];
-      const lvl = loc ? (loc.level === 0 ? '<span class="lvl ground">ground</span>' : `<span class="lvl high">level ${loc.level}</span>`) : '';
+      const lvl = loc && loc.kind === 'rack' ? (loc.level === 0 ? '<span class="lvl ground">ground</span>' : `<span class="lvl high">level ${loc.level}</span>`) : '';
       return `<tr><td><b>${esc(r.item.itemNo)}</b> ${esc(r.item.name)}</td><td>${catHtml(r.item.category)}</td>
         <td class="num">${r.available}</td><td class="num">${r.batches}</td><td class="num">${r.short || ''}</td><td class="num">${r.blocked || ''}</td>
         <td>${n ? `${ssccHtml(n.sscc)} ${esc(n.batch)}` : '<span class="hint">no stock</span>'}</td>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SortedWMS | Guided shift</title>
+<style>
+:root { color-scheme: light; font: 14px/1.5 system-ui, sans-serif; color: #202b2b; background: #f4f6f5; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select { font: inherit; }
+select { min-height: 44px; padding: 8px; border: 1px solid #bbc7c3; border-radius: 5px; background: white; color: inherit; max-width: 100%; }
+.scenario { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+button, a { touch-action: manipulation; }
+button { cursor: pointer; border: 1px solid #bbc7c3; background: white; color: inherit; border-radius: 5px; padding: 9px 13px; min-height: 44px; }
+button:hover { background: #edf3f0; }
+button:focus-visible, a:focus-visible { outline: 3px solid #b66c12; outline-offset: 3px; }
+button:disabled { opacity: .5; cursor: default; }
+a { color: #14674e; }
+header { padding: 16px 24px; border-bottom: 1px solid #ccd5d1; background: white; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+header strong { font-size: 21px; }
+header span { color: #586763; }
+header nav { margin-left: auto; display: flex; gap: 18px; }
+main { max-width: 1450px; margin: auto; padding: 24px; }
+.progress { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+progress { flex: 1; height: 8px; accent-color: #197656; }
+.step { border-top: 3px solid #197656; border-bottom: 1px solid #ccd5d1; padding: 20px 0; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+h1 { font-size: 25px; margin: 3px 0 6px; }
+h2 { font-size: 18px; margin: 0 0 16px; }
+h3 { font-size: 15px; margin: 18px 0 8px; }
+p { margin: 6px 0; }
+.muted, small { color: #586763; }
+.role { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #14674e; }
+.primary { background: #14674e; color: white; border-color: #14674e; font-weight: 600; }
+.primary:hover { background: #0c513d; }
+.roles { display: flex; gap: 6px; padding: 20px 0; flex-wrap: wrap; }
+.roles [aria-selected="true"] { background: #202b2b; border-color: #202b2b; color: white; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; }
+.surface { min-width: 0; min-height: 350px; }
+.table { overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #d4ddd9; vertical-align: top; }
+th { color: #586763; font-weight: 600; }
+.mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.status { font-size: 12px; background: #dceee5; padding: 3px 7px; border-radius: 3px; display: inline-block; }
+.blocked { background: #f7dfd9; color: #8b3224; }
+.scanner { max-width: 420px; border: 1px solid #bac8c1; border-radius: 6px; background: white; padding: 22px; }
+.target { font-size: 32px; font-weight: 750; overflow-wrap: anywhere; margin: 12px 0; }
+.barcode { margin: 16px 0; background: white; padding: 12px 0; }
+.barcode svg { display: block; width: 100%; height: 56px; }
+dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+dt { color: #586763; } dd { margin: 0; overflow-wrap: anywhere; }
+aside { border-left: 1px solid #ccd5d1; padding-left: 24px; }
+aside ol { padding-left: 21px; margin: 0; }
+aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
+.message { padding: 12px 0; min-height: 45px; color: #14674e; overflow-wrap: anywhere; }
+.error { color: #a32c22; }
+.stock { border-top: 1px solid #ccd5d1; margin-top: 28px; padding-top: 22px; }
+.summary { display: flex; gap: 12px 24px; flex-wrap: wrap; padding: 12px 0; }
+.empty { padding: 25px 0; color: #586763; }
+@media (max-width: 800px) { main { padding: 16px; } header { padding: 12px 16px; } header nav { margin-left: 0; } .layout { grid-template-columns: 1fr; } aside { border-left: 0; border-top: 1px solid #ccd5d1; padding: 20px 0 0; } .step { grid-template-columns: 1fr; } .step button { width: 100%; } h1 { font-size: 23px; } .target { font-size: 28px; } }
+</style>
+</head>
+<body>
+<header><strong>SortedWMS</strong><span>Guided shift · isolated demo stock</span><nav><a href="index.html">Simulated shift</a><a href="wms.html">Free play</a></nav></header>
+<main>
+  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option></select></div>
+  <div class="progress"><span id="count">Loading shift</span><progress id="progress" value="0" max="22" aria-label="Shift progress"></progress><button id="restart" title="Restart guided shift" aria-label="Restart guided shift">&#8635;</button></div>
+  <section class="step"><div><span class="role" id="owner"></span><h1 id="title">Receiving to shipping</h1><p id="detail" class="muted"></p></div><button id="next" class="primary" disabled>Loading</button></section>
+  <div id="message" class="message" role="status" aria-live="polite"></div>
+  <div class="roles" role="tablist" aria-label="Warehouse role">
+    <button role="tab" id="role-admin" data-role="admin" aria-controls="surface">Admin</button>
+    <button role="tab" id="role-office" data-role="office" aria-controls="surface">Office</button>
+    <button role="tab" id="role-scanner" data-role="scanner" aria-controls="surface">Scanner</button>
+    <button role="tab" id="role-station" data-role="station" aria-controls="surface">Station</button>
+  </div>
+  <div class="layout"><section id="surface" class="surface" role="tabpanel"></section><aside><h2>Shift audit</h2><ol id="audit"></ol></aside></div>
+  <section class="stock"><h2>Live stock</h2><div id="stock"></div></section>
+</main>
+<script src="src/gs1.js"></script><script src="src/labels.js"></script><script src="src/engine.js"></script><script src="src/barcode.js"></script><script src="server/site.js"></script><script src="server/commands.js"></script><script src="src/walkthrough.js"></script>
+<script>
+(async function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const labels = { admin: 'Admin', office: 'Office', scanner: 'Scanner', station: 'Station' };
+  const descriptions = {
+    applyTemplate: 'Rack AP reserved for protein drinks.', addTruck: 'RT-PRO assigned to protein drinks in Auto.',
+    addDelivery: 'DEMO-IN announced: two pallets from Demo drinks supplier.', addOrder: 'DEMO-OUT released: one pallet for Fresh Market, pallet change required.',
+    shipOrder: 'DEMO-OUT shipped to Fresh Market.',
+  };
+  const table = (heads, rows) => `<div class="table"><table><thead><tr>${heads.map((h) => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${heads.length}">None yet</td></tr>`}</tbody></table></div>`;
+  let site, demo, role = 'admin';
+  function draw() {
+    const wh = demo.wh, step = demo.step;
+    $('#count').textContent = `${demo.index} / ${demo.steps.length} complete`;
+    $('#progress').max = demo.steps.length;
+    $('#progress').value = demo.index;
+    $('#owner').textContent = step ? `${labels[step.role]} · Step ${demo.index + 1}` : 'Shift complete';
+    $('#title').textContent = step ? step.title : demo.scenario.complete;
+    $('#detail').textContent = step ? step.detail : demo.scenario.outcome;
+    $('#next').textContent = step ? step.action : 'Shift complete';
+    $('#next').disabled = !step;
+    document.querySelectorAll('[data-role]').forEach((b) => { b.setAttribute('aria-selected', String(b.dataset.role === role)); b.tabIndex = b.dataset.role === role ? 0 : -1; });
+    $('#surface').setAttribute('aria-labelledby', `role-${role}`);
+    let html = '';
+    if (role === 'admin') {
+      const locs = Object.values(wh.locations).filter((l) => l.kind === 'rack');
+      html = `<h2>Storage & assignment</h2>${table(['Category', 'Rack positions'], Object.entries(wh.categories).map(([id, name]) => [name, locs.filter((l) => l.category === id).length]))}<h3>Reach trucks</h3>${table(['Truck', 'Mode', 'Works'], Object.values(wh.trucks).map((t) => [t.id, SortedWMS.TRUCK_MODES[t.mode].label, t.categories.map((c) => wh.categories[c]).join(', ')]))}<div class="summary"><span>One-way aisles: ${wh.config.oneWay ? 'on' : 'off'}</span><span>Aisle limit: ${wh.config.aisleCap}</span><span>Next-out pallets on ground: ${wh.config.groundNextPerItem}</span><span>Check & label: ${wh.config.checkAfterPick ? 'on' : 'off'}</span></div>`;
+    } else if (role === 'office') {
+      html = `<h2>Orders & deliveries</h2>${table(['Delivery', 'Supplier', 'Received', 'Status'], Object.values(wh.deliveries).map((d) => [d.id, d.supplier, `${d.received.length} / ${d.expected}`, d.status]))}${table(['Order', 'Customer', 'Status'], Object.values(wh.orders).map((o) => [o.id, o.customer, o.status]))}<h3>Jobs</h3>${table(['Job', 'From', 'To', 'Status'], Object.values(wh.tasks).filter((t) => t.status !== 'done').map((t) => [t.type, wh.label(t.from), t.to ? wh.label(t.to) : 'Auto slot', t.status]))}`;
+      if (demo.trace) html += `<h3>Batch PRO-LATER</h3>${table(['Customer', 'Order', 'Pallet'], demo.trace.shipped.map((s) => [s.customer, s.orderId, s.sscc]))}`;
+      if (demo.scenarioId === 'quality') {
+        const checked = Object.values(wh.pallets).filter((p) => p.qualityHistory);
+        html += `<h3>Quality holds</h3>${table(['Batch', 'Location', 'Reason', 'Can ship'], checked.map((p) => [p.batch, wh.label(p.loc), p.qualityHold ? p.qualityHold.reason : 'Released', wh.shipState(p) === 'ok' ? 'Yes' : 'No']))}<h3>Inspection & release history</h3>${table(['Batch', 'Action', 'Measured C', 'Limits C', 'Reason', 'By'], checked.flatMap((p) => p.qualityHistory.map((e) => [p.batch, e.kind === 'release' ? 'Released' : e.outside ? 'Quality hold' : 'Reading recorded', e.temperature, e.min == null ? '' : `${e.min} to ${e.max}`, e.reason, e.by])))}`;
+      }
+      html += `<h3>Location unknown</h3>${table(['Pallet', 'Batch', 'Last known location'], wh.lostPallets().map((p) => [p.sscc, p.batch, wh.label(p.missingFrom)]))}<h3>Recent corrections</h3>${table(['Pallet', 'From', 'To', 'By'], (wh.transfers || []).map((t) => [t.sscc, wh.label(t.from), wh.label(t.to), t.by]))}`;
+    } else if (role === 'scanner') {
+      const truck = wh.trucks[demo.truckId];
+      const ins = truck ? wh.instruction(demo.truckId) : { kind: 'idle' };
+      const receiving = (demo.scenarioId === 'shipping' && demo.index >= 4 && demo.index <= 5) || (demo.scenarioId === 'quality' && demo.index === 2);
+      const pallet = ins.pallet;
+      const barcode = demo.scanCode;
+      const target = receiving ? barcode.slice(2) : ins.target || barcode;
+      const reason = ins.task && ins.task.reason === 'ground' ? 'Next out: bring to ground' : ins.task && ins.task.reason === 'template' ? 'Partition changed: relocate stock' : null;
+      html = `<div class="scanner"><span class="role">${receiving ? 'DESK1 · Receiving' : `${esc(demo.truckId)} · ${esc(truck ? SortedWMS.TRUCK_MODES[truck.mode].label : 'Unassigned')}`}</span><h2>${receiving ? 'Scan supplier SSCC' : esc(ins.kind.replace(/-/g, ' '))}</h2>${reason ? `<p>${esc(reason)}</p>` : ''}<div class="target mono">${esc(target ? wh.label(target) : 'Waiting for work')}</div>${pallet ? `<dl><dt>Item</dt><dd>${esc(wh.items[pallet.itemNo].name)}</dd><dt>Batch</dt><dd>${esc(pallet.batch)}</dd><dt>Best before</dt><dd>${esc(pallet.expiry)}</dd><dt>SSCC</dt><dd class="mono">${esc(pallet.sscc)}</dd></dl>` : ''}${barcode ? `<div class="barcode" role="img" aria-label="Demo scan barcode ${esc(barcode)}">${SortedBarcode.svg(barcode)}</div>` : ''}${truck && truck.message ? `<p>${esc(wh.display(truck.message.text))}</p>` : ''}</div>`;
+    } else {
+      const st = wh.stations.PRESS;
+      const pallets = Object.values(wh.pallets).filter((p) => p.loc === st.code);
+      html = `<h2>${esc(st.name)}</h2><p class="muted">${esc(st.machine)} · ${st.operators} operators · Standard ${st.minutes} min</p><h3>Work instructions</h3><ol>${st.sop.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${table(['Pallet', 'Batch', 'Process'], pallets.map((p) => [p.sscc, p.batch, p.proc ? p.proc.state : 'Complete']))}<h3>Completed work</h3>${table(['Station', 'Actual minutes', 'Standard'], wh.processLog.map((p) => [p.station, p.minutes, p.standard]))}`;
+    }
+    $('#surface').innerHTML = html;
+    const pallets = Object.values(wh.pallets);
+    $('#stock').innerHTML = table(['SSCC', 'Batch', 'Best before', 'Cases', 'Location', 'Status'], pallets.map((p) => [p.sscc, p.batch, p.expiry, p.qty, p.loc ? wh.label(p.loc) : p.status === 'shipped' ? 'Shipped' : p.status === 'missing' ? 'Location unknown' : 'On truck', p.qualityHold ? 'Quality hold' : p.status]));
+    $('#audit').innerHTML = demo.journal.slice(-8).reverse().map((r) => `<li><strong>${esc(r.by)} · ${esc(r.title)}</strong><br><small>${esc(r.result ? wh.display(r.result) : demo.scenarioId === 'shipping' ? descriptions[r.op] || r.title : r.title)}</small></li>`).join('') || '<li class="muted">No actions yet</li>';
+  }
+  function restart() { demo = new SortedWalkthrough.Walkthrough(site, $('#scenario').value); role = demo.step.role; $('#message').className = 'message'; $('#message').textContent = ''; draw(); }
+  $('#scenario').onchange = restart;
+  $('#next').onclick = () => {
+    try {
+      const completed = demo.step.title;
+      demo.next(); role = demo.step ? demo.step.role : 'office';
+      $('#message').className = 'message'; $('#message').textContent = `${completed} complete.`;
+      draw();
+    } catch (e) { $('#message').className = 'message error'; $('#message').textContent = e.message; }
+  };
+  $('#restart').onclick = restart;
+  document.querySelectorAll('[data-role]').forEach((b, i, all) => {
+    b.onclick = () => { role = b.dataset.role; draw(); };
+    b.onkeydown = (e) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const n = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + all.length) % all.length;
+      role = all[n].dataset.role; draw(); all[n].focus();
+    };
+  });
+  try {
+    const response = await fetch('server/site.example.json');
+    if (!response.ok) throw new Error('Could not load example warehouse');
+    site = await response.json(); restart();
+  } catch (e) { $('#detail').textContent = e.message; $('#next').textContent = 'Unavailable'; }
+})();
+</script>
+</body>
+</html>

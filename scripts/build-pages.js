@@ -26,7 +26,7 @@ if (cut === -1) throw new Error('index.html: expected a <style> block');
 const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name="viewport")[^>]*>\s*/g, '');
 // A way from the simulated shift to the real screens.
 const body = page.slice(cut + '</style>'.length)
-  .replace('<div class="spacer"></div>', '<div class="spacer"></div>\n  <a class="btn" href="wms.html">Handheld + office →</a>');
+  .replace('<div class="spacer"></div>', '<div class="spacer"></div>\n  <a class="btn" href="walkthrough.html">Guided shift →</a>\n  <a class="btn" href="wms.html">Handheld + office →</a>');
 
 const html = `<!doctype html>
 <html lang="en">
@@ -50,9 +50,10 @@ ${body.trim()}
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
-for (const f of ['gs1.js', 'labels.js', 'engine.js', 'barcode.js']) {
+for (const f of ['gs1.js', 'labels.js', 'engine.js', 'barcode.js', 'walkthrough.js']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
 }
+fs.copyFileSync(path.join(root, 'walkthrough.html'), path.join(out, 'walkthrough.html'));
 fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out, 'card.html')); // needs only src/
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 
