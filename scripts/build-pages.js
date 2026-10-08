@@ -26,7 +26,7 @@ if (cut === -1) throw new Error('index.html: expected a <style> block');
 const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name="viewport")[^>]*>\s*/g, '');
 // A way from the simulated shift to the real screens.
 const body = page.slice(cut + '</style>'.length)
-  .replace('<div class="spacer"></div>', '<div class="spacer"></div>\n  <a class="btn" href="walkthrough.html">Guided shift →</a>\n  <a class="btn" href="wms.html">Handheld + office →</a>');
+  .replace('<div class="spacer"></div>', '<div class="spacer"></div>\n  <a class="btn" href="walkthrough.html">Guided shift →</a>\n  <a class="btn" href="wms.html">Handheld + office →</a>\n  <a class="btn" href="sop.html">SOP →</a>');
 
 const html = `<!doctype html>
 <html lang="en">
@@ -70,6 +70,9 @@ for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'ad
   if (i === -1) throw new Error(`${from}: expected a <script> block`);
   fs.writeFileSync(path.join(out, to), `${src.slice(0, i)}${tags}\n${src.slice(i)}`);
 }
+
+// The SOP manual, rendered from docs/SOP.md and docs/WORKFLOW-REVIEW.md.
+fs.writeFileSync(path.join(out, 'sop.html'), require('./sop-page').build(root));
 
 fs.writeFileSync(path.join(out, '.nojekyll'), ''); // serve files as-is
 console.log(`Built ${path.relative(root, out)}/ (${fs.readdirSync(out).length} entries)`);
