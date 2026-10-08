@@ -93,7 +93,10 @@ Contents
 3. Check the **command card** is on the truck.
 4. Scan `CMD-AUTO` (or press F1). The first job appears.
 
-**If it goes wrong:** a red *No connection to the server* bar means the handheld can't reach the server (Wi-Fi). A scan made while it shows **did not arrive**: when the bar is gone, scan the last thing again. Wrong or repeated scans change nothing, so rescanning is always safe.
+**If it goes wrong:**
+- **Slow network** (near the docks): the handheld says *Sending…*, then *Slow network: your scan is kept*. **Don't scan again.** The scan is sent again by itself and done once. Scanning the same thing again while it's on its way is ignored (*Already sending*); anything else you scan waits its turn.
+- **At startup** the handheld says *Connecting to SortedWMS…* until the server answers. It keeps trying by itself.
+- A red *No connection to the server* bar with *Not sent* means the scan really didn't arrive after half a minute of trying: when the bar is gone, scan it again.
 
 ### 1.3 Station and desk: open the screen
 1. **Station:** open `/station` on the station's PC and choose the station (top right). It's remembered.

@@ -268,7 +268,23 @@
     on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b }, by));
     on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
 
-    function handle(method, rawUrl, body = {}, by = 'office') {
+    // Answers to recent changes by request ID. A handheld on a slow network sends the same
+    // request again when the answer is late; the repeat gets the first answer instead of
+    // happening twice (a pallet scanned twice in Auto means "move it").
+    const answered = new Map();
+    function handle(method, rawUrl, body = {}, by = 'office', requestId = null) {
+      if (method !== 'GET' && requestId) {
+        const key = `${by}|${method} ${rawUrl}|${requestId}`;
+        if (answered.has(key)) return answered.get(key);
+        const out = handleOnce(method, rawUrl, body, by);
+        answered.set(key, out);
+        if (answered.size > 2000) answered.delete(answered.keys().next().value);
+        return out;
+      }
+      return handleOnce(method, rawUrl, body, by);
+    }
+
+    function handleOnce(method, rawUrl, body, by) {
       const url = new URL(rawUrl, 'http://x');
       const route = routes.find((r) => r.method === method && r.re.test(url.pathname));
       if (!route) return { status: 404, body: { error: `No route ${method} ${url.pathname}` } };

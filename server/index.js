@@ -49,7 +49,8 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       let body;
       try { body = raw ? JSON.parse(raw) : {}; } catch (e) { return send(400, { error: 'Body is not JSON' }); }
       const by = String(req.headers['x-operator'] || body.by || url.pathname.split('/')[3] || 'office').slice(0, 40);
-      Promise.resolve(api.handle(req.method, req.url, body, by)).then((out) => send(out.status, out.body));
+      const requestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']).slice(0, 80) : null;
+      Promise.resolve(api.handle(req.method, req.url, body, by, requestId)).then((out) => send(out.status, out.body));
     });
   });
 }
