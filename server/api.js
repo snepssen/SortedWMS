@@ -8,7 +8,7 @@
   else root.SortedApi = factory(root.SortedWMS);
 })(typeof self !== 'undefined' ? self : this, function (Engine) {
   'use strict';
-  const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS } = Engine;
+  const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, SCAN_COMMANDS, COMMAND_PREFIX } = Engine;
 
   // ---- Views: what the pages need, without engine internals --------------------
 
@@ -78,6 +78,7 @@
     }
     if (ins.kind === 'transfer') I.pallet = palletView(wh, ins.pallet);
     if (ins.kind === 'find' && ins.result) I.result = lookupView(wh, ins.result);
+    if (ins.armed) I.armed = ins.armed;
     if (ins.pending) I.pending = { via: ins.pending.via, pallet: palletView(wh, ins.pending.pallet), ...lookupView(wh, ins.pending.info) };
     return out;
   }
@@ -119,6 +120,7 @@
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
     on('GET', '/api/devices', () => [...Object.keys(wh().trucks), ...Object.keys(wh().desks)].map((id) => deviceView(wh(), id)));
+    on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
     on('GET', '/api/orders', () => Object.values(wh().orders));

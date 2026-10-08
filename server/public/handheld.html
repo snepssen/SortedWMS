@@ -42,6 +42,8 @@
   .belongs .where b { color: var(--acc); }
   .lines li .loc { font-weight: 800; }
   .card.held { border-color: var(--warn); }
+  .card.armed { border: 2px solid var(--warn); background: rgba(255, 176, 32, .12); }
+  .card.armed .mid { color: var(--warn); font-size: 26px; }
   .msg.ok { background: rgba(60, 207, 122, .14); color: var(--ok); }
   .msg.bad { background: rgba(255, 90, 82, .16); color: var(--bad); }
   .scan { display: flex; gap: 8px; }
@@ -128,6 +130,7 @@
       <label>Server token (if the office set one) <input id="sTok" value="${esc(token)}" type="password"></label>
       ${error ? `<div class="msg bad">${esc(error)}</div>` : ''}
       <button class="primary" id="sGo">Start</button>
+      <div class="hint" style="margin-top:12px">New scanner? <a href="${window.SortedLocal ? 'keys.html' : 'keys'}" style="color:var(--acc)">Key test</a>: see which keys and scans reach this screen.</div>
     </div>`;
     $('#sGo').onclick = async () => {
       deviceId = $('#sDev').value.trim().toUpperCase();
@@ -193,7 +196,7 @@
           ${I.field === 'qty' ? `<div class="row" style="margin-top:10px">
               ${I.defaultQty ? `<button class="primary" data-qty="${I.defaultQty}">${I.defaultQty} (full pallet)</button>` : ''}
               <input id="qtyIn" inputmode="numeric" placeholder="Other qty" value="${esc(typedQty)}"><button data-qty="typed">OK</button></div>` : ''}
-          <div class="row" style="margin-top:10px"><button id="finishRcv">Delivery done</button></div></div>`;
+          <div class="row" style="margin-top:10px"><button data-cmd="CMD-DONE">Delivery done</button></div></div>`;
       }
       case 'transfer': return `<div class="card"><div class="kicker">Transfer</div>
           ${I.pallet ? `<div class="mid">Scan the location it goes to</div>${palletHtml(I.pallet)}` : `<div class="mid">Scan the pallet</div><div class="sub">Then scan the location where it now stands. For fixing locations that are wrong in the system.</div>`}</div>`;
@@ -214,13 +217,15 @@
         <button id="kb" title="Show the keyboard">⌨</button><button id="setup" title="Set up">⚙</button></header>
       <div class="modes">${v.modes.filter((m) => m.id !== 'shift').map((m) => `<button data-mode="${m.id}" class="${m.id === v.mode ? 'on' : ''}">${esc(m.label.replace(' (manual)', ''))}</button>`).join('')}</div>
       <main>
+        ${I.armed ? `<div class="card armed"><div class="kicker" style="color:var(--warn)">Confirm</div><div class="mid">${esc(I.armed.label)}?</div>
+          <div class="sub">Scan <b>${esc(I.armed.cmd)}</b> again to confirm. Any other scan cancels.</div></div>` : ''}
         ${I.pending ? heldHtml(I.pending) : ''}
         ${instructionHtml(I)}
         ${localError ? `<div class="msg bad">${esc(localError)}</div>`
-          : v.message && !(I.pending && v.message.ok) ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
+          : v.message && !I.armed && !(I.pending && v.message.ok) ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
         <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button>Enter</button></form>
-        ${canProblem ? `<div class="row">${I.kind === 'pickup' ? '<button class="bad" data-problem="missing">Pallet missing</button><button class="bad" data-problem="damaged">Damaged</button>' : ''}
-          <button class="bad" data-problem="blocked">Location blocked</button></div>` : ''}
+        ${canProblem ? `<div class="row">${I.kind === 'pickup' ? '<button class="bad" data-cmd="CMD-MISSING">Pallet missing</button><button class="bad" data-cmd="CMD-DAMAGED">Damaged</button>' : ''}
+          <button class="bad" data-cmd="CMD-BLOCKED">Location blocked</button></div>` : ''}
       </main>`;
     bind();
   }
@@ -235,7 +240,8 @@
     document.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/mode`, { mode: b.dataset.mode })));
     document.querySelectorAll('[data-order]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/mode`, { mode: 'pick', orderId: b.dataset.order })));
     document.querySelectorAll('[data-pending]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/pending`, { action: b.dataset.pending })));
-        document.querySelectorAll('[data-problem]').forEach((b) => (b.onclick = () => { if (confirm(`Report: ${b.textContent}?`)) act('POST', `/api/devices/${deviceId}/problem`, { reason: b.dataset.problem }); }));
+    // Same as scanning the command card: reports ask to be tapped (or scanned) again instead of a pop-up.
+    document.querySelectorAll('[data-cmd]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/scan`, { code: b.dataset.cmd })));
     document.querySelectorAll('[data-qty]').forEach((b) => (b.onclick = () => {
       const qty = b.dataset.qty === 'typed' ? Number($('#qtyIn').value) : Number(b.dataset.qty);
       if (!qty) return;
@@ -244,8 +250,6 @@
     }));
     const q = $('#qtyIn');
     if (q) q.oninput = () => { typedQty = q.value; };
-    const fin = $('#finishRcv');
-    if (fin) fin.onclick = () => { if (confirm('Close this delivery?')) act('POST', `/api/devices/${deviceId}/finish-receiving`); };
     // Keep the scan field focused so the scanner's keystrokes always land in it.
     document.body.onclick = (e) => { if (!e.target.closest('input,button,select')) focus(); };
   }

@@ -79,6 +79,20 @@ An SSCC or a known EAN is recognised whenever it's scanned, whatever field is ne
 
 The scanner sends its own Enter. A wrong scan explains what's wrong and changes nothing.
 
+### Gloves on: the command card
+The warehouse is chilled, so drivers wear gloves and the handheld's touch screen and small keys are a nuisance. Every button on the handheld therefore has a barcode on a **command card**: printed from the office (Settings → Command card), laminated, one per truck.
+
+| Scan | Does |
+| --- | --- |
+| `CMD-AUTO` `CMD-PICK` `CMD-PUTAWAY` `CMD-TRANSFER` `CMD-STOCK` `CMD-PAUSE` | Switch mode (not with a pallet on the forks) |
+| `CMD-MISSING` `CMD-DAMAGED` `CMD-BLOCKED` | Report a problem on the current job. **Scan twice** to confirm |
+| `CMD-FULL` | Receiving: full pallet quantity |
+| `CMD-DONE` | Receiving: close the delivery. **Scan twice** to confirm |
+| `CMD-MOVE` | Move the held pallet |
+| `CMD-CANCEL` | Undo whatever is half-done: a report waiting for its confirm, a held pallet, a transfer, a stock check |
+
+Anything that changes stock is confirmed by scanning the same code again within 30 seconds; any other scan cancels it. There are no pop-ups: the screen shows an amber *Confirm* card, and the buttons work the same way (tap twice). A report that isn't possible right now (no job, pallet on the forks) says why straight away. A quantity other than a full pallet is typed on the keypad into the scan field, followed by Enter.
+
 Picking a different pallet with the **same item, batch and expiry** is accepted and swapped automatically. If a pallet is **missing or damaged**, the system allocates the next one by expiry date straight away. The problem job is held for the coordinator.
 
 ### Auto-Shift (rack-to-rack)
@@ -138,6 +152,8 @@ npm run start:demo     # the same, with made-up stock, 4 handhelds and 2 orders 
 
 Then open, on the same network:
 - **`/handheld`** on the Android scanners. Enter the handheld ID once; the scanner sends Enter after each scan. The screen keeps the scan field focused and hides the on-screen keyboard (⌨ brings it back).
+- **`/keys`** on a new scanner, once: a key test. It shows every key press (key, code, keyCode), whether the Back key reaches the page, and how scans arrive (as key presses or as pasted text, with the symbology prefix and the GS1 separator if the scanner sends them), with a summary to copy. It needs no server: on Pages it's `keys.html`.
+- **`/card`**: the command card to print (also under Settings in the office).
 - **`/admin`** in the office: floor overview, jobs (urgent, cancel, release), location template ranges, find, office transfers, location unknown list, stock per item, minimum days to ship, batch trace (which customers got batch X), orders, deliveries, imports from Excel/CSV, audit trail, dispatch settings, label printer status.
 - **`/`** the demo simulation.
 
@@ -161,11 +177,12 @@ Settings, through environment variables:
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping and pallet labels. |
+| `src/barcode.js` | Code 128 as SVG, for the command card. |
 | `server/index.js` | The WMS server: JSON API, handheld and office pages, clock tick, printing. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.example.json` | Example site set-up; copy and edit for the real warehouse. |
-| `server/public/` | `handheld.html` (Android scanners) and `admin.html` (office). |
+| `server/public/` | `handheld.html` (Android scanners), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
 | `server/print.js` | Sends ZPL to network label printers. |
 | `server/seed.js` | Made-up stock for `npm run start:demo`. |
 | `server/api.js` | The API routes and screen views; used by the server, and in the browser on Pages. |

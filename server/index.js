@@ -20,8 +20,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   const api = createApi({ store, printers });
   const pages = {
     '/': 'index.html', '/index.html': 'index.html',
-    '/handheld': 'server/public/handheld.html', '/admin': 'server/public/admin.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js',
+    '/handheld': 'server/public/handheld.html', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
+    '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/barcode.js': 'src/barcode.js',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 

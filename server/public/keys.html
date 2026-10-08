@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101418">
+<title>SortedWMS key test</title>
+<style>
+  :root { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { padding: 10px 12px 24px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0; }
+  .hint { color: var(--dim); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .kicker { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .last { font: 800 44px/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; word-break: break-all; margin: 4px 0; }
+  .last.scan { color: var(--ok); font-size: 26px; }
+  .detail { font: 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--dim); word-break: break-all; }
+  .detail b { color: var(--ink); }
+  input { font: inherit; font-size: 18px; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  input:focus { outline: 2px solid var(--acc); }
+  table { border-collapse: collapse; width: 100%; font: 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; font-family: system-ui, sans-serif; font-size: 13px; }
+  ol { margin: 0; padding: 0 0 0 4px; list-style: none; font: 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace; max-height: 260px; overflow: auto; }
+  ol li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--dim); }
+  ol li b { color: var(--ink); }
+  ol li.scan b { color: var(--ok); }
+  ol li.nav b { color: var(--warn); }
+  textarea { width: 100%; height: 160px; font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+  a { color: var(--acc); }
+</style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content:space-between"><h1>Key test</h1><a href="handheld" id="back">Back to the handheld</a></div>
+  <div class="hint">Press every key you might use with gloves on: the number keys, F-keys, arrows, Esc / Clear, Tab, the Back key, the side and trigger buttons. Then scan a few barcodes: a location, a pallet's GS1 label, a command card code. Nothing is sent anywhere; the summary below is for copying.</div>
+
+  <input id="catch" inputmode="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Keys and scans land here (tap if it loses focus)">
+
+  <div class="card"><div class="kicker" id="lastKind">Last key</div><div class="last" id="last">–</div><div class="detail" id="lastDetail">Press a key</div></div>
+
+  <div class="card"><div class="kicker">Keys seen</div>
+    <table><thead><tr><th>key</th><th>code</th><th>keyCode</th><th>where</th><th>×</th></tr></thead><tbody id="seen"></tbody></table>
+    <div class="hint" id="noneSeen">None yet</div>
+  </div>
+
+  <div class="card"><div class="kicker">Scans</div><ol id="scans"><li class="hint">None yet</li></ol></div>
+
+  <div class="card"><div class="kicker">Every event, newest first</div><ol id="log"></ol></div>
+
+  <div class="card"><div class="kicker">Summary to copy</div>
+    <textarea id="summary" readonly></textarea>
+    <div class="row" style="margin-top:8px"><button id="copy">Copy</button><button id="clear">Clear</button><span class="hint" id="copyOut"></span></div>
+  </div>
+</main>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const WHERE = ['', 'left', 'right', 'numpad'];
+  // Control characters a scanner can send inside a barcode, shown by name (GS is the GS1 separator, FNC1).
+  const CTRL = { 0x1d: 'GS', 0x1e: 'RS', 0x04: 'EOT', 0x09: 'TAB', 0x0d: 'CR', 0x0a: 'LF' };
+  const show = (s) => [...s].map((ch) => { const c = ch.charCodeAt(0); return c < 32 ? `‹${CTRL[c] || 'x' + c.toString(16).padStart(2, '0')}›` : ch; }).join('');
+
+  const input = $('#catch');
+  const seen = new Map(); // "key|code|keyCode|location" -> { e, n }
+  const scans = [];
+  const events = [];
+  let burst = []; // keydowns since the last Enter, with times: a scanner types far faster than a thumb
+  let lastAt = 0;
+  let textSince = null; // when text first landed in the field since the last Enter
+  input.addEventListener('input', () => { if (textSince == null) textSince = performance.now(); });
+
+  // A page on its own (GitHub Pages, a file) has no /handheld next to it.
+  if (!/\/keys$/.test(location.pathname)) $('#back').href = 'handheld.html';
+
+  const focus = () => { if (document.activeElement !== input) input.focus({ preventScroll: true }); };
+  focus();
+  document.body.addEventListener('click', (e) => { if (!e.target.closest('button,textarea,a')) focus(); });
+
+  function note(kind, html, cls) {
+    events.unshift({ kind, html, cls });
+    if (events.length > 80) events.length = 80;
+    $('#log').innerHTML = events.map((e) => `<li class="${e.cls || ''}">${e.html}</li>`).join('');
+  }
+
+  function keyDesc(e) {
+    const mods = ['ctrl', 'alt', 'shift', 'meta'].filter((m) => e[m + 'Key']);
+    return { key: e.key, code: e.code || '–', keyCode: e.keyCode, where: WHERE[e.location] || '', mods };
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const now = performance.now();
+    const gap = lastAt ? Math.round(now - lastAt) : null;
+    lastAt = now;
+    const d = keyDesc(e);
+    const id = `${d.key}|${d.code}|${d.keyCode}|${d.where}`;
+    const row = seen.get(id) || { d, n: 0 };
+    row.n++;
+    seen.set(id, row);
+
+    let scanned = null;
+    if (e.key === 'Enter') {
+      const value = input.value;
+      // Text without key presses: the scanner app pastes the whole barcode at once (DataWedge "send as string").
+      const pasted = value.length > burst.length;
+      const fast = pasted ? textSince != null && now - textSince < 500 : burst.length >= 3 && burst.slice(1).every((b) => b.gap != null && b.gap < 60);
+      if (value || burst.length) {
+        const s = { text: value, typed: burst.map((b) => b.key).join(''), fast, pasted, ms: pasted ? Math.round(now - textSince) : burst.length > 1 ? Math.round(now - burst[0].at) : 0 };
+        scans.unshift(s);
+        if (scans.length > 20) scans.length = 20;
+        renderScans();
+        if (fast) scanned = s;
+      }
+      burst = [];
+      textSince = null;
+      input.value = '';
+      e.preventDefault();
+    } else if (e.key.length === 1 || e.key === 'Unidentified') {
+      burst.push({ key: e.key, gap, at: now });
+    }
+
+    // Keep keys that would move focus or scroll the page here, so every press shows.
+    if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Escape'].includes(e.key) || /^F\d+$/.test(e.key)) e.preventDefault();
+
+    const ime = e.keyCode === 229 || e.key === 'Unidentified';
+    $('#lastKind').textContent = 'Last key';
+    $('#last').className = 'last';
+    $('#last').textContent = e.key === ' ' ? 'Space' : e.key;
+    $('#lastDetail').innerHTML = `code <b>${esc(d.code)}</b> · keyCode <b>${d.keyCode}</b>${d.where ? ` · ${d.where}` : ''}${d.mods.length ? ` · with ${d.mods.join('+')}` : ''}${e.repeat ? ' · held down' : ''}${gap != null ? ` · ${gap} ms after the last` : ''}
+      ${ime ? '<br><span style="color:var(--warn)">The browser was not told which key this is (keyCode 229 / Unidentified): the on-screen keyboard or the scanner app is in between.</span>' : ''}`;
+    note('key', `<b>${esc(d.key === ' ' ? 'Space' : d.key)}</b> ${esc(d.code)} ${d.keyCode}${d.where ? ' ' + d.where : ''}${d.mods.length ? ' +' + d.mods.join('+') : ''}${e.repeat ? ' repeat' : ''}${gap != null ? ` · +${gap} ms` : ''}`);
+    if (scanned) { // the Enter that ends a scan: show the scan, not the Enter
+      $('#lastKind').textContent = 'Last scan';
+      $('#last').className = 'last scan';
+      $('#last').textContent = show(scanned.text || scanned.typed);
+    }
+    renderSeen();
+    renderSummary();
+  }, true);
+
+  document.addEventListener('keyup', (e) => {
+    if (e.key.length !== 1) note('up', `↑ ${esc(e.key)} ${esc(e.code || '')} ${e.keyCode}`);
+  }, true);
+
+  // What arrives as text without a keydown we can read (on-screen keyboard, some scanner set-ups).
+  input.addEventListener('beforeinput', (e) => { if (e.data && e.inputType !== 'insertText') note('input', `input ${esc(e.inputType)} "${esc(show(e.data))}"`); });
+
+  // The Android Back key: the browser goes back in history. Stay on this page and record it.
+  history.pushState({ keytest: true }, '');
+  window.addEventListener('popstate', () => {
+    history.pushState({ keytest: true }, '');
+    const row = seen.get('Back') || { d: { key: 'Back (browser back)', code: '–', keyCode: '–', where: '', mods: [] }, n: 0 };
+    row.n++;
+    seen.set('Back', row);
+    $('#lastKind').textContent = 'Last key';
+    $('#last').textContent = 'Back';
+    $('#lastDetail').textContent = 'The Android Back key: reaches the page only as "go back", not as a key';
+    note('nav', '<b>Back</b> (browser back)', 'nav');
+    renderSeen();
+    renderSummary();
+  });
+  document.addEventListener('visibilitychange', () => note('nav', `<b>Page ${document.hidden ? 'hidden' : 'shown again'}</b> (Home, app switch or screen off?)`, 'nav'));
+
+  function renderSeen() {
+    const rows = [...seen.values()];
+    $('#noneSeen').style.display = rows.length ? 'none' : '';
+    $('#seen').innerHTML = rows.map(({ d, n }) => `<tr><td><b>${esc(d.key === ' ' ? 'Space' : d.key)}</b>${d.mods.length ? ` <span class="hint">+${d.mods.join('+')}</span>` : ''}</td><td>${esc(d.code)}</td><td>${d.keyCode}</td><td>${esc(d.where)}</td><td>${n}</td></tr>`).join('');
+  }
+
+  function renderScans() {
+    $('#scans').innerHTML = scans.map((s) => {
+      const prefix = /^\][A-Za-z]\d/.test(s.text) ? ` · symbology prefix ${esc(s.text.slice(0, 3))}` : '';
+      const gs = s.text.includes('\x1d') ? ' · GS separator came through' : '';
+      const how = s.pasted ? `arrived as text, not key presses${s.fast ? ` · ${s.ms} ms` : ''}` : s.fast ? `scanner key presses · ${s.text.length} chars in ${s.ms} ms` : 'typed by hand';
+      return `<li class="${s.fast ? 'scan' : ''}"><b>${esc(show(s.text || s.typed))}</b><br>${how}${prefix}${gs}</li>`;
+    }).join('') || '<li class="hint">None yet</li>';
+  }
+
+  function renderSummary() {
+    const lines = [`SortedWMS key test · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, navigator.userAgent, '', 'Keys (key | code | keyCode | where | count):'];
+    for (const { d, n } of seen.values()) lines.push(`  ${d.key === ' ' ? 'Space' : d.key}${d.mods.length ? ' +' + d.mods.join('+') : ''} | ${d.code} | ${d.keyCode} | ${d.where || '-'} | ${n}`);
+    lines.push('', 'Scans:');
+    for (const s of scans) lines.push(`  ${show(s.text || s.typed)}  (${s.pasted ? 'as text' : s.fast ? 'key presses' : 'by hand'}, ${s.ms} ms)`);
+    $('#summary').value = lines.join('\n');
+  }
+
+  $('#copy').onclick = async () => {
+    renderSummary();
+    try { await navigator.clipboard.writeText($('#summary').value); $('#copyOut').textContent = 'Copied'; } catch (e) {
+      $('#summary').select(); // http on the local network: no clipboard access, so select it for a long-press copy
+      $('#copyOut').textContent = 'Selected: long-press it and copy';
+    }
+  };
+  $('#clear').onclick = () => { seen.clear(); scans.length = 0; events.length = 0; renderSeen(); renderScans(); $('#log').innerHTML = ''; renderSummary(); focus(); };
+  renderSummary();
+})();
+</script>
+</body>
+</html>

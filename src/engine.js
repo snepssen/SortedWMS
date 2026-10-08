@@ -42,6 +42,27 @@
     paused: { label: 'Paused', types: [] },
   };
 
+  // Command barcodes, printed on a card on each truck: whatever the handheld's buttons do, a driver
+  // in gloves does with a scan. Reports that change stock are confirmed by scanning the same code again.
+  const COMMAND_PREFIX = 'CMD-';
+  const CONFIRM_MS = 30 * 1000;
+  const PROBLEMS = { blocked: 'Location blocked', missing: 'Pallet missing', damaged: 'Pallet damaged' };
+  const SCAN_COMMANDS = {
+    AUTO: { label: 'Auto', group: 'Mode', mode: 'auto' },
+    PICK: { label: 'Pick', group: 'Mode', mode: 'pick' },
+    PUTAWAY: { label: 'Put-away', group: 'Mode', mode: 'putaway' },
+    TRANSFER: { label: 'Transfer', group: 'Mode', mode: 'transfer' },
+    STOCK: { label: 'Stock check', group: 'Mode', mode: 'find' },
+    PAUSE: { label: 'Pause', group: 'Mode', mode: 'paused' },
+    MISSING: { label: 'Pallet missing', group: 'Problem', problem: 'missing', confirm: true },
+    DAMAGED: { label: 'Damaged', group: 'Problem', problem: 'damaged', confirm: true },
+    BLOCKED: { label: 'Location blocked', group: 'Problem', problem: 'blocked', confirm: true },
+    FULL: { label: 'Full pallet', group: 'Receiving', qty: true },
+    DONE: { label: 'Delivery done', group: 'Receiving', finish: true, confirm: true },
+    MOVE: { label: 'Move it', group: 'Held pallet', held: true },
+    CANCEL: { label: 'Cancel', group: 'Any time' },
+  };
+
   const SHIFT_REASONS = {
     template: 'Location template changed',
     ground: 'Ships next: to ground level',
@@ -602,6 +623,7 @@
       if (orderId && !this.orders[orderId]) throw new Error(`No order ${orderId}`);
       truck.transferSscc = null;
       truck.pendingSscc = null;
+      truck.armed = null;
       if (mode === 'pick') truck.orderId = orderId;
       if (truck.mode === mode) { this.dispatch(); return; }
       const task = truck.taskId && this.tasks[truck.taskId];
@@ -769,8 +791,12 @@
       const task = truck.taskId && this.tasks[truck.taskId];
       if (!task || task.type !== 'RECEIVE') throw new Error(`${truck.id} is not receiving`);
       truck.stats.taps++;
+      task.draft.inputs = (task.draft.inputs || 0) + 1;
+      return this._confirmQty(truck, task, qty);
+    }
+
+    _confirmQty(truck, task, qty) {
       const d = task.draft;
-      d.inputs = (d.inputs || 0) + 1;
       const missing = RECEIVE_FIELDS.filter((f) => f !== 'qty' && !d[f]);
       if (missing.length) return this._say(truck, false, `Scan the ${FIELD_LABELS[missing[0]].toLowerCase()} first`);
       const n = qty == null ? this.items[d.item].palletQty : Number(qty);
@@ -785,6 +811,7 @@
       const task = truck.taskId && this.tasks[truck.taskId];
       if (!task || task.type !== 'RECEIVE') throw new Error(`${truck.id} is not receiving`);
       truck.stats.taps++;
+      truck.armed = null;
       this._closeDelivery(truck, task);
       return truck.message;
     }
@@ -885,7 +912,10 @@
       const input = String(raw).trim();
       truck.stats.scans++;
       if (!input) return this._fail(truck, 'Nothing scanned');
-      if (truck.mode === 'paused') return this._fail(truck, 'Truck is paused — resume to take jobs');
+      const command = this._scanCommand(input);
+      if (command) return this._command(truck, command);
+      truck.armed = null; // any other scan drops a command waiting for its confirm
+      if (truck.mode === 'paused') return this._fail(truck, 'Truck is paused — scan AUTO to take jobs');
 
       const task = truck.taskId && this.tasks[truck.taskId];
       if (!task && TRUCK_MODES[truck.mode].manual) return this._manualScan(truck, input);
@@ -941,13 +971,79 @@
       return this._say(truck, true, next ? `Done. Next: ${TASK_TYPES[next.type].short} at ${next.from}` : 'Done. No jobs waiting');
     }
 
-    reportProblem(truckId, reason) {
-      const reasons = { blocked: 'Location blocked', missing: 'Pallet missing', damaged: 'Pallet damaged' };
-      if (!reasons[reason]) throw new Error(`Unknown problem ${reason}`);
-      const truck = this._truck(truckId);
+    // ---- Command barcodes --------------------------------------------------------
+
+    /** The command key of a scanned command barcode (CMD-AUTO → AUTO), 'unknown' for a CMD- code we don't know, else null. */
+    _scanCommand(input) {
+      const code = input.replace(/^\][A-Za-z]\d/, '').toUpperCase(); // the scanner's symbology prefix, if it sends one
+      if (!code.startsWith(COMMAND_PREFIX)) return null;
+      const key = code.slice(COMMAND_PREFIX.length);
+      return SCAN_COMMANDS[key] ? key : 'unknown';
+    }
+
+    _command(truck, key) {
+      if (key === 'unknown') return this._fail(truck, 'Unknown command barcode');
+      const c = SCAN_COMMANDS[key];
+      const armed = truck.armed;
+      truck.armed = null;
+      try {
+        if (key === 'CANCEL') return this._cancel(truck, armed);
+        if (c.mode) {
+          this.setTruckMode(truck.id, c.mode);
+          return this._say(truck, true, c.mode === 'paused' ? 'Paused. Scan AUTO to take jobs again' : `${c.label} mode`);
+        }
+        const task = truck.taskId && this.tasks[truck.taskId];
+        const receiving = task && task.type === 'RECEIVE';
+        if (c.problem) {
+          const why = this._problemCheck(truck, c.problem);
+          if (why) return this._fail(truck, why);
+        }
+        if ((c.qty || c.finish) && !receiving) return this._fail(truck, 'Only while receiving');
+        if (c.confirm && !(armed && armed.cmd === key && this.now() - armed.at <= CONFIRM_MS)) {
+          truck.armed = { cmd: key, at: this.now() };
+          return this._say(truck, true, `${c.label}? Scan ${key} again to confirm. Any other scan cancels`);
+        }
+        if (c.problem) return this._reportProblem(truck, c.problem);
+        if (c.finish) { this._closeDelivery(truck, task); return truck.message; }
+        if (c.qty) { task.draft.inputs = (task.draft.inputs || 0) + 1; return this._confirmQty(truck, task, null); }
+        if (c.held) return this._heldMove(truck);
+      } catch (e) {
+        return this._fail(truck, e.message);
+      }
+      throw new Error(`Command ${key} does nothing`);
+    }
+
+    /** CANCEL: undo whatever is half-done — a command waiting for its confirm, a held pallet, a transfer, a stock check. */
+    _cancel(truck, armed) {
+      if (armed) return this._say(truck, true, `${SCAN_COMMANDS[armed.cmd].label} cancelled. Nothing changed`);
+      if (truck.pendingSscc) { truck.pendingSscc = null; return this._say(truck, true, 'Let go. Nothing changed'); }
+      if (truck.mode === 'transfer' && truck.transferSscc) { truck.transferSscc = null; return this._say(truck, true, 'Transfer cancelled. Scan a pallet'); }
+      if (truck.mode === 'find' && truck.lookup) { truck.lookup = null; return this._say(truck, true, 'Cleared. Scan a pallet, location or item'); }
+      return this._say(truck, true, 'Nothing to cancel');
+    }
+
+    // Why this truck can't report this problem right now, or null.
+    _problemCheck(truck, reason) {
       const task = truck.taskId && this.tasks[truck.taskId];
-      if (!task) throw new Error(`${truck.id} has no job`);
-      if (task.type === 'RECEIVE') throw new Error('Report receiving problems to the coordinator');
+      if (!task) return 'No job to report a problem on';
+      if (task.type === 'RECEIVE') return 'Report receiving problems to the coordinator';
+      if (truck.load && reason !== 'blocked') return 'The pallet is on the forks — only a blocked drop location can be reported';
+      return null;
+    }
+
+    reportProblem(truckId, reason) {
+      if (!PROBLEMS[reason]) throw new Error(`Unknown problem ${reason}`);
+      const truck = this._truck(truckId);
+      truck.armed = null;
+      const why = this._problemCheck(truck, reason);
+      if (why) throw new Error(why);
+      return this._reportProblem(truck, reason);
+    }
+
+    _reportProblem(truck, reason) {
+      const truckId = truck.id;
+      const reasons = PROBLEMS;
+      const task = this.tasks[truck.taskId];
 
       // Drop location blocked while carrying.
       if (truck.load) {
@@ -1092,6 +1188,7 @@
       const truck = this._truck(truckId);
       const p = truck.pendingSscc && this.pallets[truck.pendingSscc];
       if (p) out.pending = { pallet: p, via: truck.pendingVia, info: this._palletLookup(p) };
+      if (truck.armed) out.armed = { cmd: truck.armed.cmd, code: COMMAND_PREFIX + truck.armed.cmd, label: SCAN_COMMANDS[truck.armed.cmd].label };
       return out;
     }
 
@@ -2112,9 +2209,7 @@
           } else if (field === 'sscc') {
             return this._fail(truck, this._ssccProblem(plain) || 'Scan the pallet SSCC');
           } else if (field === 'qty') {
-            d.inputs--; // confirmQty counts this input
-            truck.stats.taps--;
-            return this.confirmQty(truck.id, input);
+            return this._confirmQty(truck, task, input);
           }
         }
       }
@@ -2301,10 +2396,17 @@
       const truck = this._truck(truckId);
       const pallet = truck.pendingSscc && this.pallets[truck.pendingSscc];
       if (!pallet) return this._fail(truck, 'No pallet held');
-      truck.pendingSscc = null;
+      if (action !== 'move' && action !== 'cancel') throw new Error(`Unknown action ${action}`);
       truck.stats.taps++;
-      if (action === 'cancel') return this._say(truck, true, 'OK');
-      if (action !== 'move') throw new Error(`Unknown action ${action}`);
+      if (action === 'move') return this._heldMove(truck);
+      truck.pendingSscc = null;
+      return this._say(truck, true, 'OK');
+    }
+
+    _heldMove(truck) {
+      const pallet = truck.pendingSscc && this.pallets[truck.pendingSscc];
+      if (!pallet) return this._fail(truck, 'No pallet held. Scan the pallet first');
+      truck.pendingSscc = null;
       const task = truck.taskId && this.tasks[truck.taskId];
       return this._driverMove(truck, pallet, task && task.step === 0 ? task : null);
     }
@@ -2655,7 +2757,7 @@
   }
 
   return {
-    Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, DEFAULT_CONFIG, DESK_CALLOUTS,
+    Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SCAN_COMMANDS, COMMAND_PREFIX, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, DEFAULT_CONFIG, DESK_CALLOUTS,
     parseRack, rackCode, aisleOf, depthOf, parseDate, daysBetween,
   };
 });
