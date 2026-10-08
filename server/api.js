@@ -34,7 +34,7 @@
       id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, sscc: t.sscc,
       from: t.from, fromName: placeName(wh, t.from), to: t.to, toName: placeName(wh, t.to),
       step: t.step, orderId: t.orderId, deliveryId: t.deliveryId, truckId: t.truckId, urgent: wh.isUrgent(t),
-      why: t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note : t.dispatchReason,
+      why: t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note : t.type === 'COUNT' ? 'Nothing else to do: a quick stock count' : t.dispatchReason,
       labelCode: t.labelCode || null, alert: t.alert, heldReason: t.heldReason, createdAt: t.createdAt,
     };
   }
@@ -78,6 +78,12 @@
       out.openOrders = Object.values(wh.orders).filter((o) => o.status === 'open' || o.status === 'picking')
         .filter((o) => Object.values(wh.tasks).some((t) => t.orderId === o.id && t.status === 'open' && (!d.categories || d.categories.includes(t.category))))
         .map((o) => ({ id: o.id, customer: o.customer, lane: o.lane, pallets: o.lines.reduce((s, l) => s + l.allocated.length, 0) }));
+    }
+    if (ins.kind === 'count') {
+      I.step = ins.step;
+      // Blind count: the handheld doesn't show this. The demo kit's label wall needs it to show the right label.
+      const loc = wh.locations[ins.target];
+      I.expectedSscc = loc && loc.sscc ? loc.sscc : null;
     }
     if (ins.kind === 'transfer') I.pallet = palletView(wh, ins.pallet);
     if (ins.kind === 'find' && ins.result) I.result = lookupView(wh, ins.result);
@@ -167,6 +173,17 @@
       locations: Object.values(wh().locations).filter((l) => l.blocked).map((l) => ({ code: l.code, name: placeName(wh(), l.code), kind: l.kind, sscc: l.sscc || null })),
     }));
     on('GET', '/api/lost', () => wh().lostPallets().map((p) => ({ ...palletView(wh(), p), missingFrom: p.missingFrom, missingFromName: placeName(wh(), p.missingFrom) })));
+    // Stock counts: the open count jobs, the latest results, and how often the system was right.
+    on('GET', '/api/counts', () => {
+      const counts = (wh().counts || []).slice(0, 200);
+      const open = Object.values(wh().tasks).filter((t) => t.type === 'COUNT' && ['open', 'active', 'held'].includes(t.status));
+      return {
+        open: open.length,
+        done: (wh().counts || []).length,
+        accuracy: counts.length ? Math.round((100 * counts.filter((c) => c.result === 'ok').length) / counts.length) : null,
+        results: counts.map((c) => ({ ...c, name: placeName(wh(), c.code) })),
+      };
+    });
     on('GET', '/api/transfers', () => (wh().transfers || []).slice(0, 200).map((t) => ({ ...t, fromName: placeName(wh(), t.from), toName: placeName(wh(), t.to) })));
     on('GET', '/api/trace/:batch', ({ batch }) => {
       const r = wh().trace(decodeURIComponent(batch));
@@ -236,6 +253,7 @@
     on('POST', '/api/aisles/:aisle/cell', ({ aisle }, q, b, by) => run('setAisleCell', { aisle, cell: b.cell }, by));
     on('POST', '/api/naming', (_, q, b, by) => run('setNaming', { show: b.show }, by));
     on('POST', '/api/plan/grouping', (_, q, b, by) => run('planGrouping', {}, by));
+    on('POST', '/api/plan/counts', (_, q, b, by) => run('planCounts', { from: b.from || null, to: b.to || null, limit: b.limit }, by));
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => run('importItems', { rows: b.rows || b }, by));
     on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: b.rows || b }, by));

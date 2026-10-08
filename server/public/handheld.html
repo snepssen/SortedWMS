@@ -211,6 +211,9 @@
       case 'drop': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Drop at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${palletHtml(I.pallet)}</div>`;
       case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}</div>`;
       case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${palletHtml(I.pallet)}</div>`;
+      case 'count': return I.step
+        ? `<div class="card"><div class="kicker">${job}</div><div class="mid">Scan the pallet in ${esc(I.targetName)}</div><div class="sub">Empty? Scan the location label again.</div></div>`
+        : `<div class="card"><div class="kicker">${job}</div><div class="sub">Count at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">Scan the location label, then whatever is in it. The system checks it against what it expects.</div></div>`;
       case 'check-label': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Put the shipping label on, then scan it</div>${palletHtml(I.pallet)}</div>`;
       case 'receive': {
         const d = I.delivery;

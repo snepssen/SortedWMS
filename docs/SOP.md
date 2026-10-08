@@ -17,7 +17,7 @@ Contents
 0. [The system on one page](#0-the-system-on-one-page)
 1. [Shift start](#1-shift-start)
 2. [Inbound: receiving and put-away](#2-inbound)
-3. [Storage: locations, Auto-Shift, corrections](#3-storage)
+3. [Storage: locations, Auto-Shift, corrections, stock counts](#3-storage)
 4. [Outbound: orders, picking, check & label, loading](#4-outbound)
 5. [Process floor: stations and the warm room](#5-process-floor)
 6. [Quality and exceptions](#6-quality-and-exceptions)
@@ -43,7 +43,7 @@ Contents
 
 - **Auto.** Drivers don't choose work. When a job is done, the next one is on the screen, chosen by:
   1. urgent first (flagged in the office, or waiting more than 20 minutes);
-  2. then job type in the coordinator's order (default: Pick › Process move › Check & label › Receiving › Put-away › Auto-Shift);
+  2. then job type in the coordinator's order (default: Pick › Process move › Check & label › Receiving › Put-away › Auto-Shift › Stock count);
   3. then nearest by the route the truck may drive.
 - **Categories never mix.** Every rack location has a category (yoghurt, cheese, protein drinks). Every driver works only the categories set on their handheld.
 - **First expired, first out.** Picks take the earliest best-before. A pallet below the item's *minimum days left to ship* can't be picked.
@@ -57,7 +57,8 @@ Contents
 | --- | --- |
 | **SSCC** | The pallet's 18-digit ID, the bottom barcode on a pallet label. |
 | **Location** | A rack position, shown as `AA03C2` (cell A, rack A, bay 03, level C, position 2) or the old `38-02-0-10`; both scan. Also lanes (`DOCK-IN`, `OUT-01`), block lanes (`BL01-03`) and stations. |
-| **Job** | One move for one pallet: pick, put-away, Auto-Shift, process move, check & label, receiving. |
+| **Job** | One move for one pallet: pick, put-away, Auto-Shift, process move, check & label, receiving. Or one stock count: one location. |
+| **Stock count** | A blind count of one location: scan the location, scan what's in it. The handheld doesn't say what to expect. |
 | **Auto-Shift** | A rack-to-rack move the system plans: wrong category, next-out to the ground, batch together, dig out buried stock. |
 | **Held pallet** | A pallet a driver scanned that had nothing to do. The truck stays empty; the next location scan records where it stands. |
 | **Location unknown** | Pallets the system has lost track of (reported missing, or pushed out by a correction). Listed in the office. |
@@ -248,6 +249,32 @@ In the office, the answer comes with buttons:
 - Trucks are only sent to the pallet they can actually lift: the top of the front stack.
 - A ⚠ on a lane means a newer batch stands in front of an older one. Idle trucks dig it out.
 
+### 3.6 Stock counts (inventory control without stopping work)
+**Who** Coordinator plans, any driver counts · **Screen** Office → Locations → *Stock counts*; handheld · **When** Any time; counts fill the gaps between real jobs
+
+**Coordinator**
+1. Office → Locations → **Stock counts**.
+2. **Plan counts.** Two ways:
+   - **Leave the range empty:** the system chooses. First the places where corrections happened or a lost pallet was last seen, then the locations longest since a count.
+   - **A range** (`AA01A1` → `AA10E3`, or a whole aisle): every location in it. Use this for a full count of one area.
+3. Read the results in the same section: what the system had, what was found, and who counted. *System right …%* is your stock accuracy.
+
+**Driver**
+1. A count comes up in Auto when there is **nothing else to do**. It never holds up a pick.
+2. Go to the location. **Scan the location label.**
+3. **Scan the pallet** in it. **Empty?** Scan the location label again.
+4. The next job is on the screen.
+
+**Inventory duty:** scan `CMD-COUNT` (Stock count mode). The truck gets count after count and no other work: first the places that need it, then the nearest location not counted this week. It walks the aisle for you. Scan `CMD-AUTO` to go back.
+
+**The system:**
+- **Match:** *Count OK*. The location is marked counted.
+- **A different pallet:** the system is corrected on the spot, as a transfer. The pallet it had there goes on the **location unknown** list.
+- **Empty where a pallet should be:** that pallet goes on the **location unknown** list. A pick waiting for it is held, so nobody drives there for it.
+- Counts never jump the queue, however long they wait. Switch them off in Settings (*Job types on*) if a day is too busy.
+
+> **Why it's quicker:** no stock-take weekend, no count sheets, no keying in. Two scans per location, in time the truck would otherwise stand still. The count is blind, so the driver checks what is there, not what the screen says should be.
+
 ---
 
 ## 4. Outbound
@@ -404,7 +431,7 @@ See 2.5.
 
 ### 7.2 Coordinator
 1. Floor: no **active** jobs left on paused trucks; held jobs dealt with or handed over.
-2. Locations: the location unknown and Blocked lists, for the handover.
+2. Locations: the location unknown and Blocked lists, for the handover. Stock counts: any differences found today.
 3. Orders: anything not *ready* or not shipped, and why.
 4. Audit: who did what, if a question came up during the shift.
 
@@ -417,7 +444,7 @@ Every on-screen button has a barcode, so drivers keep their gloves on. Marked **
 
 | Scan | Does |
 | --- | --- |
-| `CMD-AUTO` `CMD-PICK` `CMD-PUTAWAY` `CMD-TRANSFER` `CMD-STOCK` `CMD-PAUSE` | Switch mode (not with a pallet on the forks) |
+| `CMD-AUTO` `CMD-PICK` `CMD-PUTAWAY` `CMD-TRANSFER` `CMD-STOCK` `CMD-COUNT` `CMD-PAUSE` | Switch mode (not with a pallet on the forks) |
 | `CMD-MISSING` `CMD-DAMAGED` `CMD-BLOCKED` **2×** | Report a problem on the current job |
 | `CMD-FULL` | Receiving: full pallet quantity |
 | `CMD-DONE` **2×** | Receiving: close a short delivery |
@@ -443,6 +470,7 @@ Auto does everything; the other modes are for working on your own.
 | Put-away | Putting away a pallet you choose |
 | Transfer | Corrections: pallet, then location |
 | Stock check | Asking without changing anything |
+| Stock count | Inventory duty: count after count, nearest next |
 | Pause | Breaks and shift end |
 
 ### Messages on the handheld
@@ -456,9 +484,12 @@ Auto does everything; the other modes are for working on your own.
 | *Not one of your categories* | It belongs to another team, or your categories need changing (⚙). |
 | *Scan the location it stands at to correct it* | You're holding a pallet. Scan its real location, scan it again to move it, or `CMD-CANCEL`. |
 | *No label? Scan the pallet again to reprint* | At check & label: scan the pallet again for a new print. |
+| *Scan the pallet in …. Empty? Scan the location again* | A stock count: scan what is really there. |
+| *Corrected* / *… should be here* | Your count found a difference. The system is already corrected; carry on. |
 
 ### Settings worth knowing (Office → Settings)
 - **Job order:** which job types come first.
+- **Job types on:** switch a job type off for the day (for example stock counts during a peak).
 - **Trucks per aisle:** default 2.
 - **Jump the queue after:** minutes before an old job goes urgent.
 - **Next-out pallets at ground per item.**
