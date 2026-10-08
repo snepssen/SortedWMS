@@ -104,7 +104,7 @@
   <section class="card">
     <h2>Workload, as the system organised it</h2>
     <div class="tiles" id="wTiles"></div>
-    <div class="hint" style="margin-top:10px">Up next: urgent first, then the job order set in Settings, then oldest first. Each truck takes the nearest job of the first kind it can do.</div>
+    <div class="hint" style="margin-top:10px">Up next: urgent first, then the job order set in Settings, then oldest first. Each truck takes the nearest job of the first kind it can do. <span id="wOrder"></span></div>
     <ol class="queue" id="wQueue"></ol>
   </section>
   <div class="fleet" id="fleet"></div>
@@ -327,9 +327,11 @@
     const msg = v.message ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : '';
     const cust = I.customer && I.customer.notes.length ? `<div class="sub" style="color:#ffb020">${esc(I.customer.name)}: ${esc(I.customer.notes.join('; '))}</div>` : '';
     const cats = v.categories ? v.categories.map((c) => CATS[c] || c).join(', ') : 'all categories';
+    const st = wh.trucks[id].stats;
+    const figures = `<div class="next">${st.moves} moves${st.moves ? ` · ${(st.moveInputs / st.moves).toFixed(1)} scans per move` : ''}${st.received ? ` · ${st.received} received` : ''} · ${st.wrongScans} wrong scans</div>`;
     return `<div class="scr"><div class="top"><b>${esc(id)}</b><span>${esc(cats)}</span>
       <label title="Untick to drive this one yourself"><input type="checkbox" data-auto="${esc(id)}" ${manual ? '' : 'checked'}> auto</label><button data-open="${esc(id)}">Open</button></div>
-      ${body}${cust}${next}${msg}</div>`;
+      ${body}${cust}${next}${msg}${figures}</div>`;
   }
 
   async function renderFloor() {
@@ -355,6 +357,8 @@
       tile(orders.filter((o) => o.status === 'shipped').length, 'orders shipped'),
       tile(dock, 'pallets at the dock'),
     ].join('');
+    const w = wh.activeWindow();
+    $('#wOrder').textContent = `Job order now${w ? ` (${w.from}-${w.to})` : ''}: ${wh.activePriority().map((k) => TASK_TYPES[k].short).join(' › ')}.`;
     const queued = live.filter((t) => t.status === 'open')
       .sort((a, b) => (wh.isUrgent(b) - wh.isUrgent(a)) || (wh._priorityOf(a.type) - wh._priorityOf(b.type)) || (a.idleOnly - b.idleOnly) || a.createdAt - b.createdAt || a.id - b.id);
     const place = (c) => (c ? SortedApi.placeName(wh, c) : 'auto slot');

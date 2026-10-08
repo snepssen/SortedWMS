@@ -22,6 +22,8 @@ Every procedure in [SOP.md](SOP.md) was walked through step by step against the 
 | Network lag (1.2) | Near the docks a scan could take seconds to answer. A second scan was dropped without a word, an impatient rescan could count twice (a pallet scanned twice in Auto means *move it*), and a request that hung locked the handheld. | Scans **queue** instead of dropping. A late answer is **asked for again with the same request ID**, and the server does it once. The screen says *Sending…* or *Slow network: your scan is kept*, and *Connecting…* at startup. |
 | Receiving (2.2, 2.3) | A wrong value while receiving (a typo, or the dock label scanned by mistake and taken as the batch) could only be fixed by the coordinator. | **CMD-CANCEL** starts the pallet again. A location label is never taken as a batch number. |
 | Held jobs (6.1) | A held job could be released for a pallet nobody could find, sending a truck to an empty spot. | Release waits until the pallet is found. A check whose pallet left the order is closed, like a pick. |
+| Shift start (1.1) | The job order was one list all day: receiving first in the morning meant changing it by hand, and changing it back. | **Job order by time of day** (Settings → Dispatch): windows like *06:00-10:00 receiving and put-away first*. It switches by itself; the office shows which order applies now. |
+| Shift end (7.2) | No way to see per handheld how the shift went. | **Drivers this shift** (Floor): jobs, pallet moves, scans per move, wrong scans and idle time per handheld, from a *Start a new shift* button. For coaching, not counting. |
 | Stock counts (3.6) | No inventory control: differences were found when a pick failed. | **Count jobs** for idle trucks: blind, two scans, the system corrected on the spot. The places with corrections and lost pallets go first. **Stock count mode** for a driver on inventory duty. Accuracy in the office. |
 
 ## Recommended: decisions for the floor and management
@@ -54,6 +56,4 @@ These cost nothing to build. They are settings, supplier requests or site data.
 In order of what they save on the floor:
 
 1. **Printer alerts.** Ask every printer for its status every few minutes, and show *paper out* in the office and on the handheld of a driver heading to that lane.
-2. **Job order by time of day.** For example, receiving first while the morning trucks are at the doors, picks first after 10:00.
-3. **Customer rules the system enforces:** minimum days left per customer, and checks such as *no double stacking* at the lane. Requirements are already shown to the driver; this would make the system hold to them.
-4. **A driver view for the coordinator.** Scans per move, idle time and wrong scans per shift, to coach rather than to count.
+2. **Customer rules the system enforces:** minimum days left per customer, and checks such as *no double stacking* at the lane. Requirements are already shown to the driver; this would make the system hold to them.

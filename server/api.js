@@ -112,6 +112,7 @@
       categories: wh.categories,
       naming: wh.naming.show,
       config: wh.config,
+      jobOrderNow: { window: wh.activeWindow(), priority: wh.activePriority(), localTime: wh.localTime() },
     };
   }
 
@@ -189,6 +190,7 @@
         results: counts.map((c) => ({ ...c, name: placeName(wh(), c.code) })),
       };
     });
+    on('GET', '/api/drivers', () => wh().driverStats());
     on('GET', '/api/customers', () => Object.entries(wh().customers || {}).map(([name, c]) => ({ name, notes: c.notes })));
     on('GET', '/api/transfers', () => (wh().transfers || []).slice(0, 200).map((t) => ({ ...t, fromName: placeName(wh(), t.from), toName: placeName(wh(), t.to) })));
     on('GET', '/api/trace/:batch', ({ batch }) => {
@@ -259,6 +261,7 @@
     on('POST', '/api/aisles/:aisle/cell', ({ aisle }, q, b, by) => run('setAisleCell', { aisle, cell: b.cell }, by));
     on('POST', '/api/naming', (_, q, b, by) => run('setNaming', { show: b.show }, by));
     on('POST', '/api/plan/grouping', (_, q, b, by) => run('planGrouping', {}, by));
+    on('POST', '/api/shift/start', (_, q, b, by) => run('startShift', {}, by));
     on('POST', '/api/customers', (_, q, b, by) => run('setCustomerNotes', { customer: b.customer, notes: b.notes }, by));
     on('POST', '/api/workload', (_, q, b, by) => run('dropWorkload', { seed: Number(b.seed) || (Date.now() % 1e9) + 1, picks: Number(b.picks) || 0, inbound: Number(b.inbound) || 0 }, by));
     on('POST', '/api/plan/counts', (_, q, b, by) => run('planCounts', { from: b.from || null, to: b.to || null, limit: b.limit }, by));

@@ -46,6 +46,8 @@ Drivers don't pick work from a menu. The moment they finish a job, the next one 
 2. **Job type,** in the coordinator's order. Default: Check & label › Pick › Process move › Receiving › Put-away › Auto-Shift › Stock count. Checking first finishes orders as their pallets arrive at the lane, instead of all at the end.
 3. **Nearest job** within the same type (can be switched off; then oldest first).
 
+The job order can change with the time of day: windows like `06:00-10:00 RECEIVE, PUTAWAY` put those first while the morning trucks are at the doors, and switch back by themselves. The office's Floor tab also shows **Drivers this shift**: jobs, pallet moves, scans per move, wrong scans and idle time per handheld, for coaching rather than counting.
+
 **Auto also handles whatever the driver scans.** Drivers scan pallets the screen didn't ask for all the time: the one in the way, one that looks wrong, one they recognise. Auto decides on the spot:
 
 | The scanned pallet… | Auto says |
