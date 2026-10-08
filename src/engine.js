@@ -43,6 +43,7 @@
     ground: 'Ships next: to ground level',
     group: 'Same batch together',
     driver: 'Started by driver',
+    digout: 'Uncover older stock',
   };
 
   // Receiving asks for these in this order. A GS1 label scan can fill several at once.
@@ -61,6 +62,10 @@
     oneWay: false, // route trucks with the one-way signs in the aisles
     blockLaneCap: 1, // trucks in one block-stack lane at a time
     blockLaneBatches: 2, // batches of one item allowed to share a block lane
+    // Older stock buried behind newer in a block lane:
+    // 'digout' = move the newer pallets away when trucks are idle,
+    // 'pickfirst' = picks take the newer pallets in front first, 'both', or 'off'.
+    buriedStock: 'both',
   };
 
   // What the receiving desk operator calls out to the scanner, and what each fills.
@@ -615,6 +620,13 @@
       }
       this.config = { ...this.config, ...patch, enabled: { ...this.config.enabled, ...(patch.enabled || {}) } };
       if (patch.groundNextPerItem !== undefined) this.planGround();
+      if (patch.buriedStock !== undefined) {
+        if (!['digout', 'pickfirst', 'both', 'off'].includes(patch.buriedStock)) throw new Error('Buried stock: digout, pickfirst, both or off');
+        if (!['digout', 'both'].includes(patch.buriedStock)) {
+          for (const t of Object.values(this.tasks)) if (t.reason === 'digout' && t.status === 'open') this._cancelQuiet(t);
+        }
+        this.planDigOut();
+      }
       this.dispatch();
     }
 
@@ -1004,11 +1016,13 @@
         }
         return x.createdAt - y.createdAt || x.id - y.id;
       });
-      return candidates.find((t) => this._slotAvailable(t)) || null;
+      // Idle-only work (uncovering buried stock) goes to a truck with nothing else to do.
+      return candidates.find((t) => !t.idleOnly && this._slotAvailable(t))
+        || candidates.find((t) => t.idleOnly && this._slotAvailable(t)) || null;
     }
 
     _slotAvailable(t) {
-      if (t.autoSlot) return Boolean(t.to || this._findSlot(this.pallets[t.sscc], t.from, { ground: t.ground }));
+      if (t.autoSlot) return Boolean(t.to || this._findSlot(this.pallets[t.sscc], t.from, { ground: t.ground, noBury: t.noBury }));
       const to = this.locations[t.to];
       if (to.kind === 'station') return this._stationRoom(to.station, t.id) > 0;
       if (to.kind !== 'rack') return true;
@@ -1333,6 +1347,8 @@
         to: fields.to || null,
         autoSlot: fields.to == null,
         ground: Boolean(fields.ground),
+        idleOnly: Boolean(fields.idleOnly), // only for a truck with nothing else to do
+        noBury: Boolean(fields.noBury), // never put this pallet where it buries older stock
         orderId: fields.orderId || null,
         deliveryId: fields.deliveryId || null,
         urgent: Boolean(fields.urgent),
@@ -1460,7 +1476,10 @@
       if (to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
       const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
       this._place(pallet, task.to);
-      if (buries) this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
+      if (buries) {
+        this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
+        this.planDigOut();
+      }
       truck.load = null;
       truck.position = task.to;
       task.alert = null;
@@ -1611,6 +1630,7 @@
     /** Usable pallets of an item in shipping order: first expiry, then first received, ground first. */
     _fefo(itemNo) {
       const live = this._liveMap();
+      const blockers = new Set(['pickfirst', 'both'].includes(this.config.buriedStock) ? this._blockers() : []);
       return Object.values(this.pallets)
         .filter((p) => {
           if (p.itemNo !== itemNo || !p.loc || p.orderId || this.shipState(p) !== 'ok') return false;
@@ -1625,10 +1645,42 @@
           const t = live.get(p.sscc);
           return !t || (t.type === 'SHIFT' && t.status === 'open');
         })
-        .sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0)
+        .sort((a, b) => (blockers.has(b.sscc) - blockers.has(a.sscc))
+          || (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0)
           || a.receivedAt - b.receivedAt
           || (this.locations[a.loc].level || 0) - (this.locations[b.loc].level || 0)
           || (a.loc < b.loc ? -1 : 1));
+    }
+
+    /** Pallets standing in front of an older batch in a block lane, front first. */
+    _blockers() {
+      const out = [];
+      for (const { lane, buried } of this.buriedLanes()) {
+        for (const s of this._blockSeq(lane)) {
+          const p = this.pallets[s];
+          if (this._batchKey(p) === buried.key) break;
+          if (!out.includes(s)) out.push(s);
+        }
+      }
+      return out;
+    }
+
+    /**
+     * Uncover older stock buried behind newer in block lanes: Auto-Shift the
+     * newer pallets in front to another lane, for trucks with nothing else to do.
+     */
+    planDigOut() {
+      if (!['digout', 'both'].includes(this.config.buriedStock)) return 0;
+      let n = 0;
+      for (const sscc of this._blockers()) {
+        const p = this.pallets[sscc];
+        if (p.orderId || p.proc || this._liveTaskFor(sscc)) continue;
+        if (!this._findSlot(p, p.loc, { noBury: true })) continue;
+        this._newTask({ type: 'SHIFT', reason: 'digout', sscc, from: p.loc, to: null, category: this.items[p.itemNo].category, idleOnly: true, noBury: true });
+        n++;
+      }
+      if (n) this.log(`${n} pallet(s) stand in front of older stock in the block stacks — moves planned for idle trucks`);
+      return n;
     }
 
     _cancelQuiet(task) {
@@ -1857,9 +1909,9 @@
      * in the same bay level, then the right height (ground for what ships
      * next, high for blocked stock and later batches), then travel distance.
      */
-    _findSlot(pallet, origin, { ground = false } = {}) {
+    _findSlot(pallet, origin, { ground = false, noBury = false } = {}) {
       if (!pallet) return null;
-      if (this.items[pallet.itemNo].storage === 'block') return this._findBlockSlot(pallet, origin);
+      if (this.items[pallet.itemNo].storage === 'block') return this._findBlockSlot(pallet, origin, { noBury });
       const top = this.layout.levels - 1;
       const nextOut = this.config.groundNextPerItem > 0
         && this._fefo(pallet.itemNo)
@@ -1972,14 +2024,15 @@
      * Same batch first, then a lane where the new batch ships first anyway,
      * then an empty lane; burying older stock only as a last resort.
      */
-    _findBlockSlot(pallet, origin) {
+    _findBlockSlot(pallet, origin, { noBury = false } = {}) {
       const cat = this.items[pallet.itemNo].category;
+      const fromLane = this.locations[origin] && this.locations[origin].lane; // never back into its own lane
       let best = null;
       let bestScore = Infinity;
       let sameBatchBusy = false;
       for (const lane of this.layout.blocks) {
         const stacks = this._blockStacks(lane);
-        if (stacks[0].category !== cat) continue;
+        if (stacks[0].category !== cat || lane === fromLane) continue;
         if (stacks.some((s) => s.blocked || s.reservedBy)) {
           // Another put-away of this batch is under way in this lane: wait for it rather than open a new lane.
           const res = stacks.find((s) => s.reservedBy);
@@ -1988,7 +2041,7 @@
           continue;
         }
         const fit = this._laneFit(lane, pallet);
-        if (!fit.ok) continue;
+        if (!fit.ok || (noBury && fit.buries)) continue;
         const target = this._blockTarget(lane);
         if (!target) continue;
         let score = this.travel(origin, target.code) * 10 + fit.score;
@@ -2000,7 +2053,7 @@
     }
 
     _reserveSlot(task) {
-      const slot = this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground });
+      const slot = this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground, noBury: task.noBury });
       if (!slot) return false;
       slot.reservedBy = task.id;
       task.to = slot.code;

@@ -522,6 +522,15 @@ td .acts { display: flex; gap: 4px; }
             <div class="stepper"><button class="btn" type="button" id="lbDown" aria-label="Fewer batches per lane">−</button><b id="laneBatches" class="num">2</b><button class="btn" type="button" id="lbUp" aria-label="More batches per lane">+</button></div>
           </div>
           <div class="rule">
+            <label for="buried">Older stock buried in a lane<small>Newer pallets in front of an earlier best-before</small></label>
+            <select id="buried">
+              <option value="both">Dig out when idle + pick the newer first</option>
+              <option value="digout">Dig out when trucks are idle</option>
+              <option value="pickfirst">Pick the newer pallets first</option>
+              <option value="off">Leave it</option>
+            </select>
+          </div>
+          <div class="rule">
             <label>Same batch together<small>Move pallets standing alone next to the rest of their item, batch and expiry</small></label>
             <button class="btn small" type="button" id="groupNow">Plan moves</button>
           </div>
@@ -745,8 +754,9 @@ td .acts { display: flex; gap: 4px; }
           wh.stockPallet(spot, { itemNo, batch, expiry, receivedAt: simNow - between(3, 15) * DAY });
         }
         if (k === 1) {
-          // A second, earlier-dated batch in front of it: two batches sharing a lane.
-          const exp2 = addDays(expiry, -12);
+          // A second batch in front of it: two batches sharing a lane. For Emmental the
+          // newer batch went in front, burying the older one (dig-out shows it being fixed).
+          const exp2 = addDays(expiry, itemNo === 'C2006' ? 25 : -12);
           const b2 = batchCode(itemNo, exp2);
           for (let i = 0; i < between(4, 9); i++) {
             const spot = wh.nextBlockSpot(lane);
@@ -853,6 +863,7 @@ td .acts { display: flex; gap: 4px; }
     sendToProcess('HOLES', 2);
     simNow = SHIFT_START;
     wh.planGround();
+    wh.planDigOut();
 
     for (const cats of [['YOG'], ['YOG'], ['CHE'], ['CHE'], ['CHE']]) addTruck('auto', cats);
     nextOrder = simNow + 4 * MIN;
@@ -929,6 +940,7 @@ td .acts { display: flex; gap: 4px; }
     }
     tickStations();
     tickDesk();
+    if (Math.floor(simNow / (5 * MIN)) !== Math.floor((simNow - simSeconds * 1000) / (5 * MIN))) wh.planDigOut();
     if (simNow >= nextHoles) {
       sendToProcess('HOLES', between(1, 2));
       nextHoles = simNow + between(50, 80) * MIN;
@@ -1473,6 +1485,7 @@ td .acts { display: flex; gap: 4px; }
       <span class="seg" role="group" aria-label="Aisle ${a} entry">${['front', 'back'].map((d) => `<button type="button" data-aisle="${a}" data-dir="${d}" aria-pressed="${wh.aisleDir[a] === d}">${d === 'front' ? 'Front ▸' : '◂ Back'}</button>`).join('')}</span></div>`).join('') : '');
     $('ground').textContent = wh.config.groundNextPerItem;
     $('laneBatches').textContent = wh.config.blockLaneBatches;
+    if (document.activeElement !== $('buried')) $('buried').value = wh.config.buriedStock;
     $('lbDown').disabled = wh.config.blockLaneBatches <= 1;
     $('lbUp').disabled = wh.config.blockLaneBatches >= 3;
     $('gDown').disabled = wh.config.groundNextPerItem <= 0;
@@ -1810,6 +1823,10 @@ td .acts { display: flex; gap: 4px; }
     const input = ev.target.closest('[data-item]');
     if (input) act(() => wh.setMinShipDays(input.dataset.item, Math.max(0, Math.round(Number(input.value) || 0))));
   });
+  $('buried').addEventListener('change', (ev) => act(() => {
+    wh.setConfig({ buriedStock: ev.target.value });
+    wh.log(`Buried older stock: ${ev.target.selectedOptions[0].textContent.toLowerCase()}`);
+  }));
   $('lbDown').addEventListener('click', () => act(() => { wh.setConfig({ blockLaneBatches: wh.config.blockLaneBatches - 1 }); wh.log(`Block lanes: up to ${wh.config.blockLaneBatches} batch(es) per lane`); }));
   $('lbUp').addEventListener('click', () => act(() => { wh.setConfig({ blockLaneBatches: wh.config.blockLaneBatches + 1 }); wh.log(`Block lanes: up to ${wh.config.blockLaneBatches} batches per lane`); }));
   $('gDown').addEventListener('click', () => act(() => wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem - 1 })));

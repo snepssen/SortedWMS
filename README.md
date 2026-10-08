@@ -56,6 +56,7 @@ The system picks the slot, and the driver scans twice. Jobs are created when:
 - **A pallet ships next.** For every item, the next pallet(s) out (by expiry) are brought down to ground level, so a pick never waits on a high reach. The number per item is a setting.
 - **The same batch is apart.** A pallet standing alone is moved next to the rest of its item, batch and expiry, in the same bay level: positions 10, 40 and 70 between the rack legs.
 - **A driver starts one.** An idle driver scans any pallet; the system picks the slot.
+- **Older stock is buried in a block lane.** The newer pallets in front are moved to another lane by trucks that are otherwise idle.
 
 Put-away uses the same slotting rules from the start. It prefers a free position next to the same batch. It sends the next-out pallet low and later batches higher, to keep the ground free. Blocked stock goes to the top.
 
@@ -65,6 +66,9 @@ Crate pallets stand on the floor in block lanes, 6 high. The system knows the st
 - A second batch goes in front of the first. If its best-before is the same or earlier, it ships first anyway, so the system prefers that over opening an empty lane. If it's later, it would bury older stock, so the system only does that when no lane fits better, and it flags the lane (⚠ on the board, a warning in the log).
 - A lane is filled from the back and emptied from the front.
 - A truck is only sent to the pallet it can actually lift: the top of the front-most stack. A pick for a buried pallet waits until the pallets in front of it have gone.
+- **Buried older stock** can be handled two ways (a setting, both on by default):
+  - *Dig out when idle:* Auto-Shift moves the newer pallets in front to another lane, never to one where they'd bury something else. These jobs only go to a truck with nothing else to do.
+  - *Pick the newer first:* orders take the pallets standing in front of the older batch, so normal picking uncovers it. The customer gets the fresher pallet.
 - FEFO applies to what can be reached: picks take the earliest best-before among the pallets trucks can actually lift.
 - One truck per lane at a time (a setting).
 

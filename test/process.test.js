@@ -217,3 +217,45 @@ test('pallets of one batch follow each other into the same lane instead of openi
   const next = wh.tasks[wh.trucks.RT1.taskId] || wh.tasks[wh.trucks.RT2.taskId];
   assert.equal(wh.locations[next.to].lane, wh.locations[a.loc].lane, 'same lane as the first');
 });
+
+function buryK1(wh) {
+  const older = stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
+  const newer = stockBlock(wh, 'BL01', 2, 'K5', '2027-04-01');
+  return { older, newer };
+}
+
+test('dig-out: idle trucks move the newer pallets away; busy trucks do real work first', () => {
+  const { wh } = setup({ buriedStock: 'digout', checkAfterPick: false });
+  const { newer } = buryK1(wh);
+  wh.stockPallet('01-01-0-10', { itemNo: 'C1', batch: 'B1', expiry: '2027-01-01' });
+  assert.equal(wh.planDigOut(), 2);
+  wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'C1', pallets: 1 }] });
+  wh.addTruck('RT1');
+  assert.equal(wh.tasks[wh.trucks.RT1.taskId].type, 'PICK', 'the pick before the dig-out');
+  move(wh, 'RT1');
+  const dig = wh.tasks[wh.trucks.RT1.taskId];
+  assert.equal(dig.reason, 'digout');
+  assert.equal(dig.sscc, newer[1].sscc, 'front pallet first');
+  move(wh, 'RT1');
+  assert.notEqual(wh.locations[newer[1].loc].lane, 'BL01', 'moved to another lane');
+  move(wh, 'RT1');
+  assert.equal(wh.buriedLanes().length, 0, 'older stock is in front again');
+});
+
+test('pick-first: an order takes the newer pallets in front of buried older stock', () => {
+  const { wh } = setup({ buriedStock: 'pickfirst' });
+  const { newer } = buryK1(wh);
+  stockBlock(wh, 'BL02', 1, 'K0', '2026-12-01'); // the earliest stock, reachable elsewhere
+  const o = wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'W1', pallets: 1 }] });
+  assert.equal(o.lines[0].allocated[0], newer[1].sscc);
+  wh.setConfig({ buriedStock: 'off' });
+  const o2 = wh.addOrder({ id: 'O2', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'W1', pallets: 1 }] });
+  assert.equal(wh.pallets[o2.lines[0].allocated[0]].batch, 'K0', 'plain FEFO when switched off');
+});
+
+test('dig-out never moves a pallet where it would bury something else', () => {
+  const { wh } = setup({ buriedStock: 'digout' });
+  buryK1(wh);
+  stockBlock(wh, 'BL02', 1, 'K0', '2026-12-01'); // only other lane holds earlier stock
+  assert.equal(wh.planDigOut(), 0, 'nowhere safe to put them');
+});
