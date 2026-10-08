@@ -23,6 +23,8 @@ For a local preview of the guided shift, run `npm run build:pages`, then serve `
 
 **Try the handheld and office screens: https://snepssen.github.io/SortedWMS/wms.html**. These are the real WMS screens with made-up stock. On Pages there's no server, so the WMS runs inside the browser and changes stay in that browser. A button scans whatever the handheld asks for, since a computer has no scanner.
 
+**Demo kit: https://snepssen.github.io/SortedWMS/kit.html**. A label wall that shows, big enough to scan off a screen, the barcode a handheld needs next, plus a print sheet of sample pallet labels in the real supplier formats. The demo script is in [docs/DEMO.md](docs/DEMO.md).
+
 To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
 
 The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
@@ -203,7 +205,7 @@ Settings, through environment variables:
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping and pallet labels, scaled to the printer's dpi. |
-| `src/barcode.js` | Code 128 as SVG, for the command card. |
+| `src/barcode.js` | Code 128 and GS1-128 as SVG, for the command card and the demo kit. |
 | `server/index.js` | The WMS server: JSON API, handheld and office pages, clock tick, printing. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
@@ -217,6 +219,8 @@ Settings, through environment variables:
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
+| `docs/DEMO.md` | The demo: set-up with a real MC9401 or without hardware, and a 10-minute run. |
+| `server/public/kit.html` | The demo kit (`/kit`): label wall and print sheet. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
 ## Locations

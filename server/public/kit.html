@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SortedWMS demo kit</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; color: #000; font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #eef1f4; border-bottom: 1px solid #cfd6dd; }
+  .bar h1 { font-size: 17px; margin: 0; }
+  .bar nav { display: flex; gap: 4px; }
+  .bar nav button { font: inherit; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid transparent; background: none; color: #4d5965; cursor: pointer; }
+  .bar nav button.on { background: #fff; border-color: #cfd6dd; color: #000; }
+  .bar .hint { color: #4d5965; flex: 1 1 280px; font-size: 13px; }
+  .bar a { color: #1769c2; }
+  select, .bar .print { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid #b9c3cc; background: #fff; }
+  .bar .print { background: #1769c2; border-color: #1769c2; color: #fff; font-weight: 600; cursor: pointer; }
+  main { padding: 16px; }
+  svg { display: block; max-width: 100%; height: auto; }
+
+  /* Label wall: what the chosen handheld needs next, big enough to scan off the screen. */
+  .wall { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .now { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .now .kind { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #4d5965; }
+  .now .msg { font-size: 15px; color: #333; }
+  .codes { display: grid; grid-template-columns: 1fr; gap: 14px; } /* one barcode per row: full width, so the bars stay wide enough to scan off a screen */
+  .code { border: 2px solid #000; border-radius: 12px; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 6px; align-items: center; background: #fff; }
+  .code.main { border-width: 4px; }
+  .code .what { align-self: stretch; display: flex; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 18px; }
+  .code .what small { font-weight: 600; font-size: 13px; color: #4d5965; }
+  .code .hri { font: 600 14px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .03em; word-break: break-all; text-align: center; }
+  .typed { border: 2px dashed #a96500; border-radius: 12px; padding: 12px 14px; color: #6b4300; background: #fff8ec; }
+  .typed b { font: 800 22px ui-monospace, Menlo, Consolas, monospace; color: #000; }
+  .cmds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .cmds .code { border-width: 1px; padding: 8px 10px 6px; }
+  .cmds .code .what { font-size: 15px; }
+  .empty { color: #4d5965; padding: 20px 0; }
+
+  /* Print sheet: A4. Sample pallet labels two to a page, then the dock and lane labels. */
+  .sheet { width: 190mm; margin: 0 auto; }
+  .sheet h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin: 4mm 0 2mm; border-bottom: 1.5px solid #000; padding-bottom: 1mm; }
+  .sheet p { margin: 0 0 3mm; font-size: 12px; color: #333; }
+  .label { border: 1.5px solid #000; border-radius: 2mm; padding: 4mm 5mm; margin: 0 0 5mm; break-inside: avoid; display: flex; flex-direction: column; gap: 2mm; }
+  .label .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 4mm; }
+  .label .sup { font-size: 11px; color: #333; }
+  .label .demo { font: 800 11px system-ui, sans-serif; border: 1.5px solid #000; border-radius: 1.5mm; padding: 0.5mm 2mm; letter-spacing: .08em; }
+  .label .title { font-size: 16px; font-weight: 800; }
+  .label dl { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 0.5mm 3mm; margin: 0; font-size: 12px; }
+  .label dt { color: #333; }
+  .label dd { margin: 0; font-weight: 700; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .label .bc { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5mm; }
+  .label .bc .hri { font: 10px ui-monospace, Menlo, Consolas, monospace; }
+  .label .flow { font-size: 11px; border-top: 1px solid #000; padding-top: 1.5mm; }
+  .lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .lane { border: 1.5px solid #000; border-radius: 2mm; padding: 4mm; display: flex; flex-direction: column; align-items: center; gap: 2mm; break-inside: avoid; }
+  .lane .name { font: 800 30px ui-monospace, Menlo, Consolas, monospace; }
+  .pagebreak { break-after: page; }
+  .print-only { display: none; }
+  @media print {
+    .bar, .screen-only { display: none !important; }
+    .print-only { display: block; }
+    main { padding: 0; }
+    @page { size: A4; margin: 10mm; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Demo kit</h1>
+  <nav><button data-tab="wall">Label wall</button><button data-tab="sheet">Print sheet</button></nav>
+  <span class="hint" id="hint"></span>
+</div>
+<main id="main"></main>
+<script src="src/barcode.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ls = { get: (k) => { try { return localStorage.getItem('kit.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('kit.' + k, v); } catch (e) { /* ignore */ } } };
+  const GS = SortedBarcode.GS;
+  let tab = ls.get('tab') || 'wall';
+  let device = ls.get('device') || '';
+  let last = '';
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: 'kit' });
+      if (r.status >= 400) { const e = new Error(r.body.error); e.status = r.status; throw e; }
+      return r.body;
+    }
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': 'kit' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error(data.error || res.statusText); e.status = res.status; throw e; }
+    return data;
+  }
+
+  // ---- The sample delivery: D-2042, six pallets in the two A-ware label formats ----------------
+
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const yymmdd = (iso) => iso.slice(2, 4) + iso.slice(5, 7) + iso.slice(8, 10);
+  const dmyDots = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+  const dmyTyped = (iso) => iso.slice(8, 10) + iso.slice(5, 7) + iso.slice(0, 4);
+  function checkDigit(body) {
+    let sum = 0;
+    for (let i = body.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) sum += Number(body[i]) * w;
+    return (10 - (sum % 10)) % 10;
+  }
+  // Made-up SSCCs (company prefix 9999990): never a real pallet.
+  const sscc = (serial) => { const body = `09999990${String(serial).padStart(9, '0')}`; return body + checkDigit(body); };
+
+  function samples() {
+    const out = [];
+    for (let i = 0; i < 6; i++) {
+      const s = sscc(2042001 + i);
+      if (i < 4) {
+        // A-ware Kruibeke: a full GS1 label. Two scans, nothing typed.
+        const expiry = day(33);
+        const top = `02${'04388860261127'}37${'96'}${GS}15${yymmdd(expiry)}10${'41/07'}`;
+        out.push({ format: 'full', sscc: s, item: 'JA! skyr natuur (12x500GR)', itemNo: 'E0960', batch: '41/07', expiry, count: '96 cases',
+          codes: [
+            { what: 'Top', data: top, hri: `(02) 04388860261127 (37) 96 (15) ${yymmdd(expiry)} (10) 41/07` },
+            { what: 'Bottom', data: `00${s}`, hri: `(00) ${s}` },
+          ], typed: [] });
+      } else {
+        // A-ware Packaging: batch and best-before are printed as text only, so they are typed.
+        const expiry = day(32);
+        out.push({ format: 'partial', sscc: s, item: 'NETTO GUTES LAND SKYR 12X500G', itemNo: '05459', batch: '810040301', expiry, count: '0960 (pots)',
+          codes: [
+            { what: 'Top', data: `02${'4316268741606'}37${'0960'}`, hri: '(02)4316268741606(37)0960' },
+            { what: 'Middle', data: `91${'40012009'}`, hri: '(91)40012009' },
+            { what: 'Bottom', data: `00${s}`, hri: `(00)${s}` },
+          ], typed: [['Batch', '810040301'], ['Best before', dmyTyped(expiry)]] });
+      }
+    }
+    return out;
+  }
+
+  // ---- Label wall --------------------------------------------------------------------------------
+
+  const big = (data, gs1) => SortedBarcode.svg(data, { module: 3, height: 130, gs1 });
+  const codeBox = (what, data, { gs1 = false, hri = data, note = '', main = false } = {}) => `<div class="code${main ? ' main' : ''}">
+      <div class="what"><span>${esc(what)}</span><small>${esc(note)}</small></div>${big(data, gs1)}<div class="hri">${esc(hri)}</div></div>`;
+  const cmd = (key, label) => `<div class="code"><div class="what"><span>${esc(label)}</span></div>${SortedBarcode.svg(`CMD-${key}`, { module: 2, height: 60 })}<div class="hri">CMD-${key}</div></div>`;
+
+  async function nextSample() {
+    for (const p of samples()) {
+      try { await api('GET', `/api/lookup/${p.sscc}`); } catch (e) { if (e.status === 404) return p; throw e; }
+    }
+    return null;
+  }
+
+  async function renderWall() {
+    const devices = (await api('GET', '/api/devices')).filter((d) => d.kind === 'truck');
+    if (!devices.length) return '<div class="empty">No handhelds yet. Register one on the handheld page first.</div>';
+    if (!devices.some((d) => d.id === device)) device = devices[0].id;
+    const v = devices.find((d) => d.id === device);
+    const I = v.instruction;
+    const t = I.task;
+    let main = '';
+    let more = '';
+    const cmds = [cmd('AUTO', 'Auto'), cmd('CANCEL', 'Cancel')];
+    switch (I.kind) {
+      case 'pickup':
+        main = codeBox('Pallet label', `00${I.pallet.sscc}`, { gs1: true, hri: `(00) ${I.pallet.sscc}`, note: `${I.pallet.itemNo} at ${I.targetName}`, main: true });
+        if (I.targetName && I.targetName !== I.pallet.sscc) more = codeBox('or the location label', I.targetName, { note: 'rack pickup' });
+        cmds.push(cmd('MISSING', 'Pallet missing'), cmd('DAMAGED', 'Damaged'));
+        break;
+      case 'drop':
+      case 'wait':
+        main = codeBox('Location label', I.targetName, { note: `drop …${I.pallet ? I.pallet.sscc.slice(-6) : ''}`, main: true });
+        cmds.push(cmd('BLOCKED', 'Location blocked'));
+        break;
+      case 'check-pallet':
+        main = codeBox('Pallet label', `00${I.pallet.sscc}`, { gs1: true, hri: `(00) ${I.pallet.sscc}`, note: `on ${t.fromName}`, main: true });
+        break;
+      case 'check-label':
+        main = codeBox('Shipping label', t.labelCode, { note: 'once it is on the pallet', main: true });
+        break;
+      case 'receive': {
+        const p = I.delivery.id === 'D-2042' ? await nextSample() : null;
+        if (p) {
+          main = p.codes.map((c, i) => codeBox(`${c.what} barcode`, c.data, { gs1: true, hri: c.hri, note: i === 0 ? `pallet ${samples().findIndex((x) => x.sscc === p.sscc) + 1} of 6` : '', main: i === 0 })).join('');
+          if (p.typed.length) {
+            more = `<div class="typed">This supplier prints these as text only: typed on the keypad, ENT after each.<br>${p.typed.map(([k, val]) => `${esc(k)} <b>${esc(val)}</b>`).join(' &nbsp; ')}</div>`;
+          }
+        } else {
+          main = `<div class="empty">Delivery ${esc(I.delivery.id)}: scan the labels on the pallet.</div>`;
+        }
+        if (I.field === 'qty') cmds.push(cmd('FULL', 'Full pallet'));
+        cmds.push(cmd('DONE', 'Delivery done (2×)'));
+        break;
+      }
+      default:
+        main = `<div class="empty">${I.kind === 'idle' ? 'No job right now. The next one shows here by itself.' : `The handheld is in ${esc(v.mode)} mode.`}</div>`;
+    }
+    if (I.pending) cmds.push(cmd('MOVE', 'Move the held pallet'));
+    const options = devices.map((d) => `<option ${d.id === device ? 'selected' : ''}>${esc(d.id)}</option>`).join('');
+    return `<div class="wall">
+      <div class="now"><select id="dev">${options}</select><span class="kind">${esc(t ? t.typeLabel : I.kind)}${t ? ` · #${t.id}` : ''}</span>
+        <span class="msg">${v.message ? esc(v.message.text) : ''}</span></div>
+      <div class="codes">${main}${more}</div>
+      <div class="kind">Command card</div><div class="cmds">${cmds.join('')}</div></div>`;
+  }
+
+  // ---- Print sheet -----------------------------------------------------------------------------
+
+  const small = (data) => SortedBarcode.svg(data, { module: 0.33, height: 14, unit: 'mm', gs1: true });
+  function labelHtml(p, n) {
+    const flow = p.format === 'full'
+      ? 'Receive: <b>2 scans</b>, top then bottom (any order). Nothing typed.'
+      : `Receive: scan the <b>bottom</b>, type batch <b>${esc(p.batch)}</b> ENT and best-before <b>${esc(dmyTyped(p.expiry))}</b> ENT, scan the <b>top</b>. Batch and date have no barcode on this label.`;
+    return `<div class="label">
+      <div class="head"><div><div class="sup">${p.format === 'full' ? 'Format: A-ware Kruibeke (full GS1)' : 'Format: A-ware Packaging (batch and date as text)'} · delivery D-2042 · pallet ${n} of 6</div>
+        <div class="title">${esc(p.item)}</div></div><span class="demo">DEMO</span></div>
+      <dl><dt>Batch</dt><dd>${esc(p.batch)}</dd><dt>Best before</dt><dd>${esc(dmyDots(p.expiry))}</dd>
+        <dt>Count</dt><dd>${esc(p.count)}</dd><dt>SSCC</dt><dd>${esc(p.sscc)}</dd></dl>
+      ${p.codes.map((c) => `<div class="bc">${small(c.data)}<span class="hri">${esc(c.hri)}</span></div>`).join('')}
+      <div class="flow">${flow}</div></div>`;
+  }
+
+  function renderSheet() {
+    const list = samples();
+    const lanes = ['DOCK-IN', 'OUT-01', 'OUT-02', 'OUT-03', 'OUT-04'];
+    return `<div class="sheet">
+      <h2>Delivery D-2042: sample pallet labels</h2>
+      <p>Made-up pallets in the two label formats seen on A-ware skyr pallets. Stick one on each demo pallet (or a box). On the handheld, take the receiving job for D-2042. Best-before dates count from today: print on the day of the demo.</p>
+      ${list.map((p, i) => labelHtml(p, i + 1) + (i % 2 ? '<div class="pagebreak"></div>' : '')).join('')}
+      <h2>Dock and shipping lanes</h2>
+      <p>Put these where the pallets are set down. Rack locations show on the label wall (or use the real rack labels).</p>
+      <div class="lanes">${lanes.map((l) => `<div class="lane"><div class="name">${l}</div>${SortedBarcode.svg(l, { module: 0.45, height: 18, unit: 'mm' })}</div>`).join('')}</div>
+    </div>`;
+  }
+
+  // ---- Wiring ------------------------------------------------------------------------------------
+
+  const hints = {
+    wall: 'Scan straight off this screen with the handheld. It shows what the chosen handheld needs next and follows it after every scan. Command card: <a href="card.html">card</a> · key test: <a href="keys.html">keys</a>',
+    sheet: '<button class="print" id="print">Print</button> &nbsp;A4. Sample pallet labels for the receiving demo, and the dock and lane labels.',
+  };
+
+  async function draw(force) {
+    document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    $('#hint').innerHTML = hints[tab];
+    if ($('#print')) $('#print').onclick = () => window.print();
+    let html;
+    try { html = tab === 'wall' ? await renderWall() : renderSheet(); } catch (e) { html = `<div class="empty">${esc(e.message)}</div>`; }
+    if (!force && html === last) return;
+    last = html;
+    $('#main').innerHTML = html;
+    const sel = $('#dev');
+    if (sel) sel.onchange = () => { device = sel.value; ls.set('device', device); draw(true); };
+  }
+
+  document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; ls.set('tab', tab); draw(true); }));
+  const start = () => { draw(true); setInterval(() => { if (tab === 'wall' && !(document.activeElement && document.activeElement.id === 'dev')) draw(false); }, 1500); };
+  if (window.SortedLocal) window.SortedLocal.ready.then(start); else start();
+})();
+</script>
+</body>
+</html>
