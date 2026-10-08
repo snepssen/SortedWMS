@@ -138,8 +138,29 @@
 
   // ---- Dates ----------------------------------------------------------------
 
-  const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
-  const daysBetween = (fromIso, toIso) => Math.round((Date.parse(toIso) - Date.parse(fromIso)) / DAY);
+  // Both run for every pallet on every stock decision: remember the answers (dates repeat a lot).
+  const isoDays = new Map();
+  const isoDay = (ms) => {
+    const d = Math.floor(ms / DAY);
+    let v = isoDays.get(d);
+    if (v === undefined) {
+      if (isoDays.size > 2000) isoDays.clear();
+      v = new Date(d * DAY).toISOString().slice(0, 10);
+      isoDays.set(d, v);
+    }
+    return v;
+  };
+  const parsedDays = new Map();
+  const parseDay = (iso) => {
+    let v = parsedDays.get(iso);
+    if (v === undefined) {
+      if (parsedDays.size > 5000) parsedDays.clear();
+      v = Date.parse(iso);
+      parsedDays.set(iso, v);
+    }
+    return v;
+  };
+  const daysBetween = (fromIso, toIso) => Math.round((parseDay(toIso) - parseDay(fromIso)) / DAY);
   // 2026-10-21 → 21-10-2026, as dates are read on the floor.
   const dmy = (iso) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '');
 
@@ -1968,7 +1989,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_rackList') continue;
+        if (k === 'clock' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache') continue;
         out[k] = v;
       }
       return out;
@@ -3053,6 +3074,10 @@
           .includes(pallet);
       let best = null;
       let bestScore = Infinity;
+      const key = this._batchKey(pallet);
+      const shipsOk = this.shipState(pallet) === 'ok';
+      const originAisle = this._aisle(origin);
+      const full = {}; // aisle -> no truck room left (the same for every slot in it)
       for (const loc of this._racks()) {
         if (!this._slotFree(loc, pallet) || loc.code === origin) continue;
         if (ground && loc.level !== 0) continue;
@@ -3060,14 +3085,15 @@
         for (const n of this._bayLevel(loc)) {
           if (!n.sscc || n === loc) continue;
           const other = this.pallets[n.sscc];
-          if (this._batchKey(other) === this._batchKey(pallet)) score -= 2000;
+          if (this._batchKey(other) === key) score -= 2000;
           else if (other.itemNo === pallet.itemNo) score -= 500;
           else score += 200;
         }
-        if (this.shipState(pallet) !== 'ok') score += (top - loc.level) * 300;
+        if (!shipsOk) score += (top - loc.level) * 300;
         else if (ground || nextOut) score += loc.level * 300;
         else if (loc.level === 0) score += 400; // keep the ground free for what ships next
-        if (this._capacityLeft(loc.aisle, null) <= 0 && loc.aisle !== this._aisle(origin)) score += 10000;
+        if (full[loc.aisle] === undefined) full[loc.aisle] = this._capacityLeft(loc.aisle, null) <= 0;
+        if (full[loc.aisle] && loc.aisle !== originAisle) score += 10000;
         if (score < bestScore) { best = loc; bestScore = score; }
       }
       return best;
@@ -3076,9 +3102,13 @@
     // ---- Internals: block stacking ---------------------------------------------
 
     _blockStacks(lane) {
-      const out = [];
-      for (const loc of Object.values(this.locations)) if (loc.kind === 'block' && loc.lane === lane) out.push(loc);
-      return out.sort((a, b) => a.stack - b.stack);
+      // Block lanes come from the site layout and never change: index them once (not saved with the state).
+      if (!this._blockIndex) {
+        this._blockIndex = {};
+        for (const loc of Object.values(this.locations)) if (loc.kind === 'block') (this._blockIndex[loc.lane] = this._blockIndex[loc.lane] || []).push(loc);
+        for (const list of Object.values(this._blockIndex)) list.sort((a, b) => a.stack - b.stack);
+      }
+      return (this._blockIndex[lane] || []).slice();
     }
 
     /** Pallets in the order they can come out: front stack top-down, then the next stack. */
@@ -3257,8 +3287,13 @@
     _bayLevelKey(loc) { return `${loc.aisle}-${loc.bay}-${loc.level}`; }
 
     _bayLevel(loc) {
-      const out = [];
-      for (const p of this.layout.positions) out.push(this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]);
+      // Fixed by the layout: kept per location once worked out (not saved with the state).
+      if (!this._bayCache) this._bayCache = new Map();
+      let out = this._bayCache.get(loc.code);
+      if (!out) {
+        out = this.layout.positions.map((p) => this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]);
+        this._bayCache.set(loc.code, out);
+      }
       return out;
     }
 

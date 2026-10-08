@@ -4,9 +4,9 @@
  * audit trail, and replaying it rebuilds the exact state after a restart.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.SortedCommands = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('../src/workload'));
+  else root.SortedCommands = factory(root.SortedWorkload);
+})(typeof self !== 'undefined' ? self : this, function (Workload) {
   'use strict';
 
   const req = (v, name) => {
@@ -51,6 +51,8 @@
     setNaming: (wh, a) => wh.setNaming(req(a.show, 'show')),
     planGrouping: (wh) => wh.planGrouping(),
     planDigOut: (wh) => wh.planDigOut(),
+    // Free play: hundreds of random picks and inbound pallets at once. The seed is journaled, so replay gives the same work.
+    dropWorkload: (wh, a) => Workload.drop(wh, { seed: req(a.seed, 'seed'), picks: a.picks, inbound: a.inbound }),
     planCounts: (wh, a) => wh.planCounts({ codes: a.from ? wh.selectLocations(a.from, a.to || a.from) : null, limit: a.limit }),
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 

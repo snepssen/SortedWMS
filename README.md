@@ -23,6 +23,12 @@ For a local preview of the guided shift, run `npm run build:pages`, then serve `
 
 **Try the handheld and office screens: https://snepssen.github.io/SortedWMS/wms.html**. These are the real WMS screens with made-up stock. On Pages there's no server, so the WMS runs inside the browser and changes stay in that browser. A button scans whatever the handheld asks for, since a computer has no scanner.
 
+**Whole floor (free play).** The *Whole floor* view in `wms.html` is for a rush:
+- **Drop in work:** hundreds of picks and inbound pallets at once. Items, customers, shipping lanes and delivery sizes are drawn at random from the stock free to ship and the rack space left, in one journaled command (`dropWorkload`, `POST /api/workload`), so it replays exactly.
+- **Drivers:** every handheld on Auto drives itself, scanning what its screen asks for, with the time a reach truck takes to get there. Run at real speed (1×) or up to 30×. Untick a truck to drive it yourself.
+- **Watch it organise:** the workload board shows the queue in dispatch order, and every truck's scanner screen is live, with a countdown to its next scan. *Open* shows that truck on the full handheld.
+- **Trucks:** add more (yoghurt, cheese or any category). Ready orders are collected by trailers automatically if you want.
+
 **Demo kit: https://snepssen.github.io/SortedWMS/kit.html**. A label wall that shows, big enough to scan off a screen, the barcode a handheld needs next, plus a print sheet of sample pallet labels in the real supplier formats. The demo script is in [docs/DEMO.md](docs/DEMO.md).
 
 **How to work with it: [docs/SOP.md](docs/SOP.md)**, the standard operating procedures, step by step for every role.
@@ -210,6 +216,8 @@ Settings, through environment variables:
 | File | What it is |
 | --- | --- |
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
+| `src/workload.js` | Free play: random orders and deliveries over the stock and rack space there is, from a seed. |
+| `src/drivers.js` | Free play: what a driver on Auto scans next, and how long it takes to get there. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping and pallet labels, scaled to the printer's dpi. |
 | `src/barcode.js` | Code 128 and GS1-128 as SVG, for the command card and the demo kit. |
