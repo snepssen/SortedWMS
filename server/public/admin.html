@@ -92,7 +92,7 @@
     const lines = text.trim().split(/\r?\n/).filter(Boolean);
     const split = (l) => l.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''));
     const head = split(lines.shift());
-    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|gtin|itemNo)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
+    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|codes|gtin|unitGtin|itemNo)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
   }
 
   const TABS = {
@@ -290,7 +290,7 @@
 
   async function renderSettings() {
     const c = S.config;
-    const print = await api('GET', '/api/print-queue');
+    const [print, printers] = await Promise.all([api('GET', '/api/print-queue'), api('GET', '/api/printers')]);
     return `<div class="grid">
       <section><h2>Dispatch</h2>
         <div class="form"><label>Job order (first = highest) <input id="cPrio" size="40" value="${esc(c.priority.join(', '))}"></label></div>
@@ -308,7 +308,12 @@
         <div class="form"><a class="btn" href="card.html" target="_blank">Open the card to print</a></div>
         <h2 style="margin-top:16px">Auto-Shift now</h2><div class="form"><button id="pGroup">Group batches</button><button id="pDig">Dig out buried stock</button></div><div class="out" id="pOut" style="display:none"></div>
         <h2 style="margin-top:16px">This browser</h2><div class="form"><label>Your name (for the audit trail) <input id="uName" value="${esc(user)}"></label><label>Token <input id="uTok" type="password" value="${esc(token)}"></label><button id="uSave">Save</button></div></section>
-      <section style="grid-column:1/-1"><h2>Label printers</h2>${table(['Job', 'Printer', 'Printed at', 'Label', 'Sent'], print.jobs.map((j) => { const r = print.results.find((x) => x.id === j.id); return `<tr><td>${j.id}</td><td>${esc(j.printer)}</td><td>${hhmm(j.at)}</td><td>${esc(j.label.kind || 'shipping')} ${short(j.label.labelCode || j.label.sscc)}</td><td>${r ? (r.ok ? '<span class="tag">sent</span>' : `<span class="tag bad">${esc(r.error)}</span>`) : '<span class="hint">not sent (from before the restart)</span>'}</td></tr>`; }))}</section>
+      <section style="grid-column:1/-1"><h2>Label printers</h2>
+        <p class="hint">Set in the site file under <span class="mono">printers</span>: address and dpi (a Zebra ZT421 is 203 or 300 dpi: see the printer's configuration label). Labels are scaled to the printer's dpi. <b>Check</b> asks the printer for paper, ribbon, head and pause.</p>
+        ${table(['Printer', 'Address', 'dpi', 'Last job', 'Status', ''], printers.map((p) => `<tr><td>${esc(p.name)}</td><td class="mono">${esc(p.address || 'not set')}</td><td>${p.dpi}</td>
+          <td>${p.last ? (p.last.ok ? '<span class="tag">sent</span>' : `<span class="tag bad">${esc(p.last.error)}</span>`) : '<span class="hint">none yet</span>'}</td>
+          <td id="ps-${esc(p.name)}" class="wrap"></td><td>${p.address ? `<button class="small" data-pstatus="${esc(p.name)}">Check</button>` : ''}</td></tr>`))}
+        <h2 style="margin-top:16px">Label jobs</h2>${table(['Job', 'Printer', 'Printed at', 'Label', 'Sent'], print.jobs.map((j) => { const r = print.results.find((x) => x.id === j.id); return `<tr><td>${j.id}</td><td>${esc(j.printer)}</td><td>${hhmm(j.at)}</td><td>${esc(j.label.kind || 'shipping')} ${short(j.label.labelCode || j.label.sscc)}</td><td>${r ? (r.ok ? '<span class="tag">sent</span>' : `<span class="tag bad">${esc(r.error)}</span>`) : '<span class="hint">not sent (from before the restart)</span>'}</td></tr>`; }))}</section>
     </div>`;
   }
 
@@ -440,6 +445,14 @@
     on('#nSave', () => act(null, () => api('POST', '/api/naming', { show: $('#nShow').value })));
     on('#pGroup', () => { $('#pOut').style.display = ''; act('#pOut', async () => `${JSON.stringify(await api('POST', '/api/plan/grouping'))} job(s) planned`); });
     on('#pDig', () => { $('#pOut').style.display = ''; act('#pOut', async () => `${JSON.stringify(await api('POST', '/api/plan/dig-out'))} job(s) planned`); });
+    document.querySelectorAll('[data-pstatus]').forEach((b) => (b.onclick = async () => {
+      const cell = document.getElementById(`ps-${b.dataset.pstatus}`);
+      cell.textContent = 'Asking…';
+      try {
+        const r = await api('GET', `/api/printers/${encodeURIComponent(b.dataset.pstatus)}/status`);
+        cell.innerHTML = r.ok ? '<span class="tag">ready</span>' : `<span class="tag bad">${esc(r.problems.join(', '))}</span>`;
+      } catch (e) { cell.innerHTML = `<span class="tag bad">${esc(e.message)}</span>`; }
+    }));
     on('#uSave', () => { user = val('#uName'); token = val('#uTok'); ls.set('user', user); ls.set('token', token); refresh(); });
   }
 

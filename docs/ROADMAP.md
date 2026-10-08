@@ -64,6 +64,11 @@ That's a low-risk way to prove the rules on real data.
 
 ## Questions for the floor
 
+- The ZT421 printers: 203 or 300 dpi, which label size is loaded, and direct thermal or with a ribbon? (The configuration label shows the first.)
+- Does A-ware Packaging send a delivery list (ASN) with batch and best-before per SSCC? Their labels carry neither as a barcode, so without a list both are typed.
+- For each supplier, does the label count cases or consumer units? A-ware Packaging counts pots (960 = 80 cases), A-ware Kruibeke counts trays (96).
+- Can the MC9401s be set up with one DataWedge profile for the WMS (Enter after each scan, GS1-128 on)? Run `/keys` on one to check.
+
 - What is printed in brackets under each of the 3 barcodes on the supplier label? For example (02)…(37)… on top, (15)…(10)… in the middle, (00)… at the bottom. That decides whether the scanner can read item, batch and date from it.
 - Do suppliers send a pallet list (by email, EDI or on the delivery note) that could be loaded before the truck arrives? Then the bottom barcode alone is enough.
 - Is the minimum days to ship per item only, or does it differ per customer?

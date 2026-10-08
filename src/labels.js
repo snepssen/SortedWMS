@@ -59,5 +59,24 @@
     ].join('\n');
   }
 
-  return { shippingLabel, palletLabel };
+  /**
+   * The labels above are laid out in dots at 203 dpi. A 300 dpi printer (the
+   * Zebra ZT421 comes in both) would print them at two thirds of the size, so
+   * every position, font, line and barcode size is scaled to the printer.
+   */
+  function scaleZpl(zpl, dpi = 203) {
+    const f = Number(dpi) / 203;
+    if (!f || f === 1) return zpl;
+    const n = (v) => Math.round(Number(v) * f);
+    return zpl
+      .replace(/\^PW(\d+)/g, (m, w) => `^PW${n(w)}`)
+      .replace(/\^LL(\d+)/g, (m, l) => `^LL${n(l)}`)
+      .replace(/\^FO(\d+),(\d+)/g, (m, x, y) => `^FO${n(x)},${n(y)}`)
+      .replace(/\^A0N,(\d+),(\d+)/g, (m, h, w) => `^A0N,${n(h)},${n(w)}`)
+      .replace(/\^GB(\d+),(\d+),(\d+)/g, (m, w, h, t) => `^GB${n(w)},${n(h)},${Math.max(1, n(t))}`)
+      .replace(/\^BY(\d+)/g, (m, w) => `^BY${Math.max(1, Math.round(Number(w) * f))}`)
+      .replace(/\^BCN,(\d+)/g, (m, h) => `^BCN,${n(h)}`);
+  }
+
+  return { shippingLabel, palletLabel, scaleZpl };
 });

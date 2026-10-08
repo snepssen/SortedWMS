@@ -124,7 +124,7 @@
     async fetch(method, path, body, { operator } = {}) {
       const { store, api } = await ready;
       store.sync();
-      const out = api.handle(method, path, body || {}, String(operator || 'office').slice(0, 40));
+      const out = await api.handle(method, path, body || {}, String(operator || 'office').slice(0, 40));
       return JSON.parse(JSON.stringify(out)); // a copy, like over the network
     },
     async reset() { const { store } = await ready; store.reset(); root.SortedSeed.seedDemo(store); },
