@@ -17,6 +17,7 @@ Every procedure in [SOP.md](SOP.md) was walked through step by step against the 
 | Stations (5.2) | A pallet set down without the drop scan couldn't be started, and the station said *"Already done"*. A finished pallet got *"has no process"*. | A correction transfer onto the station counts as arrival. The messages say what's actually going on. |
 | Desk (2.3) | A scan at the desk with no delivery open crashed the request. A mode barcode would have switched the desk into a truck mode. | Both answered with a clear message. |
 | Blocking (6.2) | A blocked pallet kept its planned move to ground level: a truck trip for a pallet that won't ship. | That move is dropped when the pallet is blocked. |
+| Stock counts (3.6) | No inventory control: differences were found when a pick failed. | **Count jobs** for idle trucks: blind, two scans, the system corrected on the spot. The places with corrections and lost pallets go first. **Stock count mode** for a driver on inventory duty. Accuracy in the office. |
 
 ## Recommended: decisions for the floor and management
 
@@ -47,15 +48,10 @@ These cost nothing to build. They are settings, supplier requests or site data.
 
 In order of what they save on the floor:
 
-1. **Inventory checks without stopping work.** "We don't have inventory controls yet" can be a job type:
-   - idle trucks get a short *count* job: scan the location, scan what's there;
-   - differences go to the office, the same way corrections do;
-   - locations with the most corrections are checked first.
-   It builds on the stock check and transfers that already exist.
-2. **Scans held through Wi-Fi dead spots.**
+1. **Scans held through Wi-Fi dead spots.**
    - Today a scan made without a connection doesn't arrive, and the driver rescans.
    - The handheld could keep it and send it when the connection is back.
-3. **Printer alerts.** Ask every printer for its status every few minutes, and show *paper out* in the office and on the handheld of a driver heading to that lane.
-4. **Job order by time of day.** For example, receiving first while the morning trucks are at the doors, picks first after 10:00.
-5. **Customer rules:** minimum days left and label requirements per customer.
-6. **A driver view for the coordinator.** Scans per move, idle time and wrong scans per shift, to coach rather than to count.
+2. **Printer alerts.** Ask every printer for its status every few minutes, and show *paper out* in the office and on the handheld of a driver heading to that lane.
+3. **Job order by time of day.** For example, receiving first while the morning trucks are at the doors, picks first after 10:00.
+4. **Customer rules:** minimum days left and label requirements per customer.
+5. **A driver view for the coordinator.** Scans per move, idle time and wrong scans per shift, to coach rather than to count.

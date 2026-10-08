@@ -51,6 +51,7 @@
     setNaming: (wh, a) => wh.setNaming(req(a.show, 'show')),
     planGrouping: (wh) => wh.planGrouping(),
     planDigOut: (wh) => wh.planDigOut(),
+    planCounts: (wh, a) => wh.planCounts({ codes: a.from ? wh.selectLocations(a.from, a.to || a.from) : null, limit: a.limit }),
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 
     // Orders and deliveries

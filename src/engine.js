@@ -30,6 +30,7 @@
     RECEIVE: { label: 'Receiving', short: 'Receive' },
     PUTAWAY: { label: 'Put-away', short: 'Put-away' },
     SHIFT: { label: 'Auto-Shift', short: 'Shift' },
+    COUNT: { label: 'Stock count', short: 'Count' }, // idle trucks check a location: the stock control there wasn't
   };
 
   const TRUCK_MODES = {
@@ -39,6 +40,7 @@
     putaway: { label: 'Put-away (manual)', types: [], manual: true }, // scan a pallet, get its slot
     transfer: { label: 'Transfer', types: [], manual: true }, // scan pallet, scan location: recorded as it is
     find: { label: 'Stock check', types: [], manual: true }, // scan a pallet, location or item to see what's where
+    count: { label: 'Stock count', types: ['COUNT'] }, // inventory duty: count after count, nearest next
     paused: { label: 'Paused', types: [] },
   };
 
@@ -53,6 +55,7 @@
     PUTAWAY: { label: 'Put-away', group: 'Mode', mode: 'putaway' },
     TRANSFER: { label: 'Transfer', group: 'Mode', mode: 'transfer' },
     STOCK: { label: 'Stock check', group: 'Mode', mode: 'find' },
+    COUNT: { label: 'Stock count', group: 'Mode', mode: 'count' },
     PAUSE: { label: 'Pause', group: 'Mode', mode: 'paused' },
     MISSING: { label: 'Pallet missing', group: 'Problem', problem: 'missing', confirm: true },
     DAMAGED: { label: 'Damaged', group: 'Problem', problem: 'damaged', confirm: true },
@@ -78,8 +81,8 @@
   const FIELD_LABELS = { batch: 'Batch', expiry: 'Expiry date', item: 'Item number', sscc: 'Pallet SSCC', qty: 'Quantity' };
 
   const DEFAULT_CONFIG = {
-    priority: ['PICK', 'MOVE', 'CHECK', 'RECEIVE', 'PUTAWAY', 'SHIFT'],
-    enabled: { PICK: true, MOVE: true, CHECK: true, RECEIVE: true, PUTAWAY: true, SHIFT: true },
+    priority: ['PICK', 'MOVE', 'CHECK', 'RECEIVE', 'PUTAWAY', 'SHIFT', 'COUNT'],
+    enabled: { PICK: true, MOVE: true, CHECK: true, RECEIVE: true, PUTAWAY: true, SHIFT: true, COUNT: true },
     aisleCap: 2,
     escalateAfterMin: 20, // a job waiting this long jumps the queue; 0 = never
     travelOptimise: true, // same priority: nearest job first
@@ -877,8 +880,10 @@
 
     setConfig(patch) {
       if (patch.priority) {
-        const want = Object.keys(TASK_TYPES).sort().join();
-        if ([...patch.priority].sort().join() !== want) throw new Error('Priority must list every job type exactly once');
+        const list = [...patch.priority];
+        if (list.some((t) => !TASK_TYPES[t]) || new Set(list).size !== list.length) throw new Error('Priority must list every job type exactly once');
+        // A list saved before a job type existed: the new type goes last.
+        patch = { ...patch, priority: [...list, ...Object.keys(TASK_TYPES).filter((t) => !list.includes(t))] };
       }
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
@@ -1313,6 +1318,7 @@
       else task.inputs++;
       if (task.type === 'RECEIVE') return this._receiveScan(truck, task, input);
       if (task.type === 'CHECK') return this._checkScan(truck, task, input);
+      if (task.type === 'COUNT') return this._countScan(truck, task, input);
 
       const label = GS1.parse(input);
       const code = (label && label.sscc) || this.resolve(input, { cell: this.cellOfLocation(truck.position) });
@@ -1413,6 +1419,7 @@
       const task = truck.taskId && this.tasks[truck.taskId];
       if (!task) return 'No job to report a problem on';
       if (task.type === 'RECEIVE') return 'Report receiving problems to the coordinator';
+      if (task.type === 'COUNT') return "Not for a count: scan what's there, or the location again if it's empty";
       if (truck.load && reason !== 'blocked') return 'The pallet is on the forks — only a blocked drop location can be reported';
       return null;
     }
@@ -1501,7 +1508,9 @@
         .filter((t) => !t.taskId && t.mode !== 'paused')
         .sort((a, b) => a.idleSince - b.idleSince);
       for (const truck of idle) {
-        const task = this.nextTaskFor(truck);
+        let task = this.nextTaskFor(truck);
+        // On inventory duty: when no count is planned, the next location to count is the one that needs it most, nearest first.
+        if (!task && truck.mode === 'count') [task] = this._planCounts({ limit: 1, truck });
         if (task) this._assign(truck, task);
       }
     }
@@ -1509,7 +1518,7 @@
     // Auto-Shift is filler work: it only jumps the queue when flagged urgent.
     isUrgent(task) {
       if (task.urgent) return true;
-      if (task.type === 'SHIFT') return false;
+      if (task.type === 'SHIFT' || task.type === 'COUNT') return false; // housekeeping never jumps the queue
       const mins = this.config.escalateAfterMin;
       return mins > 0 && this.now() - task.createdAt >= mins * MINUTE;
     }
@@ -1518,7 +1527,7 @@
     nextTaskFor(truck) {
       const cfg = this.config;
       const candidates = this.openTasks().filter((t) => {
-        if (!cfg.enabled[t.type] || !this._truckTakes(truck, t)) return false;
+        if (cfg.enabled[t.type] === false || !this._truckTakes(truck, t)) return false;
         if (t.deskOnly) return false;
         if (this.locations[t.from].blocked) return false;
         if (t.to && this.locations[t.to].blocked) return false;
@@ -1526,7 +1535,7 @@
         return this._capacityLeft(this._aisle(t.from), truck.id) > 0;
       });
       if (!candidates.length) return null;
-      const rank = (t) => (this.isUrgent(t) ? -1 : cfg.priority.indexOf(t.type));
+      const rank = (t) => (this.isUrgent(t) ? -1 : this._priorityOf(t.type));
       candidates.sort((x, y) => {
         const r = rank(x) - rank(y);
         if (r) return r;
@@ -1541,7 +1550,14 @@
         || candidates.find((t) => t.idleOnly && this._slotAvailable(t)) || null;
     }
 
+    /** Place of a job type in the coordinator's order; a type the saved order doesn't know yet comes last. */
+    _priorityOf(type) {
+      const i = this.config.priority.indexOf(type);
+      return i === -1 ? this.config.priority.length : i;
+    }
+
     _slotAvailable(t) {
+      if (t.type === 'COUNT') return true;
       if (t.autoSlot) return Boolean(t.to || this._findSlot(this.pallets[t.sscc], t.from, { ground: t.ground, noBury: t.noBury }));
       const to = this.locations[t.to];
       if (to.kind === 'station') return this._stationRoom(to.station, t.id) > 0;
@@ -1594,6 +1610,7 @@
         const delivery = this.deliveries[task.deliveryId];
         return { kind: 'receive', task, delivery, field, draft: task.draft, item: task.draft.item ? this.items[task.draft.item] : null };
       }
+      if (task.type === 'COUNT') return { kind: 'count', task, target: task.from, step: task.step };
       const pallet = this.pallets[task.sscc];
       if (task.type === 'CHECK') {
         return task.step === 0
@@ -2268,12 +2285,13 @@
       const types = TRUCK_MODES[truck.mode].types;
       if (types && !types.includes(task.type)) return false;
       if (truck.mode === 'pick' && task.orderId !== truck.orderId) return false;
+      if (task.type === 'COUNT' && !task.category) return true; // an empty location without a category: anyone can count it
       return !truck.categories || truck.categories.includes(task.category);
     }
 
     _assign(truck, task) {
       if (task.autoSlot && !task.to && !this._reserveSlot(task)) return false;
-      if (!task.autoSlot && this.locations[task.to].kind === 'rack') {
+      if (task.type !== 'COUNT' && !task.autoSlot && this.locations[task.to].kind === 'rack') {
         if (!this._slotAvailable(task)) return false;
         this.locations[task.to].reservedBy = task.id;
       }
@@ -2289,7 +2307,7 @@
     _reasonFor(task) {
       if (task.urgent) return 'Urgent';
       if (this.isUrgent(task)) return `Waited ${Math.floor((this.now() - task.createdAt) / MINUTE)} min`;
-      const p = this.config.priority.indexOf(task.type) + 1;
+      const p = this._priorityOf(task.type) + 1;
       return `Priority ${p}${this.config.travelOptimise ? ' · nearest' : ''}`;
     }
 
@@ -2841,6 +2859,93 @@
         return this._say(truck, r.ok, `${r.text}${t ? `. Back to job #${t.id}: ${TASK_TYPES[t.type].short} at ${t.from}` : ''}`);
       }
       return null; // something else: the hold is dropped and the scan counts as usual
+    }
+
+    // ---- Stock counts -------------------------------------------------------------
+
+    /**
+     * Inventory checks without stopping work: count jobs for idle trucks.
+     * With codes, those locations; without, the ones that most need it:
+     * where corrections happened, where lost pallets were last seen, then
+     * the longest since a count. Blind: the handheld doesn't say what to expect.
+     */
+    planCounts({ codes = null, limit = 10 } = {}) {
+      const tasks = this._planCounts({ codes, limit });
+      if (tasks.length) this.log(`${tasks.length} stock count job(s) planned`);
+      this.dispatch();
+      return tasks.length;
+    }
+
+    _planCounts({ codes = null, limit = 10, truck = null }) {
+      const open = new Set(Object.values(this.tasks).filter((t) => t.type === 'COUNT' && LIVE.has(t.status)).map((t) => t.from));
+      const busy = new Set(Object.values(this.tasks).filter((t) => LIVE.has(t.status) && t.type !== 'COUNT').flatMap((t) => [t.from, t.to]));
+      const categoryOf = (l) => l.category || (l.sscc && this.pallets[l.sscc] ? this.items[this.pallets[l.sscc].itemNo].category : null);
+      let racks = (codes ? codes.map((c) => this.locations[c]).filter(Boolean) : this._racks())
+        .filter((l) => l.kind === 'rack' && !l.blocked && !open.has(l.code) && !busy.has(l.code))
+        .filter((l) => !truck || !truck.categories || !categoryOf(l) || truck.categories.includes(categoryOf(l)));
+      if (!codes) {
+        const score = {};
+        const bump = (c, n) => { if (c) score[c] = (score[c] || 0) + n; };
+        for (const t of (this.transfers || []).slice(0, 300)) { bump(t.from, 10); bump(t.to, 10); }
+        for (const p of this.lostPallets()) bump(p.missingFrom, 20);
+        // Anything since the last count there is history: only what happened after it counts.
+        for (const c of this.counts || []) if (score[c.code] && (this.transfers || []).every((t) => t.t <= c.t || (t.from !== c.code && t.to !== c.code))) delete score[c.code];
+        const age = (l) => (l.countedAt ? Math.min(30, (this.now() - l.countedAt) / DAY) : 30);
+        const key = truck
+          // A driver on count duty: places that need it first, then the nearest not counted this week.
+          ? (l) => [score[l.code] ? 0 : 1, age(l) < 7 ? 1 : 0, this.travel(truck.position, l.code)]
+          : (l) => [-((score[l.code] || 0) + age(l))];
+        const cmp = (a, b) => { for (let i = 0; i < a[1].length; i++) if (a[1][i] !== b[1][i]) return a[1][i] - b[1][i]; return a[0].code < b[0].code ? -1 : 1; };
+        racks = racks.map((l) => [l, key(l)]).sort(cmp).map(([l]) => l);
+      }
+      return racks.slice(0, Math.max(1, Math.min(Number(limit) || 10, 500)))
+        .map((l) => this._newTask({ type: 'COUNT', category: categoryOf(l), sscc: null, from: l.code, to: l.code, idleOnly: true }));
+    }
+
+    /** Count: the location label, then the pallet in it (or the location again: empty). The result corrects the system. */
+    _countScan(truck, task, input) {
+      const loc = this.locations[task.from];
+      const gs1 = GS1.parse(input);
+      const code = (gs1 && gs1.sscc) || this.resolve(input, { cell: this.cellOfLocation(truck.position) });
+      if (task.step === 0) {
+        if (code !== loc.code) return this._fail(truck, `Go to ${loc.code} and scan its location label`);
+        task.step = 1;
+        truck.position = loc.code;
+        return this._say(truck, true, `Scan the pallet in ${loc.code}. Empty? Scan the location again`);
+      }
+      const expected = loc.sscc;
+      let result;
+      let text;
+      if (code === loc.code) {
+        if (!expected) { result = 'ok'; text = 'Count OK: empty'; } else {
+          const p = this.pallets[expected];
+          const live = this._liveTaskFor(expected);
+          if (live && live.status === 'active') return this._fail(truck, `…${expected.slice(-6)} is on job #${live.id} (${live.truckId}). Count it later`);
+          this._remove(p);
+          p.status = 'missing';
+          p.missingFrom = loc.code;
+          if (live && live.status === 'open') { live.status = 'held'; live.heldReason = 'Pallet location unknown'; }
+          this.log(`${truck.id} counted ${loc.code} empty: …${expected.slice(-6)} not there, on the location-unknown list`, { truckId: truck.id, taskId: task.id });
+          result = 'missing';
+          text = `…${expected.slice(-6)} should be here. It's on the location-unknown list now`;
+        }
+      } else if (this.pallets[code]) {
+        if (code === expected) { result = 'ok'; text = 'Count OK'; } else {
+          const r = this.transferPallet(code, loc.code, { by: truck.id });
+          if (!r.ok) return this._fail(truck, r.text);
+          result = 'corrected';
+          text = `Corrected. ${r.text}`;
+        }
+      } else {
+        return this._fail(truck, `Scan the pallet label in ${loc.code}, or the location again if it's empty`);
+      }
+      (this.counts = this.counts || []).unshift({ t: this.now(), code: loc.code, expected: expected || null, found: code === loc.code ? null : code, result, by: truck.id });
+      if (this.counts.length > 1000) this.counts.length = 1000;
+      loc.countedAt = this.now();
+      this._finish(truck, task);
+      this.dispatch();
+      const next = truck.taskId ? this.tasks[truck.taskId] : null;
+      return this._say(truck, result === 'ok', `${text}.${next ? ` Next: ${TASK_TYPES[next.type].short} at ${next.from}` : ''}`);
     }
 
     /** A coordinator-style button on the handheld for a held pallet: move it, or let it go. */

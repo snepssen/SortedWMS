@@ -1,0 +1,119 @@
+<title>SortedWMS Floor SOP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+  /* Layout: an operations binder. Contents rail on the left, procedures as numbered cards, filter by role. */
+  :root {
+    --bg: #eef2f4; --paper: #ffffff; --ink: #15202a; --muted: #56636f; --line: #d5dde3;
+    --accent: #0b6a8a; --accent-soft: #e2f0f5; --amber: #9a5b00; --amber-soft: #fff4e2;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0d1317; --paper: #141c22; --ink: #e5ecf1; --muted: #93a2ae; --line: #25313a;
+    --accent: #5ec2e0; --accent-soft: #15303b; --amber: #f2b552; --amber-soft: #2c2312; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --bg: #0d1317; --paper: #141c22; --ink: #e5ecf1; --muted: #93a2ae; --line: #25313a;
+    --accent: #5ec2e0; --accent-soft: #15303b; --amber: #f2b552; --amber-soft: #2c2312; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--sans); padding-inline: 16px; padding-block: 0 48px; }
+  a { color: var(--accent); }
+  code { font: 500 0.88em var(--mono); background: var(--accent-soft); padding: 0.05em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+  pre code { background: none; padding: 0; white-space: pre; }
+  .wrap { max-width: 1160px; margin: 0 auto; }
+  .top { padding-block: 28px 18px; display: grid; gap: 10px; }
+  nav.links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+  nav.links a { color: var(--muted); text-decoration: none; }
+  nav.links a:hover { color: var(--accent); text-decoration: underline; }
+  .eyebrow { font: 600 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin: 0; text-wrap: balance; }
+  .intro { max-width: 70ch; color: var(--ink); }
+  .intro p, .intro ul { margin: 0 0 8px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+  .filters .label { font-size: 13px; color: var(--muted); }
+  .filter { font: 600 14px var(--sans); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
+  .filter[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+  .filter:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 28px; align-items: start; }
+  nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow: auto; font-size: 14px; padding-right: 4px; }
+  nav.toc details > summary { display: none; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc > details > ol > li { margin: 10px 0; }
+  nav.toc > details > ol > li > a { font-weight: 700; color: var(--ink); text-decoration: none; }
+  nav.toc ol ol { margin: 4px 0 0; }
+  nav.toc ol ol a { display: block; color: var(--muted); text-decoration: none; padding: 2px 0; }
+  nav.toc ol ol a:hover { color: var(--accent); }
+  nav.toc .n { font: 500 12px var(--mono); color: var(--accent); display: inline-block; width: 2.6em; }
+  main { min-width: 0; }
+  .part { margin-bottom: 36px; }
+  .part > h2 { font-size: 24px; margin: 8px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); text-wrap: balance; }
+  .part > p, .part > ul, .part > ol { max-width: 70ch; }
+  .part h3.sub { font-size: 18px; margin: 22px 0 8px; }
+  .proc { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 6px; margin: 14px 0; scroll-margin-top: 12px; }
+  .proc[hidden] { display: none; }
+  .proc > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 8px; }
+  .proc .pid { font: 600 14px var(--mono); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 6px; }
+  .proc h3 { font-size: 19px; margin: 0; flex: 1 1 240px; text-wrap: balance; }
+  .roles { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip { font: 600 11px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  dl.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 14px; }
+  dl.meta div { display: flex; gap: 6px; }
+  dl.meta dt { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 3px; }
+  dl.meta dd { margin: 0; }
+  .proc ol, .proc ul { padding-left: 1.4em; margin: 6px 0 12px; }
+  .proc li { margin: 4px 0; }
+  .proc p { margin: 8px 0 12px; max-width: 72ch; }
+  aside.why { border-left: 3px solid var(--amber); background: var(--amber-soft); color: var(--ink); padding: 8px 12px; border-radius: 0 8px 8px 0; margin: 8px 0 14px; font-size: 15px; }
+  aside.why strong:first-child { color: var(--amber); }
+  .table { overflow-x: auto; margin: 6px 0 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--paper); }
+  th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { font: 600 12px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  td ul { margin: 0; padding-left: 1.1em; }
+  .empty { color: var(--muted); font-style: italic; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 8px; }
+    nav.toc { position: static; max-height: none; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px; }
+    nav.toc details > summary { display: block; cursor: pointer; font-weight: 700; padding: 8px 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+<div class="wrap">
+  <header class="top">
+    <nav class="links" aria-label="The demo"><a href="https://snepssen.github.io/SortedWMS/">Simulated shift</a><a href="https://snepssen.github.io/SortedWMS/walkthrough.html">Guided shift</a><a href="https://snepssen.github.io/SortedWMS/wms.html">Handheld + office</a><a href="https://snepssen.github.io/SortedWMS/kit.html">Demo kit</a></nav>
+    <div class="eyebrow">SortedWMS · standard operating procedures</div>
+    <h1>Floor SOP: every task, step by step</h1>
+    <div class="intro">{{INTRO}}</div>
+    <div class="filters" role="group" aria-label="Show procedures for"><span class="label">Show procedures for</span>{{CHIPS}}</div>
+  </header>
+  <div class="layout">
+    <nav class="toc" aria-label="Contents"><details id="tocDetails" open><summary>Contents</summary>{{TOC}}</details></nav>
+    <main id="main">{{MAIN}}</main>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const KEY = 'sop.roles';
+  let picked = [];
+  try { picked = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { picked = []; }
+  const buttons = [...document.querySelectorAll('.filter')];
+  function apply() {
+    buttons.forEach((b) => b.setAttribute('aria-pressed', String(picked.includes(b.dataset.role))));
+    document.querySelectorAll('.proc').forEach((p) => {
+      const roles = p.dataset.roles.split(' ');
+      p.hidden = picked.length > 0 && !roles.some((r) => picked.includes(r));
+      const link = document.querySelector(`nav.toc a[href="#${p.id}"]`);
+      if (link) link.parentElement.hidden = p.hidden;
+    });
+    try { localStorage.setItem(KEY, JSON.stringify(picked)); } catch (e) { /* per-viewer convenience only */ }
+  }
+  buttons.forEach((b) => (b.onclick = () => {
+    const r = b.dataset.role;
+    picked = picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r];
+    apply();
+  }));
+  if (window.matchMedia('(max-width: 860px)').matches) document.getElementById('tocDetails').open = false;
+  apply();
+})();
+</script>

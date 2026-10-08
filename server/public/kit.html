@@ -175,6 +175,13 @@
       case 'check-pallet':
         main = codeBox('Pallet label', `00${I.pallet.sscc}`, { gs1: true, hri: `(00) ${I.pallet.sscc}`, note: `on ${t.fromName}`, main: true });
         break;
+      case 'count':
+        if (!I.step) main = codeBox('Location label', I.targetName, { note: 'stock count', main: true });
+        else {
+          main = I.expectedSscc ? codeBox('Pallet label', `00${I.expectedSscc}`, { gs1: true, hri: `(00) ${I.expectedSscc}`, note: 'the pallet that is there', main: true }) : '';
+          more = codeBox(I.expectedSscc ? 'or the location again: empty' : 'Location again: empty', I.targetName, { note: I.expectedSscc ? 'shows the count finding it missing' : 'nothing there', main: !I.expectedSscc });
+        }
+        break;
       case 'check-label':
         main = codeBox('Shipping label', t.labelCode, { note: 'once it is on the pallet', main: true });
         break;
@@ -193,6 +200,7 @@
         break;
       }
       default:
+        if (I.kind === 'idle') cmds.push(cmd('COUNT', 'Stock count mode'));
         main = `<div class="empty">${I.kind === 'idle' ? 'No job right now. The next one shows here by itself.' : `The handheld is in ${esc(v.mode)} mode.`}</div>`;
     }
     if (I.pending) cmds.push(cmd('MOVE', 'Move the held pallet'));
@@ -236,7 +244,7 @@
   // ---- Wiring ------------------------------------------------------------------------------------
 
   const hints = {
-    wall: 'Scan straight off this screen with the handheld. It shows what the chosen handheld needs next and follows it after every scan. Command card: <a href="card.html">card</a> · key test: <a href="keys.html">keys</a>',
+    wall: 'Scan straight off this screen with the handheld. It shows what the chosen handheld needs next and follows it after every scan. Command card: <a href="card.html">card</a> · key test: <a href="keys.html">keys</a> · <a href="sop.html">SOP</a>',
     sheet: '<button class="print" id="print">Print</button> &nbsp;A4. Sample pallet labels for the receiving demo, and the dock and lane labels.',
   };
 

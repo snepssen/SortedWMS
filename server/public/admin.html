@@ -41,7 +41,7 @@
   .out.bad { color: var(--bad); }
   .out.ok { color: var(--ok); }
   .tag { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--chip); font-size: 12px; font-weight: 600; }
-  .tag.urgent, .tag.held { color: var(--warn); }
+  .tag.urgent, .tag.held, .tag.warn { color: var(--warn); }
   .tag.bad { color: var(--bad); }
   @media (max-width: 600px) { main { padding: 10px; } .grid { grid-template-columns: 1fr; } }
 </style>
@@ -158,7 +158,8 @@
   // ---- Locations: template ranges, lookup, transfers, lost pallets ---------------------------
 
   async function renderLocations() {
-    const [lost, transfers, blocked] = await Promise.all([api('GET', '/api/lost'), api('GET', '/api/transfers'), api('GET', '/api/blocked')]);
+    const [lost, transfers, blocked, counts] = await Promise.all([api('GET', '/api/lost'), api('GET', '/api/transfers'), api('GET', '/api/blocked'), api('GET', '/api/counts')]);
+    const RESULT = { ok: '<span class="tag">OK</span>', corrected: '<span class="tag warn">corrected</span>', missing: '<span class="tag bad">missing</span>' };
     return `<div class="grid">
       <section><h2>Location template: set a category on a range</h2>
         <p class="hint">Either naming works: <span class="mono">AA01A1</span> → <span class="mono">AH10E3</span>, a partial range like <span class="mono">AA</span> → <span class="mono">AD</span> (whole racks), or <span class="mono">31</span> → <span class="mono">34</span> (whole aisles). Pallets left in the wrong category get Auto-Shift relocation jobs.</p>
@@ -180,6 +181,12 @@
         ${table(['Pallet / location', 'Why', ''], [
           ...blocked.pallets.map((p) => `<tr><td class="mono">${short(p.sscc)} ${esc(p.itemNo)} · ${esc(p.locName || '')}</td><td>${esc(p.blockReason || 'Blocked')}</td><td><button class="small" data-pact="release" data-s="${esc(p.sscc)}">Release</button></td></tr>`),
           ...blocked.locations.map((l) => `<tr><td>${esc(l.name)}</td><td>Location blocked</td><td><button class="small" data-lact="${esc(l.code)}">Unblock</button></td></tr>`)])}</section>
+      <section style="grid-column:1/-1"><h2>Stock counts</h2>
+        <p class="hint">Inventory control without stopping work. Count jobs go to trucks with nothing else to do: scan the location, scan what's in it (or the location again if it's empty). The handheld doesn't say what to expect. A difference corrects the system on the spot and shows here. Leave the range empty and the system picks the locations that need it most: where corrections happened, where lost pallets were last seen, then the longest since a count.</p>
+        <div class="form"><label>From <input id="cnFrom" size="9" placeholder="optional"></label><label>To <input id="cnTo" size="9" placeholder="optional"></label><label>How many <input id="cnN" size="3" value="10"></label><button class="primary" id="cnGo">Plan counts</button></div>
+        <div class="out" id="cnOut" style="display:none"></div>
+        <p><b>${counts.open}</b> count job(s) open · <b>${counts.done}</b> done${counts.accuracy == null ? '' : ` · system right <b>${counts.accuracy}%</b> of the time`}</p>
+        ${table(['When', 'Location', 'System had', 'Found', 'Result', 'By'], counts.results.slice(0, 50).map((c) => `<tr><td>${when(c.t)}</td><td>${esc(c.name)}</td><td class="mono">${c.expected ? short(c.expected) : 'empty'}</td><td class="mono">${c.found ? short(c.found) : 'empty'}</td><td>${RESULT[c.result] || esc(c.result)}</td><td>${esc(c.by)}</td></tr>`))}</section>
       <section style="grid-column:1/-1"><h2>Recent transfers</h2>${table(['When', 'Pallet', 'From', 'To', 'By'], transfers.slice(0, 50).map((t) => `<tr><td>${when(t.t)}</td><td class="mono">${short(t.sscc)}</td><td>${esc(t.fromName)}</td><td>${esc(t.toName)}</td><td>${esc(t.by)}</td></tr>`))}</section>
     </div>`;
   }
@@ -333,6 +340,7 @@
     return `<div class="grid">
       <section><h2>Dispatch</h2>
         <div class="form"><label>Job order (first = highest) <input id="cPrio" size="40" value="${esc(c.priority.join(', '))}"></label></div>
+        <div class="form"><span class="hint">Job types on:</span>${[...new Set([...c.priority, ...Object.keys(c.enabled)])].map((k) => `<label><span><input type="checkbox" data-jobon="${k}" ${c.enabled[k] !== false ? 'checked' : ''}> ${k}</span></label>`).join('')}</div>
         <div class="form"><label>Trucks per aisle <input id="cCap" size="3" value="${c.aisleCap}"></label><label>Jump the queue after (min) <input id="cEsc" size="3" value="${c.escalateAfterMin}"></label>
           <label>Next-out pallets at ground per item <input id="cGround" size="3" value="${c.groundNextPerItem}"></label></div>
         <div class="form"><label><span><input type="checkbox" id="cNear" ${c.travelOptimise ? 'checked' : ''}> Nearest job first</span></label>
@@ -430,6 +438,7 @@
       }));
     }
     bindStockActions();
+    on('#cnGo', () => { $('#cnOut').style.display = ''; act('#cnOut', async () => `${await api('POST', '/api/plan/counts', { from: val('#cnFrom'), to: val('#cnTo'), limit: Number(val('#cnN')) || 10 })} count job(s) planned`); });
     on('#trGo', () => { $('#trOut').style.display = ''; act('#trOut', async () => { const r = await api('POST', '/api/transfer', { sscc: val('#trS').replace(/^00/, ''), to: val('#trTo') }); if (!r.ok) throw new Error(r.text); return r.text; }); });
     // Stock
     const qualityAction = async (fn) => {
@@ -536,6 +545,7 @@
         priority: val('#cPrio').split(/[,\s]+/).filter(Boolean).map((s) => s.toUpperCase()), aisleCap: Number(val('#cCap')), escalateAfterMin: Number(val('#cEsc')),
         groundNextPerItem: Number(val('#cGround')), travelOptimise: $('#cNear').checked, oneWay: $('#cOne').checked, checkAfterPick: $('#cCheck').checked,
         blockLaneBatches: Number(val('#cLaneB')), buriedStock: $('#cBuried').value,
+        enabled: Object.fromEntries([...document.querySelectorAll('[data-jobon]')].map((b) => [b.dataset.jobon, b.checked])),
       });
       return 'Saved';
     }); });

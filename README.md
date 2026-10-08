@@ -85,12 +85,15 @@ Each handheld has a mode bar. Auto is the default; the others are for when a dri
 | **Put-away** | Scan a pallet at the dock or a station. The system picks the slot with the normal slotting rules; scan the slot to drop. |
 | **Transfer** | Scan a pallet, then the location it now stands at. That's it. |
 | **Stock check** | Scan anything. A **pallet**: where it is and **where it belongs** (on the forks: where it's going; lost: where it was last). A **location**: what's in it. An **item** (item number, EAN or the label's GS1 barcode): every pallet of it with location and SSCC, next to ship first. The same check is in the office page. |
+| **Stock count** | Inventory duty: count after count, no other work. Scan the location, then what's in it (or the location again if it's empty). First the places with corrections or lost pallets, then the nearest location not counted this week. |
 
 **Transfer is for corrections.** When a pallet stands somewhere other than the system thinks (someone put it in the wrong spot, or the old system lost a move), the driver records where it really is, in two scans:
 - If the system had another pallet in that rack spot, that one goes on the **location unknown** list in the office. Scanning it anywhere in Transfer mode puts it back on the map.
 - A planned pick for the moved pallet now picks it from where it really stands. Planned Auto-Shift and put-away jobs for it are re-planned.
 - If it now stands in a location of the wrong category, a relocation job is created.
 - Every transfer is logged with who did it and when.
+
+**Stock counts are inventory control without a stock-take.** The office plans count jobs (a range, or *let the system choose*: places with corrections and lost pallets first, then the longest since a count). They go to trucks with **nothing else to do**, never ahead of real work, so counting fills time that would otherwise be idle. The count is blind: the handheld names the location, not what should be in it. A difference corrects the system on the spot (a transfer), and the expected pallet goes on the location unknown list, with any pick for it held. The office shows each result and the stock accuracy.
 
 ### Every job is as few inputs as possible
 | Job | Inputs |
@@ -112,7 +115,7 @@ The warehouse is chilled, so drivers wear gloves and the handheld's touch screen
 
 | Scan | Does |
 | --- | --- |
-| `CMD-AUTO` `CMD-PICK` `CMD-PUTAWAY` `CMD-TRANSFER` `CMD-STOCK` `CMD-PAUSE` | Switch mode (not with a pallet on the forks) |
+| `CMD-AUTO` `CMD-PICK` `CMD-PUTAWAY` `CMD-TRANSFER` `CMD-STOCK` `CMD-COUNT` `CMD-PAUSE` | Switch mode (not with a pallet on the forks) |
 | `CMD-MISSING` `CMD-DAMAGED` `CMD-BLOCKED` | Report a problem on the current job. **Scan twice** to confirm |
 | `CMD-FULL` | Receiving: full pallet quantity |
 | `CMD-DONE` | Receiving: close the delivery. **Scan twice** to confirm |
