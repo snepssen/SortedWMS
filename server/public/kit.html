@@ -164,19 +164,19 @@
     switch (I.kind) {
       case 'pickup':
         main = codeBox('Pallet label', `00${I.pallet.sscc}`, { gs1: true, hri: `(00) ${I.pallet.sscc}`, note: `${I.pallet.itemNo} at ${I.targetName}`, main: true });
-        if (I.targetName && I.targetName !== I.pallet.sscc) more = codeBox('or the location label', I.targetName, { note: 'rack pickup' });
+        if (I.targetName && I.targetName !== I.pallet.sscc) more = codeBox('or the location label', I.targetName, { note: `rack pickup${I.targetCheck ? ` · check digit ${I.targetCheck}` : ''}` });
         cmds.push(cmd('MISSING', 'Pallet missing'), cmd('DAMAGED', 'Damaged'));
         break;
       case 'drop':
       case 'wait':
-        main = codeBox('Location label', I.targetName, { note: `drop …${I.pallet ? I.pallet.sscc.slice(-6) : ''}`, main: true });
+        main = codeBox('Location label', I.targetName, { note: `drop …${I.pallet ? I.pallet.sscc.slice(-6) : ''}${I.targetCheck ? ` · check digit ${I.targetCheck}` : ''}`, main: true });
         cmds.push(cmd('BLOCKED', 'Location blocked'));
         break;
       case 'check-pallet':
         main = codeBox('Pallet label', `00${I.pallet.sscc}`, { gs1: true, hri: `(00) ${I.pallet.sscc}`, note: `on ${t.fromName}`, main: true });
         break;
       case 'count':
-        if (!I.step) main = codeBox('Location label', I.targetName, { note: 'stock count', main: true });
+        if (!I.step) main = codeBox('Location label', I.targetName, { note: `stock count${I.targetCheck ? ` · check digit ${I.targetCheck}` : ''}`, main: true });
         else {
           main = I.expectedSscc ? codeBox('Pallet label', `00${I.expectedSscc}`, { gs1: true, hri: `(00) ${I.expectedSscc}`, note: 'the pallet that is there', main: true }) : '';
           more = codeBox(I.expectedSscc ? 'or the location again: empty' : 'Location again: empty', I.targetName, { note: I.expectedSscc ? 'shows the count finding it missing' : 'nothing there', main: !I.expectedSscc });
