@@ -61,6 +61,8 @@
       const sp = wh.spoken(ins.target);
       if (sp && wh.naming.show === 'row') I.spoken = sp;
       if (wh.trucks[id]) I.enterFrom = wh.entryFor(d, ins.target);
+      // Printed on the location label, never shown on the handheld: the demo kit's label wall needs it.
+      I.targetCheck = wh.checkDigit(ins.target);
     }
     if (ins.pallet) I.pallet = palletView(wh, ins.pallet);
     if (ins.aisle) I.aisle = ins.aisle;
@@ -165,7 +167,7 @@
     on('GET', '/api/lookup/:code', ({ code }) => {
       const r = wh().lookup(decodeURIComponent(code));
       if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
-      return { ...lookupView(wh(), r), pallet: palletView(wh(), r.pallet), pallets: (r.pallets || []).map((p) => palletView(wh(), p)), location: r.location && { code: r.location.code, name: wh().label(r.location.code), kind: r.location.kind, category: r.location.category, blocked: r.location.blocked } };
+      return { ...lookupView(wh(), r), pallet: palletView(wh(), r.pallet), pallets: (r.pallets || []).map((p) => palletView(wh(), p)), location: r.location && { code: r.location.code, name: wh().label(r.location.code), kind: r.location.kind, category: r.location.category, blocked: r.location.blocked, check: wh().checkDigit(r.location.code) } };
     });
     // Blocked pallets (damaged, expired on arrival, blocked by the office) and blocked locations: what the coordinator can release.
     on('GET', '/api/blocked', () => ({

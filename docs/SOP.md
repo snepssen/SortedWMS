@@ -170,6 +170,7 @@ The system makes a receiving job. With a list, every pallet is received with **o
 - the next pallet to ship low, later batches higher, blocked or short-dated stock at the top.
 
 **If it goes wrong:**
+- **Location label won't scan** (frost, damage, a top level out of reach): type the **2-digit check digit** printed on the label, then ENT. The handheld never shows it, so it confirms you're at the right spot.
 - **Location occupied or blocked:** scan `CMD-BLOCKED` twice. A new slot appears.
 - **Want another free slot of the right category:** just scan it. The system accepts it if it's suitable.
 
@@ -457,6 +458,7 @@ Every on-screen button has a barcode, so drivers keep their gloves on. Marked **
 | --- | --- |
 | ENT | Sends what's typed (the scanner sends it after each scan) |
 | Digits / letters | Type a quantity, batch, date (`09112026`) or location (`A3C2`) |
+| Two digits at a location | The check digit from a location label that won't scan |
 | Esc | Clear a half-typed entry; with nothing typed, cancel |
 | F1 … F5 | Auto, Pick, Put-away, Transfer, Stock check |
 

@@ -95,7 +95,7 @@
     const lines = text.trim().split(/\r?\n/).filter(Boolean);
     const split = (l) => l.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''));
     const head = split(lines.shift());
-    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|codes|gtin|unitGtin|itemNo|orderId|lane)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
+    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|codes|gtin|unitGtin|itemNo|orderId|lane|check)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
   }
 
   // A pasted delivery list: sscc, item (number or EAN), batch, best-before, quantity. A header row is skipped.
@@ -304,7 +304,7 @@
   async function renderImports() {
     const ex = {
       items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nY1010;8712345000017;Skyr natural 450 g;YOG;120;10;rack',
-      locations: 'code;category;blocked\n38-02-0-10;CHE;0\nAA01A1;YOG;0',
+      locations: 'code;category;blocked;check\n38-02-0-10;CHE;0;47\nAA01A1;YOG;0;',
       orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;1\n4601;Fresh Market;OUT-01;C2001;1;CHANGE;1',
       stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
     };
@@ -413,7 +413,8 @@
         }
         if (r.kind === 'location' && r.location && r.location.blocked) acts.push(`<button class="small" data-lact="${esc(r.location.code)}">Unblock location</button>`);
         out.className = 'out';
-        out.innerHTML = `<div>${esc(r.text)}</div>${acts.length ? `<div class="form" style="margin-top:8px">${acts.join(' ')}</div>` : ''}`;
+        const check = r.kind === 'location' && r.location && r.location.check ? `<div class="hint">Check digit on its label: <b>${esc(r.location.check)}</b></div>` : '';
+        out.innerHTML = `<div>${esc(r.text)}</div>${check}${acts.length ? `<div class="form" style="margin-top:8px">${acts.join(' ')}</div>` : ''}`;
         bindStockActions();
       } catch (e) { out.className = 'out bad'; out.textContent = e.message; }
     };

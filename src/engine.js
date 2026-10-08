@@ -1319,7 +1319,7 @@
      */
     scan(truckId, raw) {
       const truck = this._truck(truckId);
-      const input = String(raw).trim();
+      let input = String(raw).trim();
       truck.stats.scans++;
       if (!input) return this._fail(truck, 'Nothing scanned');
       const command = this._scanCommand(input);
@@ -1339,6 +1339,15 @@
       else task.inputs++;
       if (task.type === 'RECEIVE') return this._receiveScan(truck, task, input);
       if (task.type === 'CHECK') return this._checkScan(truck, task, input);
+      // A location label that won't scan (frost, damage, top level): type the check digit printed on it.
+      // The handheld never shows it, so typing it means the driver is at the location.
+      if (/^\d{2}$/.test(input)) {
+        const want = this.locations[task.type === 'COUNT' || task.step === 0 ? task.from : task.to];
+        if (want && want.kind === 'rack') {
+          if (input !== this.checkDigit(want.code)) return this._fail(truck, `${input} is not the check digit of ${want.code}. Read it off the location label`);
+          input = want.code;
+        }
+      }
       if (task.type === 'COUNT') return this._countScan(truck, task, input);
 
       const label = GS1.parse(input);
@@ -1939,11 +1948,26 @@
     }
 
     /** Location attributes from the site's location table: code, category, blocked. */
+    /**
+     * The two digits printed on a rack location's label next to its barcode. Taken
+     * from the location list when the labels already carry one; otherwise worked
+     * out from the code, so the same location always has the same digits.
+     */
+    checkDigit(code) {
+      const loc = this.locations[code];
+      if (!loc || loc.kind !== 'rack') return null;
+      if (loc.check) return loc.check;
+      let h = 2166136261;
+      for (const ch of code) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+      return String(10 + ((h >>> 0) % 90));
+    }
+
     importLocations(rows) {
       const out = { updated: 0, unknown: [] };
       for (const r of rows) {
         const loc = this.locations[this.resolve(r.code)];
         if (loc && r.category !== undefined) this._assertQuarantineCategory(loc, r.category || null);
+        if (loc && r.check !== undefined && r.check !== null && r.check !== '' && !/^\d{1,2}$/.test(String(r.check).trim())) throw new Error(`Check digit for ${r.code} must be 2 digits`);
       }
       for (const r of rows) {
         const code = this.resolve(r.code);
@@ -1951,6 +1975,7 @@
         if (!loc) { out.unknown.push(r.code); continue; }
         if (r.category !== undefined) loc.category = r.category || null;
         if (r.blocked !== undefined) loc.blocked = Boolean(r.blocked);
+        if (r.check !== undefined && r.check !== null && r.check !== '' && loc.kind === 'rack') loc.check = String(r.check).trim().padStart(2, '0');
         out.updated++;
       }
       this.planRelocations();
