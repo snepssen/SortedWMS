@@ -170,8 +170,10 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .blocks { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .blocks .name small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .blocklane { position: relative; height: 54px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 5px; background: var(--lane); border: 1px solid var(--line); }
-.stack { position: relative; border-radius: 3px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; display: flex; align-items: flex-end; }
-.stack i { display: block; width: 100%; background: var(--cc, var(--muted)); opacity: .9; }
+.stack { position: relative; border-radius: 3px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column-reverse; }
+.stack i { display: block; width: 100%; height: calc(100% / 6); background: var(--cc, var(--muted)); border-top: 1px solid var(--panel); }
+.stack i.b1 { background: repeating-linear-gradient(135deg, var(--cc) 0 4px, var(--line) 4px 7px); }
+.warnflag { color: var(--bad); font-weight: 600; }
 .stack span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font: 600 .7rem var(--mono); color: var(--ink); }
 .stack.next { outline: 2px solid var(--accent); outline-offset: -2px; }
 .stack .truck { top: 16px; left: 50%; }
@@ -343,7 +345,7 @@ td .acts { display: flex; gap: 4px; }
           <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
           <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
           <span>▪ pallet on the forks</span>
-          <span>Block stacks: stack 01 at the front, 6 high, one batch per lane, the outlined stack is next out</span>
+          <span>Block stacks: stack 01 at the front, 6 high, up to two batches per lane (second batch hatched), outlined stack is next out, ⚠ older stock buried behind newer</span>
           <span>Each aisle: odd bays (first row) on top, even bays (second row) below · ▸ one-way, enter from the front · ◂ enter from the back</span>
         </div>
       </section>
@@ -514,6 +516,10 @@ td .acts { display: flex; gap: 4px; }
           <div class="rule">
             <label>Next out on the ground<small>Pallets per item kept at ground level, by expiry</small></label>
             <div class="stepper"><button class="btn" type="button" id="gDown" aria-label="Fewer">−</button><b id="ground" class="num">1</b><button class="btn" type="button" id="gUp" aria-label="More">+</button></div>
+          </div>
+          <div class="rule">
+            <label>Batches per block lane<small>Same item only. A second batch goes in front of the first.</small></label>
+            <div class="stepper"><button class="btn" type="button" id="lbDown" aria-label="Fewer batches per lane">−</button><b id="laneBatches" class="num">2</b><button class="btn" type="button" id="lbUp" aria-label="More batches per lane">+</button></div>
           </div>
           <div class="rule">
             <label>Same batch together<small>Move pallets standing alone next to the rest of their item, batch and expiry</small></label>
@@ -737,6 +743,16 @@ td .acts { display: flex; gap: 4px; }
           const spot = wh.nextBlockSpot(lane);
           if (!spot) break;
           wh.stockPallet(spot, { itemNo, batch, expiry, receivedAt: simNow - between(3, 15) * DAY });
+        }
+        if (k === 1) {
+          // A second, earlier-dated batch in front of it: two batches sharing a lane.
+          const exp2 = addDays(expiry, -12);
+          const b2 = batchCode(itemNo, exp2);
+          for (let i = 0; i < between(4, 9); i++) {
+            const spot = wh.nextBlockSpot(lane);
+            if (!spot) break;
+            wh.stockPallet(spot, { itemNo, batch: b2, expiry: exp2, receivedAt: simNow - between(1, 3) * DAY });
+          }
         }
       }
     }
@@ -1090,7 +1106,8 @@ td .acts { display: flex; gap: 4px; }
     setHTML($('board'), html);
 
     // Block stacks: one row per lane, stack 01 (front) on the left.
-    let blocks = '<div class="panel-head" style="margin:0"><h3>Block stacks · cheese crate pallets</h3><span class="hint">6 high · filled from the back, emptied from the front</span></div>';
+    let blocks = '<div class="panel-head" style="margin:0"><h3>Block stacks · cheese crate pallets</h3><span class="hint">6 high · filled from the back, emptied from the front · first-out batch solid, second batch hatched</span></div>';
+    const buriedAll = wh.buriedLanes();
     for (const lane of wh.layout.blocks) {
       const stacks = wh._blockStacks(lane);
       const seq = wh._blockSeq(lane);
@@ -1098,12 +1115,17 @@ td .acts { display: flex; gap: 4px; }
       const n = (occ[lane] || []).length;
       const capL = wh.capOf(lane);
       const nextStack = top ? top.loc : null;
+      const batches = wh.laneBatches(lane);
+      const bIdx = (sscc) => batches.findIndex((b) => b.key === `${wh.pallets[sscc].itemNo}|${wh.pallets[sscc].batch}|${wh.pallets[sscc].expiry}`);
+      const buried = buriedAll.find((b) => b.lane === lane);
       const cells = stacks.map((st) => {
         const here = (occ[lane] || []).map((id) => wh.trucks[id]).filter((t) => truckTarget(t) === st.code);
-        return `<div class="stack c-${st.category} ${st.code === nextStack ? 'next' : ''}" title="${st.code}: ${st.pallets.length} of ${st.height}"><i style="height:${(st.pallets.length / st.height) * 100}%"></i><span>${st.pallets.length || ''}</span>${here.map((t) => truckTag(t, 'position:absolute;transform:translateX(-50%)')).join('')}</div>`;
+        const segs = st.pallets.map((s) => `<i class="b${Math.min(1, bIdx(s))}"></i>`).join('');
+        return `<div class="stack c-${st.category} ${st.code === nextStack ? 'next' : ''}" title="${st.code}: ${st.pallets.length} of ${st.height}">${segs}<span>${st.pallets.length || ''}</span>${here.map((t) => truckTag(t, 'position:absolute;transform:translateX(-50%)')).join('')}</div>`;
       }).join('');
+      const batchText = batches.map((b) => `${esc(b.batch)} (${dmy(b.expiry).slice(0, 5)})`).join(' + ');
       blocks += `<div class="row">
-        <div class="name">${lane}<small>${top ? `${esc(wh.items[top.itemNo].name.split(',')[0])}` : 'empty'}</small><small>${top ? esc(top.batch) : ''}</small></div>
+        <div class="name">${lane}${buried ? ' <span class="warnflag" title="Batch ' + esc(buried.buried.batch) + ' (earlier best-before) is behind ' + esc(buried.blocker.batch) + '">⚠</span>' : ''}<small>${top ? `${esc(wh.items[top.itemNo].name.split(',')[0])}` : 'empty'}</small><small title="${batchText}">${batchText}</small></div>
         <div class="blocklane">${cells}</div>
         <div class="occ num ${n >= capL ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${capL} trucks in ${lane}">${n}/${capL}</div>
       </div>`;
@@ -1450,6 +1472,9 @@ td .acts { display: flex; gap: 4px; }
     setHTML($('dirs'), wh.config.oneWay ? `<div class="item"><span class="hint">Enter from</span><span class="hint">${wh.layout.aisles.length} aisles</span></div>` + wh.layout.aisles.map((a) => `<div class="item"><span><b>Aisle ${a}</b> <span class="hint">racks ${wh.rowsOf(a).join(' / ')}</span></span>
       <span class="seg" role="group" aria-label="Aisle ${a} entry">${['front', 'back'].map((d) => `<button type="button" data-aisle="${a}" data-dir="${d}" aria-pressed="${wh.aisleDir[a] === d}">${d === 'front' ? 'Front ▸' : '◂ Back'}</button>`).join('')}</span></div>`).join('') : '');
     $('ground').textContent = wh.config.groundNextPerItem;
+    $('laneBatches').textContent = wh.config.blockLaneBatches;
+    $('lbDown').disabled = wh.config.blockLaneBatches <= 1;
+    $('lbUp').disabled = wh.config.blockLaneBatches >= 3;
     $('gDown').disabled = wh.config.groundNextPerItem <= 0;
     $('gUp').disabled = wh.config.groundNextPerItem >= 3;
     const blocked = wh.blockedLocations();
@@ -1785,6 +1810,8 @@ td .acts { display: flex; gap: 4px; }
     const input = ev.target.closest('[data-item]');
     if (input) act(() => wh.setMinShipDays(input.dataset.item, Math.max(0, Math.round(Number(input.value) || 0))));
   });
+  $('lbDown').addEventListener('click', () => act(() => { wh.setConfig({ blockLaneBatches: wh.config.blockLaneBatches - 1 }); wh.log(`Block lanes: up to ${wh.config.blockLaneBatches} batch(es) per lane`); }));
+  $('lbUp').addEventListener('click', () => act(() => { wh.setConfig({ blockLaneBatches: wh.config.blockLaneBatches + 1 }); wh.log(`Block lanes: up to ${wh.config.blockLaneBatches} batches per lane`); }));
   $('gDown').addEventListener('click', () => act(() => wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem - 1 })));
   $('gUp').addEventListener('click', () => act(() => { wh.setConfig({ groundNextPerItem: wh.config.groundNextPerItem + 1 }); }));
   $('groupNow').addEventListener('click', () => act(() => { const n = wh.planGrouping(); say('shiftErr', n ? `${n} grouping move(s) queued as Auto-Shift jobs` : 'Every batch already stands together, or there is no room next to it', Boolean(n)); }));

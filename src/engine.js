@@ -60,6 +60,7 @@
     checkAfterPick: true, // picked pallets get a check & label job
     oneWay: false, // route trucks with the one-way signs in the aisles
     blockLaneCap: 1, // trucks in one block-stack lane at a time
+    blockLaneBatches: 2, // batches of one item allowed to share a block lane
   };
 
   // What the receiving desk operator calls out to the scanner, and what each fills.
@@ -1457,7 +1458,9 @@
       const pallet = this.pallets[truck.load];
       const to = this.locations[task.to];
       if (to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
+      const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
       this._place(pallet, task.to);
+      if (buries) this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
       truck.load = null;
       truck.position = task.to;
       task.alert = null;
@@ -1829,9 +1832,7 @@
       if (loc && loc.kind === 'block') {
         if (loc.category !== this.items[pallet.itemNo].category) return `Wrong category lane. Drop at ${task.to}`;
         if (this._blockStacks(loc.lane).some((st) => st.blocked || (st.reservedBy && st.reservedBy !== task.id))) return `${loc.lane} is in use. Drop at ${task.to}`;
-        const target = this._blockTarget(loc.lane);
-        const batch = this._laneBatch(loc.lane);
-        if (target !== loc || (batch && batch !== this._batchKey(pallet))) return `Not that stack. Drop at ${task.to}`;
+        if (this._blockTarget(loc.lane) !== loc || !this._laneFit(loc.lane, pallet).ok) return `Not that stack. Drop at ${task.to}`;
         return null;
       }
       if (!loc || loc.kind !== 'rack') return `Not a rack location. Drop at ${task.to}`;
@@ -1925,27 +1926,76 @@
       return t ? t.code : null;
     }
 
-    _laneBatch(lane) {
-      const s = this._blockSeq(lane)[0];
-      return s ? this._batchKey(this.pallets[s]) : null;
+    /** Batches in a lane, front (next out) first: [{ key, itemNo, batch, expiry, count }]. */
+    laneBatches(lane) {
+      const out = [];
+      for (const s of this._blockSeq(lane)) {
+        const p = this.pallets[s];
+        const key = this._batchKey(p);
+        let b = out.find((x) => x.key === key);
+        if (!b) out.push((b = { key, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, count: 0 }));
+        b.count++;
+      }
+      return out;
     }
 
-    /** One item, batch and expiry per lane: join a lane of the same batch, else start an empty one. */
+    /**
+     * Can this pallet go on the front of a lane? One item per lane, up to
+     * blockLaneBatches batches. Going in front of a batch with an earlier
+     * best-before buries it: allowed, but only when nothing better is free.
+     */
+    _laneFit(lane, pallet) {
+      const batches = this.laneBatches(lane);
+      if (!batches.length) return { ok: true, score: 0, buries: false };
+      if (batches.some((b) => b.itemNo !== pallet.itemNo)) return { ok: false };
+      const key = this._batchKey(pallet);
+      if (batches[0].key === key) return { ok: true, score: -2000, buries: false };
+      if (!batches.some((b) => b.key === key) && batches.length >= this.config.blockLaneBatches) return { ok: false };
+      const buries = batches.some((b) => b.expiry < pallet.expiry);
+      return { ok: true, score: buries ? 1500 : -1000, buries };
+    }
+
+    /** Lanes where a batch with an earlier best-before stands behind a later one. */
+    buriedLanes() {
+      const out = [];
+      for (const lane of this.layout.blocks) {
+        const bs = this.laneBatches(lane);
+        for (let i = 1; i < bs.length; i++) {
+          const blocker = bs.slice(0, i).find((b) => b.expiry > bs[i].expiry);
+          if (blocker) out.push({ lane, buried: bs[i], blocker });
+        }
+      }
+      return out;
+    }
+
+    /**
+     * Same batch first, then a lane where the new batch ships first anyway,
+     * then an empty lane; burying older stock only as a last resort.
+     */
     _findBlockSlot(pallet, origin) {
       const cat = this.items[pallet.itemNo].category;
       let best = null;
       let bestScore = Infinity;
+      let sameBatchBusy = false;
       for (const lane of this.layout.blocks) {
         const stacks = this._blockStacks(lane);
-        if (stacks[0].category !== cat || stacks.some((s) => s.blocked || s.reservedBy)) continue;
-        const batch = this._laneBatch(lane);
-        if (batch && batch !== this._batchKey(pallet)) continue;
+        if (stacks[0].category !== cat) continue;
+        if (stacks.some((s) => s.blocked || s.reservedBy)) {
+          // Another put-away of this batch is under way in this lane: wait for it rather than open a new lane.
+          const res = stacks.find((s) => s.reservedBy);
+          const other = res && this.tasks[res.reservedBy];
+          if (other && other.sscc && this._batchKey(this.pallets[other.sscc]) === this._batchKey(pallet)) sameBatchBusy = true;
+          continue;
+        }
+        const fit = this._laneFit(lane, pallet);
+        if (!fit.ok) continue;
         const target = this._blockTarget(lane);
         if (!target) continue;
-        let score = this.travel(origin, target.code) * 10 + (batch ? -2000 : 0);
+        let score = this.travel(origin, target.code) * 10 + fit.score;
         if (this._capacityLeft(lane, null) <= 0) score += 10000;
         if (score < bestScore) { best = target; bestScore = score; }
       }
+      if (sameBatchBusy && best && this._laneFit(best.lane, pallet).score > -2000) return null;
       return best;
     }
 

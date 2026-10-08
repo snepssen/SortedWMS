@@ -64,5 +64,5 @@ The demo keeps everything in the browser. For real use:
 - Which aisles are in which cell, and which side of each aisle gets the first rack letter?
 - Does each order have to be checked and labelled, or only some customers?
 - How many reach trucks per shift, and who works which category?
-- How many block lanes, how many stacks deep, and is it always one batch per lane?
+- How many block lanes and how many stacks deep? Can a lane be worked from both ends (that would let older stock out without digging)?
 - The process steps not seen yet: which stations, standard times, warm-room times, and does a pallet change always need a new pallet label?

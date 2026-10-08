@@ -59,7 +59,7 @@ test('block lanes fill from the back and empty from the front, 6 high', () => {
 });
 
 test('crate pallets are put away in a block lane of the same batch, never in the racks', () => {
-  const { wh } = setup();
+  const { wh } = setup({ blockLaneBatches: 1 });
   stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
   stockBlock(wh, 'BL02', 1, 'K2', '2027-02-01');
   wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'CHE', pallets: 1 });
@@ -168,4 +168,52 @@ test('"next out on the ground" leaves block stacks alone', () => {
   const { wh } = setup({ groundNextPerItem: 1 });
   stockBlock(wh, 'BL01', 3, 'K1', '2027-01-01');
   assert.equal(wh.planGround(), 0);
+});
+
+test('two batches can share a lane; a third cannot', () => {
+  const { wh } = setup({ blockLaneBatches: 2 });
+  stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
+  const p = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K0', expiry: '2026-12-15' });
+  assert.equal(wh._laneFit('BL01', p).ok, true);
+  assert.equal(wh._laneFit('BL01', p).buries, false, 'earlier best-before in front ships first anyway');
+  wh.stockPallet(wh.nextBlockSpot('BL01'), { itemNo: 'W1', batch: 'K0', expiry: '2026-12-15' });
+  const third = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K9', expiry: '2027-05-01' });
+  assert.equal(wh._laneFit('BL01', third).ok, false);
+  assert.equal(wh.laneBatches('BL01').length, 2);
+});
+
+test('put-away prefers sharing a lane FEFO-safely, then an empty lane, and buries older stock only as a last resort', () => {
+  const { wh } = setup({ blockLaneBatches: 2 });
+  stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
+  const early = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K0', expiry: '2026-12-15' });
+  assert.match(wh._findSlot(early, 'DOCK-IN').code, /^BL01-/, 'shares BL01: it ships before K1');
+  const late = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K5', expiry: '2027-04-01' });
+  assert.match(wh._findSlot(late, 'DOCK-IN').code, /^BL02-/, 'an empty lane beats burying K1');
+  stockBlock(wh, 'BL02', 1, 'X1', '2027-02-01'); // BL02 no longer empty: another batch of W1
+  const slot = wh._findSlot(late, 'DOCK-IN');
+  assert.ok(slot, 'still placed, in front of later or earlier stock');
+});
+
+test('a lane where newer stock buries an earlier best-before is flagged', () => {
+  const { wh } = setup({ blockLaneBatches: 2 });
+  stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
+  stockBlock(wh, 'BL01', 1, 'K5', '2027-04-01');
+  const [b] = wh.buriedLanes();
+  assert.equal(b.lane, 'BL01');
+  assert.equal(b.buried.batch, 'K1');
+  assert.equal(b.blocker.batch, 'K5');
+});
+
+test('pallets of one batch follow each other into the same lane instead of opening new ones', () => {
+  const { wh } = setup({ checkAfterPick: false });
+  const a = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'N1', expiry: '2027-06-01' });
+  const b = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'N1', expiry: '2027-06-01' });
+  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: a.sscc, from: 'DOCK-IN', to: null });
+  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: b.sscc, from: 'DOCK-IN', to: null });
+  wh.addTruck('RT1');
+  wh.addTruck('RT2');
+  assert.equal(wh.trucks.RT2.taskId, null, 'second pallet waits for the lane');
+  move(wh, 'RT1');
+  const next = wh.tasks[wh.trucks.RT1.taskId] || wh.tasks[wh.trucks.RT2.taskId];
+  assert.equal(wh.locations[next.to].lane, wh.locations[a.loc].lane, 'same lane as the first');
 });

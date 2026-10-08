@@ -61,10 +61,11 @@ Put-away uses the same slotting rules from the start. It prefers a free position
 
 ### Block stacks (cheese crate pallets)
 Crate pallets stand on the floor in block lanes, 6 high. The system knows the stacking order.
-- Each lane holds one item, batch and expiry.
+- Each lane holds one item. Up to two batches can share a lane (a setting; 1 = strict).
+- A second batch goes in front of the first. If its best-before is the same or earlier, it ships first anyway, so the system prefers that over opening an empty lane. If it's later, it would bury older stock, so the system only does that when no lane fits better, and it flags the lane (⚠ on the board, a warning in the log).
 - A lane is filled from the back and emptied from the front.
 - A truck is only sent to the pallet it can actually lift: the top of the front-most stack. A pick for a buried pallet waits until the pallets in front of it have gone.
-- FEFO still applies: since a lane is one batch, the reachable pallet is as good as any.
+- FEFO applies to what can be reached: picks take the earliest best-before among the pallets trucks can actually lift.
 - One truck per lane at a time (a setting).
 
 ### Process floor: pallets through stations
