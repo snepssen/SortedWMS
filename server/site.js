@@ -21,6 +21,7 @@
     for (const d of site.desks || []) wh.addDesk(d.id, d);
     for (const it of site.items || []) wh.addItem(it);
     for (const tpl of site.templates || []) wh.applyTemplate(wh.selectLocations(tpl.from, tpl.to), tpl.category, { by: 'setup' });
+    for (const zone of site.quarantine || []) wh.setQuarantineLocations(wh.selectLocations(zone.from, zone.to), true, zone.reason || 'Site quarantine designation', 'setup');
     if (site.naming) wh.setNaming(site.naming);
     wh.events.length = 0;
     wh.log(`Site "${site.name || 'unnamed'}" created`);

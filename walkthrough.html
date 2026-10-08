@@ -64,7 +64,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
 <body>
 <header><strong>SortedWMS</strong><span>Guided shift · isolated demo stock</span><nav><a href="index.html">Simulated shift</a><a href="wms.html">Free play</a></nav></header>
 <main>
-  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option><option value="recall">Batch recall &amp; traceability</option></select></div>
+  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option><option value="recall">Batch recall &amp; traceability</option><option value="quarantine">Physical quarantine &amp; release</option></select></div>
   <div class="progress"><span id="count">Loading shift</span><progress id="progress" value="0" max="22" aria-label="Shift progress"></progress><button id="restart" title="Restart guided shift" aria-label="Restart guided shift">&#8635;</button></div>
   <section class="step"><div><span class="role" id="owner"></span><h1 id="title">Receiving to shipping</h1><p id="detail" class="muted"></p></div><button id="next" class="primary" disabled>Loading</button></section>
   <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -107,6 +107,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
     if (role === 'admin') {
       const locs = Object.values(wh.locations).filter((l) => l.kind === 'rack');
       html = `<h2>Storage & assignment</h2>${table(['Category', 'Rack positions'], Object.entries(wh.categories).map(([id, name]) => [name, locs.filter((l) => l.category === id).length]))}<h3>Reach trucks</h3>${table(['Truck', 'Mode', 'Works'], Object.values(wh.trucks).map((t) => [t.id, SortedWMS.TRUCK_MODES[t.mode].label, t.categories.map((c) => wh.categories[c]).join(', ')]))}<div class="summary"><span>One-way aisles: ${wh.config.oneWay ? 'on' : 'off'}</span><span>Aisle limit: ${wh.config.aisleCap}</span><span>Next-out pallets on ground: ${wh.config.groundNextPerItem}</span><span>Check & label: ${wh.config.checkAfterPick ? 'on' : 'off'}</span></div>`;
+      if (demo.scenarioId === 'quarantine') html += `<h3>Quarantine positions</h3>${table(['Position', 'Category', 'Status'], locs.filter((l) => l.quarantine).map((l) => [wh.label(l.code), wh.categories[l.category], l.sscc ? 'Occupied' : l.reservedBy ? 'Reserved' : 'Free']))}`;
     } else if (role === 'office') {
       const orderStatus = (o) => o.status !== 'shipped' && o.lines.some((l) => l.allocated.some((s) => wh.shipState(wh.pallets[s]) !== 'ok')) ? `${o.status} / Shipping held` : o.status;
       html = `<h2>Orders & deliveries</h2>${table(['Delivery', 'Supplier', 'Received', 'Status'], Object.values(wh.deliveries).map((d) => [d.id, d.supplier, `${d.received.length} / ${d.expected}`, d.status]))}${table(['Order', 'Customer', 'Status'], Object.values(wh.orders).map((o) => [o.id, o.customer, orderStatus(o)]))}<h3>Jobs</h3>${table(['Job', 'From', 'To', 'Status'], Object.values(wh.tasks).filter((t) => t.status !== 'done').map((t) => [t.type, wh.label(t.from), t.to ? wh.label(t.to) : 'Auto slot', t.status]))}`;
@@ -119,6 +120,10 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
         const checked = Object.values(wh.pallets).filter((p) => p.qualityHistory);
         html += `<h3>Quality holds</h3>${table(['Batch', 'Location', 'Reason', 'Can ship'], checked.map((p) => [p.batch, wh.label(p.loc), p.qualityHold ? p.qualityHold.reason : 'Released', wh.shipState(p) === 'ok' ? 'Yes' : 'No']))}<h3>Inspection & release history</h3>${table(['Batch', 'Action', 'Measured C', 'Limits C', 'Reason', 'By'], checked.flatMap((p) => p.qualityHistory.map((e) => [p.batch, e.kind === 'release' ? 'Released' : e.outside ? 'Quality hold' : 'Reading recorded', e.temperature, e.min == null ? '' : `${e.min} to ${e.max}`, e.reason, e.by])))}`;
       }
+      if (demo.scenarioId === 'quarantine') {
+        const reviewed = Object.values(wh.pallets).filter((p) => p.quarantineHistory);
+        html += `<h3>Quarantine workflow</h3>${table(['Batch', 'Location', 'State', 'Can ship'], reviewed.map((p) => [p.batch, p.loc ? wh.label(p.loc) : 'On truck', p.quarantine ? p.quarantine.state : 'Returned', wh.shipState(p) === 'ok' ? 'Yes' : 'No']))}<h3>Quarantine history</h3>${table(['Action', 'Position', 'Reason', 'By'], reviewed.flatMap((p) => p.quarantineHistory.map((e) => [e.kind, wh.label(e.location), e.reason, e.by])))}`;
+      }
       html += `<h3>Location unknown</h3>${table(['Pallet', 'Batch', 'Last known location'], wh.lostPallets().map((p) => [p.sscc, p.batch, wh.label(p.missingFrom)]))}<h3>Recent corrections</h3>${table(['Pallet', 'From', 'To', 'By'], (wh.transfers || []).map((t) => [t.sscc, wh.label(t.from), wh.label(t.to), t.by]))}`;
     } else if (role === 'scanner') {
       const truck = wh.trucks[demo.truckId];
@@ -127,7 +132,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
       const pallet = ins.pallet;
       const barcode = demo.scanCode;
       const target = receiving ? barcode.slice(2) : ins.target || barcode;
-      const reason = ins.task && ins.task.reason === 'ground' ? 'Next out: bring to ground' : ins.task && ins.task.reason === 'template' ? 'Partition changed: relocate stock' : null;
+      const reason = ins.task && ins.task.type === 'SHIFT' ? SortedWMS.SHIFT_REASONS[ins.task.reason] : null;
       html = `<div class="scanner"><span class="role">${receiving ? 'DESK1 · Receiving' : `${esc(demo.truckId)} · ${esc(truck ? SortedWMS.TRUCK_MODES[truck.mode].label : 'Unassigned')}`}</span><h2>${receiving ? 'Scan supplier SSCC' : esc(ins.kind.replace(/-/g, ' '))}</h2>${reason ? `<p>${esc(reason)}</p>` : ''}<div class="target mono">${esc(target ? wh.label(target) : 'Waiting for work')}</div>${pallet ? `<dl><dt>Item</dt><dd>${esc(wh.items[pallet.itemNo].name)}</dd><dt>Batch</dt><dd>${esc(pallet.batch)}</dd><dt>Best before</dt><dd>${esc(pallet.expiry)}</dd><dt>SSCC</dt><dd class="mono">${esc(pallet.sscc)}</dd></dl>` : ''}${barcode ? `<div class="barcode" role="img" aria-label="Demo scan barcode ${esc(barcode)}">${SortedBarcode.svg(barcode)}</div>` : ''}${truck && truck.message ? `<p>${esc(wh.display(truck.message.text))}</p>` : ''}</div>`;
     } else {
       const st = wh.stations.PRESS;

@@ -69,6 +69,8 @@
     group: 'Same batch together',
     driver: 'Started by driver',
     digout: 'Uncover older stock',
+    quarantine: 'Move to quarantine',
+    'quarantine-return': 'Return released stock to storage',
   };
 
   // Receiving asks for these in this order. A GS1 label scan can fill several at once.
@@ -455,7 +457,7 @@
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
     shipState(pallet) {
-      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet)) return 'blocked';
+      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet) || pallet.quarantine || this.locations[pallet.loc]?.quarantine) return 'blocked';
       const days = daysBetween(this.today(), pallet.expiry);
       if (days < 0) return 'expired';
       if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
@@ -505,7 +507,7 @@
     setLocationCategory({ aisle, bayFrom = 1, bayTo = this.layout.bays, side = null, rowFrom = null, rowTo = null, levels = null }, category) {
       if (category !== null && !this.categories[category]) throw new Error(`Unknown category ${category}`);
       const a = pad(aisle, 2);
-      let changed = 0;
+      const selected = [];
       for (const loc of this._racks()) {
         if (loc.aisle !== a) continue;
         if (rowFrom != null || side) {
@@ -514,11 +516,11 @@
           if (d < (rowFrom || 1) || d > (rowTo || this.layout.depth)) continue;
         } else if (loc.bay < bayFrom || loc.bay > bayTo) continue;
         if (levels && !levels.includes(loc.level)) continue;
-        if (loc.category !== category) {
-          loc.category = category;
-          changed++;
-        }
+        if (loc.category !== category) selected.push(loc);
       }
+      for (const loc of selected) this._assertQuarantineCategory(loc, category);
+      for (const loc of selected) loc.category = category;
+      const changed = selected.length;
       if (changed) {
         const where = rowFrom != null || side ? `${side ? `${side} side` : 'both sides'}, bays ${rowFrom || 1}–${rowTo || this.layout.depth} along the row` : `bays ${bayFrom}–${bayTo}`;
         this.log(`Template: aisle ${a} ${where} → ${category ? this.categories[category] : 'no category'} (${changed} locations)`);
@@ -551,6 +553,7 @@
       };
       this.pallets[sscc] = pallet;
       this._place(pallet, code);
+      this._quarantinePlacement(pallet, 'opening-stock');
       return pallet;
     }
 
@@ -638,7 +641,103 @@
 
     holdReason(pallet) {
       const recall = this.batchHoldFor(pallet);
-      return [recall && `Batch recall: ${recall.batch}`, pallet.qualityHold && `Quality hold: ${pallet.qualityHold.reason}`, pallet.status === 'blocked' && pallet.blockReason].filter(Boolean).join('; ');
+      return [recall && `Batch recall: ${recall.batch}`, pallet.qualityHold && `Quality hold: ${pallet.qualityHold.reason}`, pallet.status === 'blocked' && pallet.blockReason,
+        pallet.quarantine ? `Quarantine: ${pallet.quarantine.state === 'returning' ? 'awaiting return to storage' : pallet.quarantine.reason}` : this.locations[pallet.loc]?.quarantine && 'In quarantine location'].filter(Boolean).join('; ');
+    }
+
+    setQuarantineLocations(codes, enabled, reason, by = 'office') {
+      if (!Array.isArray(codes) || !codes.length) throw new Error('Select at least one rack position');
+      if (typeof enabled !== 'boolean') throw new Error('Quarantine setting must be true or false');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A location decision reason is required');
+      const locations = [...new Set(codes)].map((code) => this._loc(code));
+      if (locations.some((l) => l.kind !== 'rack')) throw new Error('Quarantine positions must be racks; block stacks are not supported');
+      const changed = locations.filter((l) => Boolean(l.quarantine) !== enabled);
+      if (changed.some((l) => l.sscc || l.reservedBy)) throw new Error('Only empty, unreserved positions can change quarantine designation');
+      for (const loc of changed) loc.quarantine = enabled;
+      const event = { t: this.now(), codes: changed.map((l) => l.code), enabled, reason: reason.trim(), by };
+      (this.quarantineZoneHistory || (this.quarantineZoneHistory = [])).push(event);
+      this.log(`${changed.length} rack positions: quarantine ${enabled ? 'enabled' : 'disabled'} by ${by}: ${event.reason}`);
+      this.dispatch();
+      return event;
+    }
+
+    requestQuarantine(sscc, reason, by = 'office') {
+      const pallet = this._pallet(sscc);
+      if (!pallet.loc || ['missing', 'shipped'].includes(pallet.status)) throw new Error('Pallet must have a known warehouse location and not be on a truck');
+      if (this.items[pallet.itemNo].storage === 'block' || pallet.proc || this.locations[pallet.loc].kind === 'station') throw new Error('Quarantine moves support rack pallets outside process stations only');
+      if (pallet.quarantine) throw new Error('Pallet already has a quarantine workflow');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A quarantine reason is required');
+      const order = pallet.orderId && this.orders[pallet.orderId];
+      const line = order && order.lines.find((l) => l.allocated.includes(sscc));
+      if (order && !line) throw new Error('Pallet allocation does not match its order');
+      pallet.quarantine = { state: this.locations[pallet.loc].quarantine ? 'stored' : 'requested', reason: reason.trim(), by, t: this.now() };
+      (pallet.quarantineHistory || (pallet.quarantineHistory = [])).push({ kind: 'request', ...pallet.quarantine, location: pallet.loc });
+      this._detachQuarantineAllocation(pallet);
+      this._queueQuarantineMove(pallet);
+      this.log(`Pallet …${sscc.slice(-6)} quarantine requested by ${by}: ${reason.trim()}`);
+      this.dispatch();
+      return pallet.quarantine;
+    }
+
+    _detachQuarantineAllocation(pallet) {
+      for (const task of Object.values(this.tasks)) if (task.sscc === pallet.sscc && this._isLive(task)) this._cancelQuiet(task);
+      const order = pallet.orderId && this.orders[pallet.orderId];
+      if (order) {
+        const line = order.lines.find((l) => l.allocated.includes(pallet.sscc));
+        this._unallocate(pallet.sscc);
+        const replacement = this._allocate(pallet.itemNo);
+        if (replacement) { this._createPick(order, line, replacement); line.short--; }
+        pallet.checked = false;
+        pallet.labelCode = null;
+        order.status = 'open';
+        this._updateOrder(order);
+      }
+    }
+
+    releaseQuarantine(sscc, reason, by = 'office') {
+      const pallet = this._pallet(sscc);
+      if (!pallet.quarantine || pallet.quarantine.state !== 'stored' || !this.locations[pallet.loc]?.quarantine) throw new Error('Pallet must be scanned into quarantine before release');
+      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet)) throw new Error('Clear independent damage, temperature and recall holds before quarantine release');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A quarantine release reason is required');
+      pallet.quarantine.state = 'returning';
+      pallet.quarantineHistory.push({ kind: 'release', t: this.now(), reason: reason.trim(), by, location: pallet.loc });
+      const live = this._liveTaskFor(sscc);
+      if (live) this._cancelQuiet(live);
+      this._queueQuarantineMove(pallet);
+      this.log(`Pallet …${sscc.slice(-6)} quarantine release approved by ${by}: ${reason.trim()}`);
+      this.dispatch();
+      return pallet.quarantine;
+    }
+
+    _quarantinePlacement(pallet, by) {
+      const loc = this.locations[pallet.loc];
+      const inZone = Boolean(loc?.quarantine);
+      if (!pallet.quarantine && inZone) {
+        pallet.quarantine = { state: 'stored', reason: 'Stock recorded in a quarantine position', t: this.now(), by };
+        (pallet.quarantineHistory || (pallet.quarantineHistory = [])).push({ kind: 'request', ...pallet.quarantine, location: pallet.loc });
+        this._detachQuarantineAllocation(pallet);
+      }
+      if (!pallet.quarantine) return;
+      const normalStorage = loc?.kind === 'rack' && !inZone && loc.category === this.items[pallet.itemNo].category;
+      if (normalStorage && pallet.quarantine.state === 'returning') {
+        pallet.quarantineHistory.push({ kind: 'returned', t: this.now(), by, location: pallet.loc });
+        pallet.quarantine = null;
+      } else if (inZone && pallet.quarantine.state === 'requested') {
+        pallet.quarantine.state = 'stored';
+        pallet.quarantineHistory.push({ kind: 'stored', t: this.now(), by, location: pallet.loc });
+      } else if (!inZone && pallet.quarantine.state === 'stored') {
+        pallet.quarantine.state = 'requested';
+      }
+    }
+
+    _queueQuarantineMove(pallet) {
+      const state = pallet.quarantine?.state;
+      if (!pallet.loc || !['requested', 'returning'].includes(state) || this._liveTaskFor(pallet.sscc)) return;
+      this._newTask({ type: 'SHIFT', reason: state === 'returning' ? 'quarantine-return' : 'quarantine', category: this.items[pallet.itemNo].category, sscc: pallet.sscc, from: pallet.loc, to: null, urgent: state === 'requested' });
+    }
+
+    _assertQuarantineCategory(loc, category) {
+      if (loc.quarantine && loc.category !== category && (loc.sscc || loc.reservedBy)) throw new Error('Occupied or reserved quarantine positions cannot change category');
     }
 
     releaseQualityHold(sscc, reason, by = 'office') {
@@ -763,6 +862,7 @@
     cancelTask(taskId) {
       const task = this._task(taskId);
       if (!LIVE.has(task.status)) return;
+      if (['quarantine', 'quarantine-return'].includes(task.reason)) throw new Error('Resolve the quarantine workflow instead of cancelling its move');
       const truck = task.truckId && this.trucks[task.truckId];
       if (truck && truck.load) throw new Error(`Job #${task.id}: pallet is on the forks — let the driver drop it first`);
       if (task.status === 'active') this._unassign(task);
@@ -922,6 +1022,7 @@
       for (const loc of this._racks()) {
         if (!loc.sscc || !loc.category) continue;
         const pallet = this.pallets[loc.sscc];
+        if (pallet.quarantine || loc.quarantine) continue;
         if (this.items[pallet.itemNo].category === loc.category) continue;
         if (this._liveTaskFor(pallet.sscc)) continue;
         this._newTask({ type: 'SHIFT', reason: 'template', sscc: pallet.sscc, from: loc.code, to: null, category: this.items[pallet.itemNo].category });
@@ -963,6 +1064,7 @@
       for (const loc of this._racks()) {
         if (!loc.sscc) continue;
         const p = this.pallets[loc.sscc];
+        if (p.quarantine || loc.quarantine) continue;
         if (this._liveTaskFor(p.sscc)) continue;
         (groups[this._batchKey(p)] = groups[this._batchKey(p)] || []).push(loc);
       }
@@ -1405,15 +1507,18 @@
         to.reservedBy = null;
       }
       const from = pallet.loc || pallet.missingFrom || 'unknown';
+      const quarantineMove = Boolean(pallet.quarantine || to.quarantine);
       this._remove(pallet);
       this._place(pallet, code);
+      this._quarantinePlacement(pallet, by);
       if (pallet.status === 'missing') { pallet.status = pallet.blockReason ? 'blocked' : 'available'; notes.push('found again'); }
       pallet.missingFrom = null;
       // Jobs follow the pallet: a planned pick picks it from where it really is; planned shifts are re-planned.
-      if (live && live.status !== 'active') {
+      if (live && (live.status !== 'active' || quarantineMove)) {
         if (live.type === 'SHIFT' || live.type === 'PUTAWAY') this._cancelQuiet(live);
         else live.from = code;
       }
+      this._queueQuarantineMove(pallet);
       const cat = this.items[pallet.itemNo].category;
       if ((to.kind === 'rack' || to.kind === 'block') && to.category && to.category !== cat) {
         notes.push(`not a ${this.categories[cat]} location: relocation planned`);
@@ -1590,6 +1695,7 @@
     /** Apply a category to a selection; pallets now in the wrong category get relocation jobs. */
     applyTemplate(codes, category, { by = 'office' } = {}) {
       const preview = this.previewTemplate(codes, category);
+      for (const code of codes) this._assertQuarantineCategory(this.locations[code], category);
       for (const code of codes) this.locations[code].category = category;
       this.log(`Template by ${by}: ${preview.changed} of ${codes.length} locations → ${category ? this.categories[category] : 'no category'}`);
       const moves = this.planRelocations();
@@ -1600,6 +1706,10 @@
     /** Location attributes from the site's location table: code, category, blocked. */
     importLocations(rows) {
       const out = { updated: 0, unknown: [] };
+      for (const r of rows) {
+        const loc = this.locations[this.resolve(r.code)];
+        if (loc && r.category !== undefined) this._assertQuarantineCategory(loc, r.category || null);
+      }
       for (const r of rows) {
         const code = this.resolve(r.code);
         const loc = this.locations[code];
@@ -2066,6 +2176,7 @@
       if (to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
       const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
       this._place(pallet, task.to);
+      this._quarantinePlacement(pallet, truck.id);
       if (buries) {
         this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
         this.planDigOut();
@@ -2074,6 +2185,7 @@
       truck.position = task.to;
       task.alert = null;
       this._finish(truck, task);
+      this._queueQuarantineMove(pallet);
       if (to.kind === 'station') this._arrive(pallet, to);
       else if ((task.type === 'PICK' || task.type === 'MOVE') && task.orderId && to.kind === 'lane') this._picked(task, pallet);
       if (task.type === 'PUTAWAY' || task.type === 'SHIFT' || (task.type === 'MOVE' && !task.orderId)) this.planGround();
@@ -2579,6 +2691,7 @@
       if (loc.blocked) return `${code} is blocked. Drop at ${task.to}`;
       const cat = this.items[pallet.itemNo].category;
       if (loc.category !== cat) return `${code} is not a ${this.categories[cat]} location. Drop at ${task.to}`;
+      if (Boolean(loc.quarantine) !== Boolean(pallet.quarantine && pallet.quarantine.state !== 'returning')) return `Wrong quarantine designation. Drop at ${task.to}`;
       if (task.ground && loc.level !== 0) return `This pallet goes on the ground. Drop at ${task.to}`;
       if (loc.aisle !== this._aisle(task.to) && this._capacityLeft(loc.aisle, truck.id) <= 0) return `Aisle ${loc.aisle} is full. Drop at ${task.to}`;
       return null;
@@ -2588,7 +2701,8 @@
 
     _slotFree(loc, pallet) {
       return loc.kind === 'rack' && !loc.sscc && !loc.blocked && !loc.reservedBy
-        && loc.category === this.items[pallet.itemNo].category;
+        && loc.category === this.items[pallet.itemNo].category
+        && Boolean(loc.quarantine) === Boolean(pallet.quarantine && pallet.quarantine.state !== 'returning');
     }
 
     /**

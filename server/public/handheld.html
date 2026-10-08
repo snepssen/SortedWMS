@@ -32,7 +32,7 @@
   .sub { color: var(--dim); font-size: 15px; }
   .pallet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 15px; }
   .pallet dt { color: var(--dim); }
-  .pallet dd { margin: 0; font-weight: 600; }
+  .pallet dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
   .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 18px; white-space: pre-line; }
   .lines { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
   .lines li { padding: 6px 8px; background: #0b0f12; border-radius: 8px; word-break: break-word; }
@@ -113,6 +113,7 @@
       <dt>Batch</dt><dd>${esc(p.batch)} · best before ${esc(exp)}</dd>
       ${p.locName ? `<dt>System has it</dt><dd>${esc(p.locName)}</dd>` : ''}
       ${p.status !== 'available' ? `<dt>Status</dt><dd style="color:var(--warn)">${esc(p.status)}${p.blockReason ? ': ' + esc(p.blockReason) : ''}</dd>` : ''}
+      ${p.holdReason ? `<dt>Shipping hold</dt><dd style="color:var(--warn)">${esc(p.holdReason)}</dd>` : ''}
     </dl>`;
   }
 

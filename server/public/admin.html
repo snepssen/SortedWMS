@@ -100,6 +100,7 @@
     locations: { label: 'Locations', render: renderLocations },
     stock: { label: 'Stock & trace', render: renderStock },
     recalls: { label: 'Batch recalls', render: renderRecalls },
+    quarantine: { label: 'Quarantine', render: renderQuarantine },
     orders: { label: 'Orders & deliveries', render: renderOrders },
     imports: { label: 'Import', render: renderImports },
     audit: { label: 'Audit', render: renderAudit },
@@ -207,6 +208,25 @@
         <button type="submit">Preview affected stock</button><button id="rHold" type="button" disabled>Place recall hold</button>
       </form><div id="recallOut" class="out" style="display:none"></div><div id="recallPreview"></div>
       </section>${recalls.map((r, i) => `<section>${recallReport(r)}${r.active ? `<div class="form"><label>Release decision <input id="rRelease-${i}"></label><button data-recall-release="${i}" data-item="${esc(r.itemNo)}" data-batch="${esc(r.batch)}">Release batch hold</button></div>` : ''}</section>`).join('')}`;
+  }
+
+  async function renderQuarantine() {
+    const q = await api('GET', '/api/quarantine');
+    return `<section><h2>Quarantine positions</h2><form id="quarantineZoneForm" class="form">
+      <label>From position <input id="zFrom" required></label><label>To position <input id="zTo" required></label>
+      <label><span><input id="zEnabled" type="checkbox" checked> Quarantine designation</span></label>
+      <label>Location decision <input id="zReason" required></label><button type="submit">Save designation</button></form>
+      <div id="quarantineOut" class="out" style="display:none"></div>
+      ${table(['Position', 'Category', 'Pallet', 'Reservation', 'Status'], q.locations.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(S.categories[l.category] || l.category)}</td><td class="mono">${esc(l.sscc || '')}</td><td>${l.reservedBy ? `Job ${l.reservedBy}` : ''}</td><td>${l.blocked ? 'Blocked location' : l.sscc ? 'Occupied' : l.reservedBy ? 'Reserved' : 'Free'}</td></tr>`))}</section>
+      <section><h2>Request quarantine</h2><form id="quarantineRequestForm" class="form">
+        <label>Pallet SSCC <input id="zSscc" required></label><label>Quarantine reason <input id="zRequestReason" required></label><button type="submit">Request move to quarantine</button></form>
+        <h3>Active quarantine stock</h3>${table(['Pallet', 'Batch', 'Location', 'Workflow', 'Move', 'Other holds', 'Release decision', ''], q.pallets.filter((p) => p.quarantine).map((p, i) => `<tr>
+          <td class="mono">${esc(p.sscc)}</td><td>${esc(p.batch)}</td><td>${esc(p.locName || (p.status === 'missing' ? 'Location unknown' : 'On truck'))}</td>
+          <td>${esc(p.quarantine.state)}</td><td>${p.waitingForSpace ? 'Awaiting free matching position' : p.move ? `${esc(p.move.status)} · ${esc(p.move.toName || 'Destination at dispatch')}` : p.quarantine.state === 'stored' ? 'In quarantine' : 'No active move'}</td>
+          <td class="wrap">${esc([p.qualityHold && 'Temperature hold', p.recallHold && 'Batch recall', p.status === 'blocked' && p.blockReason].filter(Boolean).join('; ') || 'None')}</td>
+          <td>${p.quarantine.state === 'stored' ? `<input id="zRelease-${i}" aria-label="Release decision ${esc(p.sscc)}">` : ''}</td><td>${p.quarantine.state === 'stored' ? `<button data-quarantine-release="${esc(p.sscc)}" data-index="${i}">Approve return</button>` : ''}</td></tr>`))}
+      </section><section><h2>Quarantine history</h2>${table(['When', 'Pallet', 'Action', 'Position', 'Reason', 'By'], q.pallets.flatMap((p) => p.quarantineHistory.map((e) => ({ p, e }))).sort((a, b) => b.e.t - a.e.t).map(({ p, e }) => `<tr><td>${when(e.t)}</td><td class="mono">${esc(p.sscc)}</td><td>${esc(e.kind)}</td><td>${esc(e.locationName || e.location)}</td><td class="wrap">${esc(e.reason || '')}</td><td>${esc(e.by)}</td></tr>`))}
+      <h3>Location decisions</h3>${table(['When', 'Positions', 'Designation', 'Reason', 'By'], q.history.slice().reverse().map((e) => `<tr><td>${when(e.t)}</td><td>${e.codes.length}</td><td>${e.enabled ? 'Quarantine' : 'Normal storage'}</td><td class="wrap">${esc(e.reason)}</td><td>${esc(e.by)}</td></tr>`))}</section>`;
   }
 
   async function renderOrders() {
@@ -371,6 +391,22 @@
       });
     }
     document.querySelectorAll('[data-recall-release]').forEach((b) => (b.onclick = () => recallAction(() => api('POST', '/api/recalls/release', { itemNo: b.dataset.item, batch: b.dataset.batch, reason: $(`#rRelease-${b.dataset.recallRelease}`).value }))));
+    // Physical quarantine
+    const quarantineAction = async (path, body) => {
+      let message = 'Decision recorded', ok = true;
+      try { await api('POST', path, body); await draw(); } catch (e) { message = e.message; ok = false; }
+      const out = $('#quarantineOut');
+      if (out) { out.style.display = ''; out.className = `out ${ok ? 'ok' : 'bad'}`; out.textContent = message; }
+    };
+    if ($('#quarantineZoneForm')) $('#quarantineZoneForm').onsubmit = (e) => {
+      e.preventDefault();
+      quarantineAction('/api/quarantine/locations', { from: $('#zFrom').value.trim(), to: $('#zTo').value.trim(), enabled: $('#zEnabled').checked, reason: $('#zReason').value });
+    };
+    if ($('#quarantineRequestForm')) $('#quarantineRequestForm').onsubmit = (e) => {
+      e.preventDefault();
+      quarantineAction('/api/quarantine/request', { sscc: $('#zSscc').value.trim(), reason: $('#zRequestReason').value });
+    };
+    document.querySelectorAll('[data-quarantine-release]').forEach((b) => (b.onclick = () => quarantineAction('/api/quarantine/release', { sscc: b.dataset.quarantineRelease, reason: $(`#zRelease-${b.dataset.index}`).value })));
     // Orders
     on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
       const line = { itemNo: $('#oItem').value, pallets: Number(val('#oPal')) || 1 };

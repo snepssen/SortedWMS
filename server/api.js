@@ -23,6 +23,7 @@
       qty: p.qty, status: p.status, blockReason: p.blockReason, shipState: wh.shipState(p), loc: p.loc, locName: placeName(wh, p.loc),
       qualityHold: p.qualityHold || null, qualityHistory: p.qualityHistory || [],
       recallHold: wh.batchHoldFor(p), holdReason: wh.holdReason(p),
+      quarantine: p.quarantine || null, quarantineHistory: (p.quarantineHistory || []).map((e) => ({ ...e, locationName: placeName(wh, e.location) })),
       orderId: p.orderId, inProcess: p.proc ? p.proc.route : null,
     };
   }
@@ -138,6 +139,14 @@
     };
     on('GET', '/api/recalls', () => (wh().batchHolds || []).map((h) => recallView(h.itemNo, h.batch)));
     on('GET', '/api/recalls/preview', (_, q) => recallView(q.itemNo, q.batch));
+    on('GET', '/api/quarantine', () => ({
+      locations: Object.values(wh().locations).filter((l) => l.quarantine).map((l) => ({ code: l.code, name: placeName(wh(), l.code), category: l.category, blocked: l.blocked, sscc: l.sscc, reservedBy: l.reservedBy || null })),
+      pallets: Object.values(wh().pallets).filter((p) => p.quarantine || p.quarantineHistory?.length).map((p) => {
+        const move = wh()._liveTaskFor(p.sscc);
+        return { ...palletView(wh(), p), move: taskView(wh(), move), waitingForSpace: Boolean(move && move.status === 'open' && move.autoSlot && !wh()._findSlot(p, move.from)) };
+      }),
+      history: wh().quarantineZoneHistory || [],
+    }));
     on('GET', '/api/lookup/:code', ({ code }) => {
       const r = wh().lookup(decodeURIComponent(code));
       if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
@@ -177,6 +186,9 @@
     on('POST', '/api/stations/:id/scan', ({ id }, q, b, by) => run('stationScan', { id, code: b.code }, by));
 
     // Office actions
+    on('POST', '/api/quarantine/locations', (_, q, b, by) => run('setQuarantineLocations', b, by));
+    on('POST', '/api/quarantine/request', (_, q, b, by) => run('requestQuarantine', b, by));
+    on('POST', '/api/quarantine/release', (_, q, b, by) => run('releaseQuarantine', b, by));
     on('POST', '/api/recalls', (_, q, b, by) => run('placeBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
     on('POST', '/api/recalls/release', (_, q, b, by) => run('releaseBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
     on('POST', '/api/config', (_, q, b, by) => run('setConfig', { patch: b }, by));
