@@ -947,8 +947,14 @@
     releaseTask(taskId) {
       const task = this._task(taskId);
       if (task.status !== 'held') return;
+      const pallet = task.sscc && this.pallets[task.sscc];
+      // Back to the trucks only if a truck can find the pallet.
+      if (pallet && !task.replacedBy && !pallet.loc && !Object.values(this.trucks).some((t) => t.load === pallet.sscc)
+        && ((task.type !== 'PICK' && task.type !== 'CHECK') || pallet.orderId === task.orderId)) {
+        throw new Error(`Pallet …${pallet.sscc.slice(-6)} is on the location-unknown list. Find it first (scan it in Transfer mode), then release the job`);
+      }
       if (task.blockedLoc) this.locations[task.blockedLoc].blocked = false;
-      if (task.type === 'PICK' && this.pallets[task.sscc].orderId !== task.orderId) {
+      if ((task.type === 'PICK' || task.type === 'CHECK') && pallet && pallet.orderId !== task.orderId) {
         task.status = 'cancelled';
         this.log(`Job #${task.id} closed (allocation removed)`, { taskId });
       } else if (task.replacedBy) {
@@ -1442,6 +1448,12 @@
       if (truck.pendingSscc) { truck.pendingSscc = null; return this._say(truck, true, 'Let go. Nothing changed'); }
       if (truck.mode === 'transfer' && truck.transferSscc) { truck.transferSscc = null; return this._say(truck, true, 'Transfer cancelled. Scan a pallet'); }
       if (truck.mode === 'find' && truck.lookup) { truck.lookup = null; return this._say(truck, true, 'Cleared. Scan a pallet, location or item'); }
+      const task = truck.taskId && this.tasks[truck.taskId];
+      if (task && task.type === 'RECEIVE' && RECEIVE_FIELDS.some((f) => task.draft[f])) {
+        // A wrong value (a typo, a label scanned by mistake): start this pallet again. Pallets already in stay in.
+        task.draft = { inputs: task.draft.inputs || 0 };
+        return this._say(truck, true, 'This pallet starts again. Scan its labels');
+      }
       return this._say(truck, true, 'Nothing to cancel');
     }
 
@@ -1499,7 +1511,7 @@
         this.locations[place].blocked = true;
         task.blockedLoc = place;
       }
-      if (reason === 'damaged') {
+      if (reason === 'damaged' && pallet.status !== 'missing') {
         pallet.status = 'blocked';
         pallet.blockReason = 'Damaged';
       }
@@ -1685,6 +1697,8 @@
         if (!pallet) return this._fail(truck, 'Scan the pallet label');
         let task = this._liveTaskFor(pallet.sscc);
         if (task && task.status !== 'open') return this._fail(truck, `That pallet has job #${task.id} on ${task.truckId || 'hold'}`);
+        // Put-away mode puts away: a pick or a check & label waiting for this pallet is Auto's job.
+        if (task && task.type !== 'PUTAWAY' && task.type !== 'MOVE') return this._fail(truck, `That pallet has a ${TASK_TYPES[task.type].label.toLowerCase()} job (#${task.id}). Scan AUTO to do it`);
         if (!task) {
           const at = pallet.loc && this.locations[pallet.loc];
           if (!at || (at.kind !== 'lane' && at.kind !== 'station')) return this._fail(truck, 'That pallet is already in storage. Use Transfer to move it');
@@ -2736,6 +2750,8 @@
           const field = RECEIVE_FIELDS.find((f) => !d[f]);
           if (field === 'batch') {
             if (input.length > 20) return this._fail(truck, 'That is too long for a batch number');
+            const place = this.locations[this.resolve(input)];
+            if (place) return this._fail(truck, `That's the label of ${place.code}, not a batch number. Scan the pallet's labels`);
             fields.batch = input.toUpperCase();
           } else if (field === 'expiry') {
             const iso = parseDate(input, this.today());
@@ -2768,7 +2784,7 @@
           for (const [k, v] of Object.entries(fromList)) {
             const mine = fields[k] || d[k];
             if (v && mine && String(mine) !== String(v)) {
-              return this._fail(truck, `Label and delivery list disagree on ${FIELD_LABELS[k].toLowerCase()} (${mine} vs ${v}) — call the coordinator`);
+              return this._fail(truck, `Label and delivery list disagree on ${FIELD_LABELS[k].toLowerCase()} (${mine} vs ${v}). Scan CANCEL to start this pallet again, or call the coordinator`);
             }
             if (v && !mine) fields[k] = v;
           }
@@ -2955,7 +2971,8 @@
       const categoryOf = (l) => l.category || (l.sscc && this.pallets[l.sscc] ? this.items[this.pallets[l.sscc].itemNo].category : null);
       let racks = (codes ? codes.map((c) => this.locations[c]).filter(Boolean) : this._racks())
         .filter((l) => l.kind === 'rack' && !l.blocked && !open.has(l.code) && !busy.has(l.code))
-        .filter((l) => !truck || !truck.categories || !categoryOf(l) || truck.categories.includes(categoryOf(l)));
+        .filter((l) => !truck || !truck.categories || !categoryOf(l) || truck.categories.includes(categoryOf(l)))
+        .filter((l) => !truck || this._capacityLeft(l.aisle, truck.id) > 0); // never a third truck into an aisle
       if (!codes) {
         const score = {};
         const bump = (c, n) => { if (c) score[c] = (score[c] || 0) + n; };

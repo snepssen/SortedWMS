@@ -44,6 +44,7 @@
       case 'check-pallet':
         return { code: ins.pallet.sscc, what: 'check the pallet', ms: jitter(drive(wh, at, ins.task.from) + 20 * SEC) };
       case 'check-label':
+        if (!ins.task.labelCode) return null;
         return { code: ins.task.labelCode, what: 'label on, scan it', ms: jitter(25 * SEC) };
       case 'count': {
         const loc = wh.locations[ins.target];
@@ -54,6 +55,8 @@
         if (ins.field === 'qty') return { qty: true, what: 'confirm the quantity', ms: jitter(5 * SEC) };
         const list = ins.delivery.list;
         if (!list) return labelScan(wh, ins, rand, jitter);
+        // With a list one SSCC scan does it all: anything half-filled is a scan gone wrong, so start the pallet again.
+        if (['batch', 'expiry', 'item', 'sscc', 'qty'].some((f) => ins.draft && ins.draft[f])) return { code: 'CMD-CANCEL', what: 'start this pallet again', ms: jitter(5 * SEC) };
         const sscc = Object.keys(list).find((s) => !ins.delivery.received.includes(s) && !wh.pallets[s]);
         if (!sscc) return null;
         const first = !ins.delivery.received.length;
