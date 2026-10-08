@@ -81,7 +81,8 @@ Contents
 5. **Orders** (Orders & deliveries): enter or import today's orders (4.1).
 6. **Deliveries**: announce today's deliveries, with the supplier's pallet list where there is one (2.1).
 7. **Printers** (Settings → Label printers → **Check**): every printer should say *ready*.
-8. If needed, change the job order or the per-aisle limit (Settings → Dispatch).
+8. If needed, change the job order or the per-aisle limit (Settings → Dispatch). A job order that changes with the time of day (receiving first while the morning trucks are at the doors) is set once there and switches by itself.
+9. **Start a new shift** (Floor → *Drivers this shift*) so each handheld's figures count from now.
 
 > **Why it's quicker:** nothing is handed out. Jobs exist the moment orders, deliveries and rules call for them; trucks take them as they come free.
 
@@ -441,6 +442,7 @@ See 2.5.
 2. Locations: the location unknown and Blocked lists, for the handover. Stock counts: any differences found today.
 3. Orders: anything not *ready* or not shipped, and why.
 4. Audit: who did what, if a question came up during the shift.
+5. Floor → **Drivers this shift**: jobs, scans per move, wrong scans and idle time per handheld. Use it to coach: many scans per move or wrong scans usually point at a label, a habit or a screen. A lot of idle time across all trucks means work was missing, not people.
 
 ---
 
@@ -497,6 +499,7 @@ Auto does everything; the other modes are for working on your own.
 
 ### Settings worth knowing (Office → Settings)
 - **Job order:** which job types come first.
+- **Job order by time of day:** windows like `06:00-10:00 RECEIVE, PUTAWAY`. The types named go first, the rest follow the job order. Outside every window the job order applies. The office shows which order applies now.
 - **Job types on:** switch a job type off for the day (for example stock counts during a peak).
 - **Trucks per aisle:** default 2.
 - **Jump the queue after:** minutes before an old job goes urgent.

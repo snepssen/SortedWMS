@@ -85,6 +85,8 @@
     enabled: { PICK: true, MOVE: true, CHECK: true, RECEIVE: true, PUTAWAY: true, SHIFT: true, COUNT: true },
     aisleCap: 2,
     escalateAfterMin: 20, // a job waiting this long jumps the queue; 0 = never
+    schedule: [], // job order by time of day: [{ from: '06:00', to: '10:00', priority: [...] }]; outside them, priority
+    timeZone: 'Europe/Brussels', // the site's clock, for the schedule
     travelOptimise: true, // same priority: nearest job first
     allowSlotOverride: true, // Auto-Shift/put-away: driver may scan another suitable free slot
     groundNextPerItem: 1, // keep the next N pallets out of every item on ground level; 0 = off
@@ -858,7 +860,7 @@
         id, mode, categories, position,
         taskId: null, load: null, waiting: false, waitingSince: null,
         idleSince: this.now(), message: null,
-        stats: { jobs: 0, scans: 0, wrongScans: 0, taps: 0, moves: 0, moveInputs: 0, received: 0, receiveInputs: 0 },
+        stats: { jobs: 0, scans: 0, wrongScans: 0, taps: 0, moves: 0, moveInputs: 0, received: 0, receiveInputs: 0, idleMs: 0, since: this.now() },
       };
       this.dispatch();
       return this.trucks[id];
@@ -891,6 +893,7 @@
           else this._unassign(task);
         }
       }
+      if (!truck.taskId) this._addIdle(truck);
       truck.mode = mode;
       truck.idleSince = this.now();
       this.log(`${truck.id} set to ${TRUCK_MODES[mode].label}`, { truckId });
@@ -905,6 +908,23 @@
         if (list.some((t) => !TASK_TYPES[t]) || new Set(list).size !== list.length) throw new Error('Priority must list every job type exactly once');
         // A list saved before a job type existed: the new type goes last.
         patch = { ...patch, priority: [...list, ...Object.keys(TASK_TYPES).filter((t) => !list.includes(t))] };
+      }
+      if (patch.schedule !== undefined) {
+        if (!Array.isArray(patch.schedule)) throw new Error('The schedule is a list of time windows');
+        const base = patch.priority || this.config.priority;
+        const hm = /^([01]\d|2[0-3]):[0-5]\d$/;
+        patch = { ...patch, schedule: patch.schedule.map((r, i) => {
+          const from = String(r.from || '').padStart(5, '0');
+          const to = String(r.to || '').padStart(5, '0');
+          if (!hm.test(from) || !hm.test(to) || from === to) throw new Error(`Time window ${i + 1}: use from and to as HH:MM, e.g. 06:00-10:00`);
+          const list = [...(r.priority || [])];
+          if (!list.length || list.some((t) => !TASK_TYPES[t]) || new Set(list).size !== list.length) throw new Error(`Time window ${from}-${to}: list job types like RECEIVE, PUTAWAY, each once`);
+          // The types named go first; the rest follow in the normal order.
+          return { from, to, named: list, priority: [...list, ...base.filter((t) => !list.includes(t)), ...Object.keys(TASK_TYPES).filter((t) => !list.includes(t) && !base.includes(t))] };
+        }) };
+      }
+      if (patch.timeZone !== undefined) {
+        try { new Intl.DateTimeFormat('en-GB', { timeZone: patch.timeZone }); } catch (e) { throw new Error(`Unknown time zone ${patch.timeZone}`); }
       }
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
@@ -1595,10 +1615,39 @@
         || candidates.find((t) => t.idleOnly && this._slotAvailable(t)) || null;
     }
 
-    /** Place of a job type in the coordinator's order; a type the saved order doesn't know yet comes last. */
+    /** Place of a job type in the coordinator's order (for this time of day); a type the saved order doesn't know yet comes last. */
     _priorityOf(type) {
-      const i = this.config.priority.indexOf(type);
-      return i === -1 ? this.config.priority.length : i;
+      const order = this.activePriority();
+      const i = order.indexOf(type);
+      return i === -1 ? order.length : i;
+    }
+
+    /** The site's clock as HH:MM. */
+    localTime(ms = this.now()) {
+      const tz = this.config.timeZone || 'Europe/Brussels';
+      if (!this._clockFmt || this._clockFmt.tz !== tz) {
+        this._clockFmt = { tz, f: new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) };
+      }
+      return this._clockFmt.f.format(ms);
+    }
+
+    /** The time window of the schedule that applies now, or null for the normal job order. */
+    activeWindow() {
+      const sched = this.config.schedule || [];
+      if (!sched.length) return null;
+      const minute = Math.floor(this.now() / 60000);
+      const memo = this._windowMemo;
+      if (memo && memo.minute === minute && memo.sched === sched) return memo.rule;
+      const now = this.localTime();
+      // A window may run past midnight (22:00-06:00).
+      const rule = sched.find((r) => (r.from < r.to ? now >= r.from && now < r.to : now >= r.from || now < r.to)) || null;
+      this._windowMemo = { minute, sched, rule };
+      return rule;
+    }
+
+    activePriority() {
+      const rule = this.activeWindow();
+      return rule ? rule.priority : this.config.priority;
     }
 
     _slotAvailable(t) {
@@ -1977,6 +2026,46 @@
       return String(10 + ((h >>> 0) % 90));
     }
 
+    // ---- Drivers this shift ---------------------------------------------------------
+
+    /** Time a truck stood without a job (on a pause it doesn't count), added up when the wait ends. */
+    _addIdle(truck) {
+      if (truck.idleSince == null || truck.mode === 'paused' || truck.kind === 'desk') return;
+      truck.stats.idleMs = (truck.stats.idleMs || 0) + Math.max(0, this.now() - truck.idleSince);
+    }
+
+    /**
+     * Per handheld since the shift started: what got done, how many inputs it took,
+     * wrong scans and time without a job. For coaching and for seeing where the
+     * work stalls, not for counting people.
+     */
+    driverStats() {
+      const now = this.now();
+      return Object.values(this.trucks).map((t) => {
+        const s = t.stats;
+        const since = s.since || this.shiftStart || null;
+        const idleMs = (s.idleMs || 0) + (!t.taskId && t.idleSince != null && t.mode !== 'paused' ? Math.max(0, now - t.idleSince) : 0);
+        return {
+          id: t.id, mode: t.mode, categories: t.categories, since,
+          jobs: s.jobs, moves: s.moves, received: s.received, scans: s.scans, wrongScans: s.wrongScans,
+          scansPerMove: s.moves ? Math.round((10 * s.moveInputs) / s.moves) / 10 : null,
+          inputsPerReceived: s.received ? Math.round((10 * s.receiveInputs) / s.received) / 10 : null,
+          wrongShare: s.scans ? Math.round((100 * s.wrongScans) / s.scans) : 0,
+          idleMs, idleShare: since && now > since ? Math.min(100, Math.round((100 * idleMs) / (now - since))) : null,
+        };
+      });
+    }
+
+    /** A new shift: every handheld's figures start again from zero. */
+    startShift() {
+      this.shiftStart = this.now();
+      for (const t of Object.values(this.trucks)) {
+        t.stats = { jobs: 0, scans: 0, wrongScans: 0, taps: 0, moves: 0, moveInputs: 0, received: 0, receiveInputs: 0, idleMs: 0, since: this.now() };
+        if (t.idleSince != null) t.idleSince = this.now();
+      }
+      this.log('New shift: driver figures start from zero');
+    }
+
     // ---- Customer requirements ----------------------------------------------------
 
     /**
@@ -2055,7 +2144,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache') continue;
+        if (k === 'clock' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt') continue;
         out[k] = v;
       }
       return out;
@@ -2386,6 +2475,7 @@
       task.truckId = truck.id;
       task.dispatchReason = this._reasonFor(task);
       truck.taskId = task.id;
+      this._addIdle(truck);
       truck.idleSince = null;
       this.log(`${truck.id} ← job #${task.id} ${TASK_TYPES[task.type].short} (${task.dispatchReason})`, { truckId: truck.id, taskId: task.id });
       return true;
@@ -2395,7 +2485,8 @@
       if (task.urgent) return 'Urgent';
       if (this.isUrgent(task)) return `Waited ${Math.floor((this.now() - task.createdAt) / MINUTE)} min`;
       const p = this._priorityOf(task.type) + 1;
-      return `Priority ${p}${this.config.travelOptimise ? ' · nearest' : ''}`;
+      const w = this.activeWindow();
+      return `Priority ${p}${w ? ` (${w.from}-${w.to})` : ''}${this.config.travelOptimise ? ' · nearest' : ''}`;
     }
 
     _unassign(task) {
