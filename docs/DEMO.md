@@ -15,7 +15,7 @@ npm run start:demo
 - Laptop, another window: `http://localhost:8080/admin`, the office, to show the jobs moving.
 - Print beforehand, on the day of the demo: the kit's **Print sheet** (six sample pallet labels, dock and lane labels) and the **command card** (`/card`).
 
-**Without hardware.** Open `wms.html` on GitHub Pages: handheld and office side by side, with a button that scans whatever the handheld asks for. The Pages version keeps its data in that one browser, so a real handheld can't join it. Use the laptop server for that.
+**Without hardware.** Open the GitHub Pages front page. It runs a simulated shift and links the three things to show: the **guided shift** (scenarios step by step), **handheld + office** (the real screens side by side, with a button that scans whatever the handheld asks for) and the **SOP**. The Pages version keeps its data in that one browser, so a real handheld can't join it. Use the laptop server for that.
 
 ## The run (about 10 minutes)
 
@@ -28,7 +28,7 @@ npm run start:demo
    - It's in the wrong place for its category: *relocate it*.
    - It has nothing to do: the truck stays empty, and the next location scan records where it really stands. No correction form.
 6. **Stock check, without switching anything.** In Auto, scan an item number or EAN: every pallet, location and SSCC, next to ship first. Scan a pallet: where it belongs, even while it's on the forks.
-7. **Inventory without a stock-take.** Office → Locations → *Stock counts* → **Plan counts** (leave the range empty: the system picks the places that need it). Counts only go to a truck with nothing else to do; to show one now, scan `CMD-COUNT` on the handheld. Two scans per location, blind. Then scan a *different* pallet's label at a count: the system corrects itself and the office shows the difference and the accuracy.
+7. **Inventory without a stock-take.** Office → Locations → *Stock counts* → **Plan counts** (leave the range empty: the system picks the places that need it). Counts only go to a truck with nothing else to do; to show one now, scan `CMD-COUNT` on the handheld. Without hardware, the guided shift's *Stock counts & accuracy* scenario shows a swap being found and corrected in six scans. Two scans per location, blind. Then scan a *different* pallet's label at a count: the system corrects itself and the office shows the difference and the accuracy.
 8. **Gloves on.** Everything is on the command card: modes, *pallet missing*, *damaged*, *full pallet*, *delivery done*. Reports are confirmed by scanning the same code twice; there are no pop-ups. On the MC9401's keypad, Esc cancels and F1–F5 switch modes.
 9. **The office.** Every scan is in the audit trail with who and when. Batch trace answers "which customers got batch 41/07" in one search.
 

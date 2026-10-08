@@ -5,16 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS receiving desk</title>
 <style>
-  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; } }
+  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --on-acc: #fff }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --on-acc: #08121c } }
   * { box-sizing: border-box; }
+  a { color: var(--acc); }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 19px; }
   header .spacer { flex: 1; }
   select, input, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
   button { background: var(--card); cursor: pointer; }
-  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 600; }
   button.warn { border-color: var(--warn); color: var(--warn); }
   main { padding: 16px; max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
@@ -26,7 +27,7 @@
   .msg.ok { background: rgba(19, 138, 74, .12); color: var(--ok); }
   .msg.bad { background: rgba(198, 47, 40, .12); color: var(--bad); }
   .scan { display: flex; gap: 8px; }
-  .scan input { flex: 1; font-size: 20px; }
+  .scan input { flex: 1; min-width: 0; font-size: 20px; }
   table { border-collapse: collapse; width: 100%; }
   td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
   td.label { width: 160px; color: var(--dim); }

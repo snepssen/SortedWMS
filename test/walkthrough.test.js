@@ -80,6 +80,22 @@ test('manual scenario isolates an order, puts away dock stock and reconciles dis
   assert.ok(demo.wh.transfers.every((t) => t.by === demo.truckId));
 });
 
+test('stock count scenario: blind counts find a swap and correct it, with the scan codes the page shows', () => {
+  const demo = new Walkthrough(site, 'counts');
+  const seen = [];
+  while (demo.step) {
+    if (demo.step.role === 'scanner') seen.push(demo.scanCode);
+    demo.next();
+  }
+  const R = (c) => demo.wh.resolve(c);
+  assert.deepEqual(seen, [R('AA01A1'), demo.first, R('AA01A2'), demo.third, R('AA01A3'), demo.second]);
+  assert.deepEqual(demo.wh.counts.map((c) => c.result).reverse(), ['ok', 'corrected', 'corrected']);
+  assert.equal(demo.wh.lostPallets().length, 0);
+  assert.equal(demo.wh.pallets[demo.third].loc, R('AA01A2'));
+  assert.equal(demo.wh.pallets[demo.second].loc, R('AA01A3'));
+  assert.ok(demo.journal.every((j) => j.by));
+});
+
 test('switching scenarios starts an independent warehouse and uses the correct scan commands', () => {
   const manual = new Walkthrough(site, 'manual');
   while (manual.index < 3) manual.next();

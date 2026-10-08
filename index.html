@@ -32,6 +32,8 @@
   --t-RECEIVE: #5b6b2a;
   --t-PUTAWAY: #12827a;
   --t-SHIFT: #b23c76;
+  --t-MOVE: #b15a00;
+  --t-COUNT: #4d6072;
   --cat-YOG: #cfe2f3;
   --cat-CHE: #f6e3a6;
   --cat-PRO: #d6ecd2;
@@ -47,7 +49,7 @@
     --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
     --accent: #f0b429; --screen: #0b1013; --screen-2: #18222a; --screen-dim: #8c9da7;
     --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
-    --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+    --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad; --t-MOVE: #f0a259; --t-COUNT: #a6b8c8;
     --cat-YOG: #1d3347; --cat-CHE: #3d3317; --cat-PRO: #1f3a22;
     color-scheme: dark;
   }
@@ -56,7 +58,7 @@
   --bg: #11161a; --panel: #192126; --ink: #e4e9ec; --muted: #94a2ab; --line: #2b353c; --lane: #141b1f;
   --accent: #f0b429; --screen: #0b1013; --screen-2: #18222a; --screen-dim: #8c9da7;
   --ok: #4cc283; --warn: #f0b429; --bad: #f0786d; --ok-bg: #173325; --warn-bg: #3a2e12; --bad-bg: #3d1f1c;
-  --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad;
+  --t-PICK: #a98ae0; --t-CHECK: #6aa7ea; --t-RECEIVE: #a9bb63; --t-PUTAWAY: #43c1b6; --t-SHIFT: #e57cad; --t-MOVE: #f0a259; --t-COUNT: #a6b8c8;
   --cat-YOG: #1d3347; --cat-CHE: #3d3317; --cat-PRO: #1f3a22;
   color-scheme: dark;
 }
@@ -102,6 +104,18 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .page { padding-inline: 16px; padding-block: 16px 40px; max-width: 1500px; margin: 0 auto; display: grid; gap: 16px; }
 .intro { max-width: 78ch; color: var(--muted); margin: 0; }
 .intro b { color: var(--ink); font-weight: 600; }
+.intro summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+.intro p { margin: 6px 0 0; }
+.start { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+@media (max-width: 1100px) { .start { grid-template-columns: repeat(3, minmax(0, 1fr)); } .start-lede { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .start { grid-template-columns: minmax(0, 1fr); } }
+.start-lede h2 { font: 700 1.6rem/1.15 var(--display); margin: 0 0 4px; text-transform: none; letter-spacing: 0; }
+.start-lede p { margin: 0; color: var(--muted); max-width: 60ch; }
+.start-lede b { color: var(--ink); font-weight: 600; }
+.start-card { display: grid; gap: 4px; align-content: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); text-decoration: none; }
+.start-card:hover, .start-card:focus-visible { border-color: var(--accent); }
+.start-card b { font: 700 1.1rem var(--display); letter-spacing: .02em; }
+.start-card span { color: var(--muted); font-size: .9rem; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; align-items: start; }
 @media (max-width: 1150px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 .col { display: grid; gap: 16px; min-width: 0; }
@@ -127,7 +141,7 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 
 .type { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
 .type::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--tc); }
-.t-PICK { --tc: var(--t-PICK); } .t-CHECK { --tc: var(--t-CHECK); } .t-RECEIVE { --tc: var(--t-RECEIVE); } .t-PUTAWAY { --tc: var(--t-PUTAWAY); } .t-SHIFT { --tc: var(--t-SHIFT); }
+.t-PICK { --tc: var(--t-PICK); } .t-CHECK { --tc: var(--t-CHECK); } .t-RECEIVE { --tc: var(--t-RECEIVE); } .t-PUTAWAY { --tc: var(--t-PUTAWAY); } .t-SHIFT { --tc: var(--t-SHIFT); } .t-MOVE { --tc: var(--t-MOVE); } .t-COUNT { --tc: var(--t-COUNT); }
 .cat { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: .75rem; font-weight: 600; border: 1px solid var(--line); background: var(--cc); white-space: nowrap; }
 .c-YOG { --cc: var(--cat-YOG); } .c-CHE { --cc: var(--cat-CHE); } .c-PRO { --cc: var(--cat-PRO); }
 
@@ -330,7 +344,15 @@ td .acts { display: flex; gap: 4px; }
 </header>
 
 <main class="page">
-  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles, one-way traffic in every aisle, cheese crate pallets in block stacks, and a process floor (pallet change, crates off + foil, plate press and warm room). Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, best-before, item, SSCC and quantity from the supplier label, or from the bottom barcode alone with a delivery list. Picks follow <b>first expired, first out</b>, and nothing with fewer days left than the manager's minimum is shipped.</p>
+  <section class="start" aria-label="Start here">
+    <div class="start-lede">
+      <h2>A warehouse system built for flow.</h2>
+      <p>This page runs a <b>simulated shift</b>. Reach trucks on <b>Auto</b> get their next job the moment they finish. Every pallet move is <b>two scans</b>: no pick lists, no confirm screens, no menus, no gloves off.</p>
+    </div>
+    <a class="start-card" href="walkthrough.html"><b>Guided shift →</b><span>One shift in 22 steps, from delivery to trailer: what each person scans and what the system does.</span></a>
+    <!-- pages-cards: the screens and the SOP are added by the Pages build -->
+  </section>
+  <details class="intro"><summary>What this simulation covers</summary><p>A simulated shift with yoghurt and cheese in separate aisles, one-way traffic in every aisle, cheese crate pallets in block stacks, and a process floor (pallet change, crates off + foil, plate press and warm room). Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, best-before, item, SSCC and quantity from the supplier label, or from the bottom barcode alone with a delivery list. Picks follow <b>first expired, first out</b>, and nothing with fewer days left than the manager's minimum is shipped.</p></details>
 
   <div class="summary" id="summary"></div>
 
@@ -343,7 +365,7 @@ td .acts { display: flex; gap: 4px; }
         <div class="blocks" id="blocks"></div>
         <div class="legend">
           <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
-          <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
+          <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span><span class="type t-MOVE">Process move</span><span class="type t-COUNT">Stock count</span>
           <span>▪ pallet on the forks</span>
           <span>Block stacks: stack 01 at the front, 6 high, up to two batches per lane (second batch hatched), outlined stack is next out, ⚠ older stock buried behind newer</span>
           <span>Each aisle: odd bays (first row) on top, even bays (second row) below · ▸ one-way, enter from the front · ◂ enter from the back</span>
@@ -897,6 +919,11 @@ td .acts { display: flex; gap: 4px; }
       case 'drop': return { code: ins.target, ms: travelMs(truck.position, ins.target) };
       case 'check-pallet': return { code: ins.task.sscc, ms: travelMs(truck.position, ins.task.from) + 20000 };
       case 'check-label': return { code: ins.task.labelCode, ms: 35000 };
+      case 'count': {
+        // A stock count: drive there and scan the location, then whatever is in it (the location again if empty).
+        const loc = wh.locations[ins.target];
+        return ins.step ? { code: loc.sscc || ins.target, ms: 12000 } : { code: ins.target, ms: travelMs(truck.position, ins.target) - 30000 };
+      }
       case 'receive': {
         if (ins.field === 'qty') return { tap: true, ms: 5000 };
         const queue = incoming[ins.delivery.id] || [];
@@ -941,6 +968,9 @@ td .acts { display: flex; gap: 4px; }
     tickStations();
     tickDesk();
     if (Math.floor(simNow / (5 * MIN)) !== Math.floor((simNow - simSeconds * 1000) / (5 * MIN))) wh.planDigOut();
+    // Stock counts: a few at a time, so idle trucks check the racking between jobs.
+    if (Math.floor(simNow / (20 * MIN)) !== Math.floor((simNow - simSeconds * 1000) / (20 * MIN))
+      && Object.values(wh.tasks).filter((t) => t.type === 'COUNT' && t.status === 'open').length < 2) wh.planCounts({ limit: 3 });
     if (simNow >= nextHoles) {
       sendToProcess('HOLES', between(1, 2));
       nextHoles = simNow + between(50, 80) * MIN;
@@ -1195,6 +1225,11 @@ td .acts { display: flex; gap: 4px; }
     if (ins.kind === 'pickup' || ins.kind === 'check-pallet') return { code: ins.task.sscc, label: `Scan pallet …${ins.task.sscc.slice(-6)}` };
     if (ins.kind === 'check-label') return { code: ins.task.labelCode, label: `Scan label ${ins.task.labelCode}` };
     if (ins.kind === 'drop' || ins.kind === 'wait') return { code: ins.target, label: `Scan ${wh.label(ins.target)}` };
+    if (ins.kind === 'count') {
+      const loc = wh.locations[ins.target];
+      if (!ins.step) return { code: ins.target, label: `Scan ${wh.label(ins.target)}` };
+      return loc.sscc ? { code: loc.sscc, label: `Scan pallet …${loc.sscc.slice(-6)}` } : { code: ins.target, label: 'Empty: scan the location again' };
+    }
     if (ins.kind === 'idle') {
       const occ = wh.aisleOccupancy();
       const live = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.sscc));
@@ -1219,7 +1254,7 @@ td .acts { display: flex; gap: 4px; }
     let body = '';
     const t = ins.task;
     if (t) {
-      const why = t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note || '' : t.dispatchReason || '';
+      const why = t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note || '' : t.type === 'COUNT' ? 'Idle time' : t.dispatchReason || '';
       body += `<div class="scr-top"><span>${typeHtml(t.type)}</span><span>${esc(why)}</span><span class="num">#${t.id}</span></div>`;
     }
     if (ins.kind === 'receive') {
@@ -1260,6 +1295,11 @@ td .acts { display: flex; gap: 4px; }
         if (t.autoSlot && wh.config.allowSlotOverride) body += `<div class="sub">or scan any free ${esc(CATEGORIES[t.category])} slot</div>`;
       }
       if (t.alert) body += `<div class="sub" style="color:#ffb3aa">${show(t.alert)}</div>`;
+    } else if (ins.kind === 'count') {
+      body += `<div class="steps"><span class="${t.step === 0 ? 'on' : 'done'}">1 Location</span><span class="${t.step === 1 ? 'on' : ''}">2 What's there</span></div>`;
+      body += t.step
+        ? `<div class="verb">Scan the pallet in ${esc(wh.label(ins.target))}</div><div class="sub">Empty? Scan the location again. The screen doesn't say what to expect: the driver checks what is really there.</div>`
+        : `<div class="verb">Count at</div><div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}<div class="sub">Nothing else to do, so the system asks for a quick stock count.</div>`;
     } else if (ins.kind === 'paused') {
       body += `<div class="verb">Paused</div><div class="sub">No jobs are sent to this truck. Press Resume to go back on Auto.</div>`;
     } else {
