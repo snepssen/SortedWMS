@@ -36,7 +36,7 @@
 <body>
 <header>
   <h1>SortedWMS: handheld + office</h1>
-  <span class="hint">The real WMS screens, running in your browser with made-up stock. Changes stay in this browser. Each page also opens on its own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="./">simulated shift</a></span>
+  <span class="hint">The real WMS screens, running in your browser with made-up stock. Changes stay in this browser. Each page also opens on its own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="./">simulated shift</a> · <a href="keys.html" target="_blank">key test</a></span>
   <button id="reset">Reset demo data</button>
 </header>
 <div class="wrap">
@@ -45,6 +45,8 @@
     <div class="helper">
       <div class="row"><label for="dev">Handheld</label><select id="dev"></select>
         <button class="primary" id="scanIt">Scan what it asks for</button></div>
+      <div class="row"><label for="cmd">Command card</label><select id="cmd"></select><button id="scanCmd">Scan it</button>
+        <a href="card.html" target="_blank">print the card</a></div>
       <div class="hint" id="helpOut">No scanner here: this button scans the barcode the handheld is asking for. You can also type a code into the scan field and press Enter (⌨ shows the keyboard).</div>
     </div>
   </div>
@@ -80,6 +82,8 @@
     $('#dev').innerHTML = list.map((d) => `<option ${d.id === cur ? 'selected' : ''}>${d.id}</option>`).join('');
   }
 
+  $('#cmd').innerHTML = Object.entries(SortedWMS.SCAN_COMMANDS).map(([k, c]) => `<option value="${SortedWMS.COMMAND_PREFIX}${k}">${c.label}${c.confirm ? ' (2×)' : ''}</option>`).join('');
+
   SortedLocal.ready.then(async () => {
     if (!ls.get('hh.device')) ls.set('hh.device', 'HH01');
     await devices();
@@ -94,11 +98,15 @@
     const id = $('#dev').value;
     const code = expectedCode(store.wh, id);
     if (!code) { $('#helpOut').textContent = `Nothing to scan for ${id} right now (it may be idle, waiting, or in a manual mode: try typing a code).`; return; }
+    await scan(id, code);
+  };
+  $('#scanCmd').onclick = () => scan($('#dev').value, $('#cmd').value);
+  async function scan(id, code) {
     const r = await SortedLocal.fetch('POST', `/api/devices/${id}/scan`, { code }, { operator: id });
     $('#helpOut').textContent = r.status < 400 ? `Scanned ${code}` : r.body.error;
     const w = $('#hh').contentWindow;
     if (w && w.hhRefresh) w.hhRefresh();
-  };
+  }
   $('#reset').onclick = async () => {
     if (!confirm('Start again with fresh demo stock?')) return;
     await SortedLocal.reset();

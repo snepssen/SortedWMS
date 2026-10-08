@@ -20,7 +20,8 @@
   h2 { font-size: 15px; margin: 0 0 10px; }
   .hint { color: var(--dim); font-size: 13px; }
   button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button.primary, a.btn { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  a.btn { border-radius: 8px; padding: 6px 12px; text-decoration: none; }
   button.small { padding: 2px 8px; font-size: 12px; }
   input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
   textarea { width: 100%; min-height: 120px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
@@ -245,6 +246,8 @@
           <button class="primary" id="cSave">Save</button></div><div class="out" id="cOut" style="display:none"></div></section>
       <section><h2>Naming on screens</h2><p class="hint">Both barcodes always scan.</p>
         <div class="form"><select id="nShow"><option value="row" ${S.naming === 'row' ? 'selected' : ''}>AA03C2 (cell, rack, bay, level, position)</option><option value="current" ${S.naming !== 'row' ? 'selected' : ''}>38-02-0-10 (current labels)</option></select><button id="nSave">Save</button></div>
+        <h2 style="margin-top:16px">Command card</h2><p class="hint">Barcodes for every handheld button (modes, problem reports, receiving, cancel), so drivers in gloves never need the touch screen. Print, laminate, one per truck.</p>
+        <div class="form"><a class="btn" href="card.html" target="_blank">Open the card to print</a></div>
         <h2 style="margin-top:16px">Auto-Shift now</h2><div class="form"><button id="pGroup">Group batches</button><button id="pDig">Dig out buried stock</button></div><div class="out" id="pOut" style="display:none"></div>
         <h2 style="margin-top:16px">This browser</h2><div class="form"><label>Your name (for the audit trail) <input id="uName" value="${esc(user)}"></label><label>Token <input id="uTok" type="password" value="${esc(token)}"></label><button id="uSave">Save</button></div></section>
       <section style="grid-column:1/-1"><h2>Label printers</h2>${table(['Job', 'Printer', 'Printed at', 'Label', 'Sent'], print.jobs.map((j) => { const r = print.results.find((x) => x.id === j.id); return `<tr><td>${j.id}</td><td>${esc(j.printer)}</td><td>${hhmm(j.at)}</td><td>${esc(j.label.kind || 'shipping')} ${short(j.label.labelCode || j.label.sscc)}</td><td>${r ? (r.ok ? '<span class="tag">sent</span>' : `<span class="tag bad">${esc(r.error)}</span>`) : '<span class="hint">not sent (from before the restart)</span>'}</td></tr>`; }))}</section>
