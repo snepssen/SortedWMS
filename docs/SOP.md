@@ -42,8 +42,8 @@ Contents
 ### The rules the system keeps for you
 
 - **Auto.** Drivers don't choose work. When a job is done, the next one is on the screen, chosen by:
-  1. urgent first (flagged in the office, or waiting more than 20 minutes);
-  2. then job type in the coordinator's order (default: Pick › Process move › Check & label › Receiving › Put-away › Auto-Shift › Stock count);
+  1. urgent first: flagged in the office, then anything waiting more than 20 minutes (still in job-type order);
+  2. then job type in the coordinator's order (default: Check & label › Pick › Process move › Receiving › Put-away › Auto-Shift › Stock count). Checking first means orders finish as their pallets reach the lane;
   3. then nearest by the route the truck may drive.
 - **Categories never mix.** Every rack location has a category (yoghurt, cheese, protein drinks). Every driver works only the categories set on their handheld.
 - **First expired, first out.** Picks take the earliest best-before. A pallet below the item's *minimum days left to ship* can't be picked.

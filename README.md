@@ -42,8 +42,8 @@ The demo site is rebuilt and published automatically on every push (`.github/wor
 ### Auto
 Drivers don't pick work from a menu. The moment they finish a job, the next one is on the handheld. The order:
 
-1. **Urgent jobs:** flagged by the coordinator, or waiting longer than the "jump the queue" time (default 20 min). Auto-Shift jobs never jump the queue on their own.
-2. **Job type,** in the coordinator's order. Default: Pick › Check & label › Receiving › Put-away › Auto-Shift.
+1. **Urgent jobs:** flagged by the coordinator first, then jobs waiting longer than the "jump the queue" time (default 20 min), still in the coordinator's job order. Auto-Shift and stock counts never jump the queue on their own.
+2. **Job type,** in the coordinator's order. Default: Check & label › Pick › Process move › Receiving › Put-away › Auto-Shift › Stock count. Checking first finishes orders as their pallets arrive at the lane, instead of all at the end.
 3. **Nearest job** within the same type (can be switched off; then oldest first).
 
 **Auto also handles whatever the driver scans.** Drivers scan pallets the screen didn't ask for all the time: the one in the way, one that looks wrong, one they recognise. Auto decides on the spot:

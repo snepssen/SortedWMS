@@ -21,7 +21,7 @@ npm run start:demo
 
 1. **Receiving, the good label.** Pallets 1–4 on the sheet carry a full GS1 label (A-ware Kruibeke format). Two scans per pallet, nothing typed: item, count, best-before and batch come from one barcode, the pallet ID from the other. The put-away job exists the moment the pallet is registered.
 2. **Receiving, the label that slows everyone down.** Pallets 5–6 are in the A-ware Packaging format: batch and best-before are printed as text only. The driver has to type both. Talking point: ask this supplier for a full GS1 label or a delivery list (ASN), and it's back to one or two scans. The system also reads their quirks: a count in pots (960 = 80 cases) and their own article number.
-3. **Auto.** No menus: when a job is done, the next one is already on the screen, by priority (picks first) and nearest first. Put-away: the system picks the slot (right category, the same batch together, next-out low). Two scans: pallet, then location.
+3. **Auto.** No menus: when a job is done, the next one is already on the screen, by priority (check & label first, so orders finish as they go, then picks) and nearest first. Put-away: the system picks the slot (right category, the same batch together, next-out low). Two scans: pallet, then location.
 4. **Pick, check and label.** Picks follow first-expired-first-out. Checking the pallet at the lane prints its shipping label on the lane's ZT421. Scanning the label confirms it's on.
 5. **Real life.** Scan a pallet the handheld didn't ask for:
    - It has a job: *pick it*.
@@ -38,7 +38,7 @@ Open *Handheld + office* on Pages and switch to **Whole floor**.
 1. **Drop in** 200 pallets to pick and 200 to receive. The board shows what the system made of it: picks, receiving, put-aways, Auto-Shift, each in the coordinator's order.
 2. **Add trucks** (two or three) and **Start driving** at 1×. Every scanner screen shows its job and a countdown to its next scan, as it would on the floor.
 3. Speed up to 10× or 30× to watch the queue drain: receiving fills the dock, put-aways follow, picks go out and orders turn ready.
-4. **Talking point:** nobody hands out work. Change the job order in the office (Settings → Dispatch, for example *Check & label* before *Pick*) and watch orders finish sooner.
+4. **Talking point:** nobody hands out work. Change the job order in the office (Settings → Dispatch, for example *Receiving* first while the morning trucks are at the doors) and watch the queue reshuffle on every screen.
 
 ## What to measure
 

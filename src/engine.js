@@ -81,7 +81,7 @@
   const FIELD_LABELS = { batch: 'Batch', expiry: 'Expiry date', item: 'Item number', sscc: 'Pallet SSCC', qty: 'Quantity' };
 
   const DEFAULT_CONFIG = {
-    priority: ['PICK', 'MOVE', 'CHECK', 'RECEIVE', 'PUTAWAY', 'SHIFT', 'COUNT'],
+    priority: ['CHECK', 'PICK', 'MOVE', 'RECEIVE', 'PUTAWAY', 'SHIFT', 'COUNT'],
     enabled: { PICK: true, MOVE: true, CHECK: true, RECEIVE: true, PUTAWAY: true, SHIFT: true, COUNT: true },
     aisleCap: 2,
     escalateAfterMin: 20, // a job waiting this long jumps the queue; 0 = never
@@ -1556,7 +1556,9 @@
         return this._capacityLeft(this._aisle(t.from), truck.id) > 0;
       });
       if (!candidates.length) return null;
-      const rank = (t) => (this.isUrgent(t) ? -1 : this._priorityOf(t.type));
+      // Flagged urgent first; then jobs that waited too long; then the rest. Inside each, the coordinator's job order,
+      // so a big drop of picks that all go over the wait limit together doesn't push the rest of the order aside.
+      const rank = (t) => (t.urgent ? -1000 : this.isUrgent(t) ? -100 : 0) + this._priorityOf(t.type);
       candidates.sort((x, y) => {
         const r = rank(x) - rank(y);
         if (r) return r;
