@@ -21,11 +21,18 @@ That's a low-risk way to prove the rules on real data.
 
 ## 2. Server and database
 
-The demo keeps everything in the browser. For real use:
-- **Server + database** (for example Node.js with PostgreSQL) as the single source of truth. Every scan goes through the server, so two handhelds can never take the same pallet or slot.
-- **Logins per driver and coordinator**, and an **audit log of every scan** (who moved which SSCC from where to where, when).
-- **Batch traceability:** for a recall, answer "which customers got batch X" in one query.
-- Backups, and a plan for when the server or Wi-Fi is down.
+**Done (`server/`):**
+- A server as the single source of truth. Every scan goes through it, so two handhelds can never take the same pallet or slot.
+- SQLite database with an append-only journal: every change with its time and operator. It is both the audit trail and how the state is rebuilt after a restart (snapshots every 200 changes keep restarts fast).
+- Handheld screens for Android scanners (Auto, Pick, Put-away, Transfer, Find) and the office screens.
+- Batch traceability: "which customers got batch X" on the Stock & trace tab.
+- Location template by range, correction transfers with a location-unknown list, imports for the location table, items and opening stock.
+- ZPL to network label printers.
+
+**Still to do:**
+- **Logins** per driver and coordinator with roles (today: an optional shared token, and the handheld ID / office name recorded on every change).
+- Backups of the database file, and a plan for when the server or Wi-Fi is down.
+- If many sites or heavy reporting come later: the same journal on PostgreSQL.
 
 ## 3. Hardware
 

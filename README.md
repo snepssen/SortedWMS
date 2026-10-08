@@ -6,6 +6,8 @@ A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, chees
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
+To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
+
 The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
 
 ## What it does
@@ -33,6 +35,22 @@ Each truck is set to the **categories its operator works** (yoghurt, cheese, pro
   - Raising the minimum swaps any planned picks onto good pallets.
   - The manager can let a single short pallet ship anyway (e.g. a customer accepts it).
 - **Blocked stock never ships.** That covers pallets reported damaged, or expired on arrival. The coordinator can release them.
+
+### Working without Auto
+Each handheld has a mode bar. Auto is the default; the others are for when a driver works on their own:
+
+| Mode | What the driver does |
+| --- | --- |
+| **Pick** | Scan (or tap) an order number. That order's picks then come one by one, still FEFO and still 2 scans each. |
+| **Put-away** | Scan a pallet at the dock or a station. The system picks the slot with the normal slotting rules; scan the slot to drop. |
+| **Transfer** | Scan a pallet, then the location it now stands at. That's it. |
+| **Find** | Scan a pallet or a location: where is it, what's in it, can it ship. |
+
+**Transfer is for corrections.** When a pallet stands somewhere other than the system thinks (someone put it in the wrong spot, or the old system lost a move), the driver records where it really is, in two scans:
+- If the system had another pallet in that rack spot, that one goes on the **location unknown** list in the office. Scanning it anywhere in Transfer mode puts it back on the map.
+- A planned pick for the moved pallet now picks it from where it really stands. Planned Auto-Shift and put-away jobs for it are re-planned.
+- If it now stands in a location of the wrong category, a relocation job is created.
+- Every transfer is logged with who did it and when.
 
 ### Every job is as few inputs as possible
 | Job | Inputs |
@@ -95,6 +113,33 @@ The pallet is registered as soon as it's complete, and its put-away goes to the 
 ### Labels
 Checking a picked pallet sends a 4×6" shipping label to the label printer at that shipping lane. The label is ZPL, the language most networked thermal label printers accept on port 9100. It carries the customer, order, item, batch, best-before date, a label barcode the driver scans to confirm it's on, and the GS1-128 SSCC.
 
+## Running the WMS
+
+The server is the real thing: one source of truth for every handheld, desk and office screen. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node).
+
+```
+npm start              # an empty warehouse from server/site.example.json
+npm run start:demo     # the same, with made-up stock, 4 handhelds and 2 orders to try it with
+```
+
+Then open, on the same network:
+- **`/handheld`** on the Android scanners. Enter the handheld ID once; the scanner sends Enter after each scan. The screen keeps the scan field focused and hides the on-screen keyboard (⌨ brings it back).
+- **`/admin`** in the office: floor overview, jobs (urgent, cancel, release), location template ranges, find, office transfers, location unknown list, stock per item, minimum days to ship, batch trace (which customers got batch X), orders, deliveries, imports from Excel/CSV, audit trail, dispatch settings, label printer status.
+- **`/`** the demo simulation.
+
+Settings, through environment variables:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `PORT` | 8080 | |
+| `SORTED_DB` | `data/sorted.db` | The database file. Back this file up. |
+| `SORTED_SITE` | `server/site.example.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, printer addresses. Read once, when the database is first created. |
+| `SORTED_TOKEN` | none | If set, every API call needs it (handheld and office ask for it once). |
+
+**How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
+
+**Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
+
 ## Files
 
 | File | What it is |
@@ -102,6 +147,13 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping and pallet labels. |
+| `server/index.js` | The WMS server: JSON API, handheld and office pages, clock tick, printing. |
+| `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
+| `server/commands.js` | Every change that can be made, as a journaled command. |
+| `server/site.example.json` | Example site set-up; copy and edit for the real warehouse. |
+| `server/public/` | `handheld.html` (Android scanners) and `admin.html` (office). |
+| `server/print.js` | Sends ZPL to network label printers. |
+| `server/seed.js` | Made-up stock for `npm run start:demo`. |
 | `index.html` | The demo: floor and block stacks, handhelds, process floor and receiving desk, coordinator tabs, job queue, stock. |
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `scripts/build-pages.js` | Builds the demo site for GitHub Pages into `_site/` (`npm run build:pages`). |
@@ -123,5 +175,7 @@ Every location has two names, and both barcodes scan. The coordinator chooses wh
 - On the floor it's said "A3C2", with the cell assumed. The sticker scans the full `AA03C2`. A driver can also type the short form; the system takes the cell the truck is in.
 
 Because both names scan, the racks can be relabelled one aisle at a time while everything keeps working. The Locations tab shows the old → new list.
+
+**Location template by range.** Categories are set on a whole selection at once, not one location at a time: `AA01A1` → `AZ43F3` is cheese, `BB01A1` → `BZ43F3` is yoghurt. A range can be written in either naming, and partly: `AA` → `AD` means those whole racks, `31` → `34` whole aisles. The office sees a preview first (how many locations change, how many pallets will need to move), then applies it. Pallets left in the wrong category get Auto-Shift relocation jobs straight away.
 
 The demo has aisles 31–38. The real list comes with the location table. The demo's items, customers, suppliers and stock are made up.

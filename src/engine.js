@@ -35,6 +35,10 @@
   const TRUCK_MODES = {
     auto: { label: 'Auto', types: null },
     shift: { label: 'Auto-Shift only', types: ['SHIFT'] },
+    pick: { label: 'Pick (manual)', types: ['PICK', 'CHECK'], manual: true }, // one order, chosen by the operator
+    putaway: { label: 'Put-away (manual)', types: [], manual: true }, // scan a pallet, get its slot
+    transfer: { label: 'Transfer', types: [], manual: true }, // scan pallet, scan location: recorded as it is
+    find: { label: 'Find', types: [], manual: true }, // scan anything to see what's where
     paused: { label: 'Paused', types: [] },
   };
 
@@ -142,8 +146,9 @@
      * stations: process stations, e.g. [{ id: 'PRESS', name: 'Pallet change', machine: 'Flip press',
      *   minutes: 5, sop: [...], capacity: 1 }] or a dwell room [{ id: 'WARM', name: 'Warm room', dwell: true, capacity: 40 }].
      */
-    constructor({ aisles = 8, bays = 20, levels = 5, positions = [10, 40, 70], outLanes = 4, blocks = [], stations = [], clock, config } = {}) {
+    constructor({ aisles = 8, bays = 20, levels = 5, positions = [10, 40, 70], outLanes = 4, blocks = [], stations = [], categories = CATEGORIES, clock, config } = {}) {
       this.clock = clock || (() => Date.now());
+      this.categories = { ...categories };
       this.config = {
         ...DEFAULT_CONFIG,
         ...config,
@@ -402,7 +407,7 @@
 
     /** storage: 'rack' (default) or 'block' for crate pallets stacked on the floor. */
     addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack' }) {
-      if (!CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
+      if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
       this.items[itemNo] = { itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShipDays, storage };
@@ -475,7 +480,7 @@
      * aisle ('odd'/'even') and bays along that row (rowFrom/rowTo).
      */
     setLocationCategory({ aisle, bayFrom = 1, bayTo = this.layout.bays, side = null, rowFrom = null, rowTo = null, levels = null }, category) {
-      if (category !== null && !CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
+      if (category !== null && !this.categories[category]) throw new Error(`Unknown category ${category}`);
       const a = pad(aisle, 2);
       let changed = 0;
       for (const loc of this._racks()) {
@@ -493,7 +498,7 @@
       }
       if (changed) {
         const where = rowFrom != null || side ? `${side ? `${side} side` : 'both sides'}, bays ${rowFrom || 1}–${rowTo || this.layout.depth} along the row` : `bays ${bayFrom}–${bayTo}`;
-        this.log(`Template: aisle ${a} ${where} → ${category ? CATEGORIES[category] : 'no category'} (${changed} locations)`);
+        this.log(`Template: aisle ${a} ${where} → ${category ? this.categories[category] : 'no category'} (${changed} locations)`);
       }
       const moves = this.planRelocations();
       this.dispatch();
@@ -585,19 +590,22 @@
       truck.categories = categories && categories.length ? [...categories] : null;
       const task = truck.taskId && this.tasks[truck.taskId];
       if (task && task.step === 0 && !this._truckTakes(truck, task) && task.type !== 'RECEIVE') this._unassign(task);
-      this.log(`${truck.id} works ${truck.categories ? truck.categories.map((c) => CATEGORIES[c]).join(' + ') : 'every category'}`);
+      this.log(`${truck.id} works ${truck.categories ? truck.categories.map((c) => this.categories[c]).join(' + ') : 'every category'}`);
       this.dispatch();
     }
 
-    setTruckMode(truckId, mode) {
+    setTruckMode(truckId, mode, { orderId = null } = {}) {
       if (!TRUCK_MODES[mode]) throw new Error(`Unknown mode ${mode}`);
       const truck = this._truck(truckId);
-      if (truck.mode === mode) return;
+      if (orderId && !this.orders[orderId]) throw new Error(`No order ${orderId}`);
+      truck.transferSscc = null;
+      if (mode === 'pick') truck.orderId = orderId;
+      if (truck.mode === mode) { this.dispatch(); return; }
       const task = truck.taskId && this.tasks[truck.taskId];
       if (task) {
         if (truck.load) throw new Error(`${truck.id} is carrying a pallet — drop it before changing mode`);
         const allowed = TRUCK_MODES[mode].types;
-        if (allowed && !allowed.includes(task.type)) {
+        if ((allowed && !allowed.includes(task.type)) || (mode === 'pick' && task.orderId !== orderId)) {
           if (task.type === 'RECEIVE') this._parkReceive(task);
           else this._unassign(task);
         }
@@ -717,12 +725,16 @@
       const order = this.orders[id];
       if (!order) throw new Error(`No order ${id}`);
       if (order.status !== 'ready') throw new Error(`Order ${id} is not ready to load`);
+      const shipped = [];
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const p = this.pallets[sscc];
         this._remove(p);
         p.status = 'shipped';
+        shipped.push({ sscc, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, qty: p.qty });
       }
       order.status = 'shipped';
+      order.shippedAt = this.now();
+      (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped });
       this.log(`Order ${id} loaded and shipped`);
     }
 
@@ -735,7 +747,7 @@
      */
     addDelivery({ id, supplier, category, pallets, list = null, at = 'dock' }) {
       if (this.deliveries[id]) throw new Error(`Delivery ${id} already exists`);
-      if (!CATEGORIES[category]) throw new Error(`Unknown category ${category}`);
+      if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       const byS = list ? Object.fromEntries(list.map((l) => [l.sscc, l])) : null;
       const delivery = { id, supplier, category, expected: pallets || (list ? list.length : 0), received: [], list: byS, createdAt: this.now(), status: 'open' };
       this.deliveries[id] = delivery;
@@ -743,7 +755,7 @@
       task.draft = {};
       task.deskOnly = at === 'desk'; // received at the desk by two operators, not on a truck handheld
       delivery.at = at;
-      this.log(`Delivery ${id} from ${supplier}: ${pallets} pallets of ${CATEGORIES[category]}`, { taskId: task.id });
+      this.log(`Delivery ${id} from ${supplier}: ${pallets} pallets of ${this.categories[category]}`, { taskId: task.id });
       this.dispatch();
       return delivery;
     }
@@ -873,6 +885,7 @@
       if (truck.mode === 'paused') return this._fail(truck, 'Truck is paused — resume to take jobs');
 
       const task = truck.taskId && this.tasks[truck.taskId];
+      if (!task && TRUCK_MODES[truck.mode].manual) return this._manualScan(truck, input);
       if (!task) return this._startFromScan(truck, input);
       if (task.type === 'RECEIVE') task.draft.inputs = (task.draft.inputs || 0) + 1;
       else task.inputs++;
@@ -974,6 +987,7 @@
         if (this._capacityLeft(this._aisle(task.to), truck.id) > 0) {
           truck.waiting = false;
           truck.waitingSince = null;
+          this.log(`${truck.id} let into aisle ${this._aisle(task.to)}`, { truckId: truck.id, taskId: task.id });
           this._say(truck, true, `Aisle ${this._aisle(task.to)} clear. Go to ${task.to}`);
         }
       }
@@ -1052,7 +1066,13 @@
     instruction(truckId) {
       const truck = this._truck(truckId);
       if (truck.mode === 'paused') return { kind: 'paused' };
-      if (!truck.taskId) return { kind: 'idle' };
+      if (!truck.taskId) {
+        if (truck.mode === 'transfer') return { kind: 'transfer', pallet: truck.transferSscc ? this.pallets[truck.transferSscc] : null };
+        if (truck.mode === 'pick') return { kind: 'pick-order', order: truck.orderId ? this.orders[truck.orderId] : null };
+        if (truck.mode === 'putaway') return { kind: 'putaway-scan' };
+        if (truck.mode === 'find') return { kind: 'find', result: truck.lookup || null };
+        return { kind: 'idle' };
+      }
       const task = this.tasks[truck.taskId];
       if (task.type === 'RECEIVE') {
         const field = RECEIVE_FIELDS.find((f) => !task.draft[f]);
@@ -1069,6 +1089,260 @@
       return task.step === 0
         ? { kind: 'pickup', task, pallet, target: task.from }
         : { kind: 'drop', task, pallet, target: task.to };
+    }
+
+    // ---- Manual modes: pick, put-away, transfer, find -------------------------
+
+    _manualScan(truck, input) {
+      const gs1 = GS1.parse(input);
+      const code = (gs1 && gs1.sscc) || this.resolve(input, { cell: this.cellOfLocation(truck.position) });
+      const pallet = this.pallets[code];
+      const loc = this.locations[code];
+
+      if (truck.mode === 'find') {
+        truck.lookup = this.lookup(code);
+        return this._say(truck, Boolean(truck.lookup), truck.lookup ? truck.lookup.text : `${input} is not a pallet or location`);
+      }
+
+      if (truck.mode === 'pick') {
+        // Scan the order number (or pick it on screen), then the order's picks come one by one.
+        const orderId = String(input).trim().replace(/^O/i, '');
+        if (this.orders[orderId]) {
+          truck.orderId = orderId;
+          this.dispatch();
+          const t = truck.taskId && this.tasks[truck.taskId];
+          return this._say(truck, true, t ? `Order ${orderId}: ${t.type === 'CHECK' ? 'check' : 'pick'} …${t.sscc.slice(-6)}` : `Order ${orderId} has nothing for you to pick right now`);
+        }
+        return this._fail(truck, truck.orderId ? `Order ${truck.orderId} has nothing for you right now. Scan another order` : 'Scan an order number');
+      }
+
+      if (truck.mode === 'putaway') {
+        if (!pallet) return this._fail(truck, 'Scan the pallet label');
+        let task = this._liveTaskFor(pallet.sscc);
+        if (task && task.status !== 'open') return this._fail(truck, `That pallet has job #${task.id} on ${task.truckId || 'hold'}`);
+        if (!task) {
+          const at = pallet.loc && this.locations[pallet.loc];
+          if (!at || (at.kind !== 'lane' && at.kind !== 'station')) return this._fail(truck, 'That pallet is already in storage. Use Transfer to move it');
+          task = this._newTask({ type: 'PUTAWAY', category: this.items[pallet.itemNo].category, sscc: pallet.sscc, from: pallet.loc, to: null });
+        }
+        if (!this._assign(truck, task)) return this._fail(truck, `No free ${this.categories[task.category]} slot for this pallet`);
+        task.inputs = 1;
+        this._pickUp(truck, task);
+        return this._say(truck, true, `Put it away at ${task.to}`);
+      }
+
+      // Transfer: pallet first, then where it now stands.
+      if (pallet) {
+        truck.transferSscc = pallet.sscc;
+        const where = pallet.loc ? `system has it at ${pallet.loc}` : 'system had lost it';
+        return this._say(truck, true, `…${pallet.sscc.slice(-6)} ${pallet.itemNo} (${where}). Scan the location it goes to`);
+      }
+      if (!loc) return this._fail(truck, `${input} is not a pallet or location`);
+      if (!truck.transferSscc) return this._fail(truck, 'Scan the pallet first, then the location');
+      const r = this.transferPallet(truck.transferSscc, loc.code, { by: truck.id });
+      truck.transferSscc = null;
+      if (r.ok) { truck.stats.moves++; truck.stats.moveInputs += 2; }
+      return this._say(truck, r.ok, r.text);
+    }
+
+    /**
+     * Record that a pallet now stands at a location: correction transfers.
+     * The system follows what the operator scanned. A pallet the system had
+     * in that rack spot goes on the unknown-location list to be found later.
+     */
+    transferPallet(sscc, code, { by = 'office' } = {}) {
+      const pallet = this.pallets[sscc];
+      if (!pallet) return { ok: false, text: 'That pallet is not in stock. Register it at receiving' };
+      if (pallet.status === 'shipped') return { ok: false, text: 'That pallet was shipped. Check the label' };
+      const to = this.locations[code];
+      if (!to) return { ok: false, text: `${code} is not a location` };
+      if (pallet.loc === code) return { ok: true, text: `…${sscc.slice(-6)} is already recorded at ${code}` };
+      const live = this._liveTaskFor(sscc);
+      if (live && live.status === 'active' && (live.step > 0 || this.trucks[live.truckId]?.load === sscc)) {
+        return { ok: false, text: `…${sscc.slice(-6)} is on ${live.truckId}'s forks (job #${live.id})` };
+      }
+      if (to.kind === 'block' && to.pallets.length >= to.height) return { ok: false, text: `${code} is stacked full` };
+      const notes = [];
+      if (to.kind === 'rack' && to.sscc) {
+        const other = this.pallets[to.sscc];
+        this._remove(other);
+        other.status = 'missing';
+        other.missingFrom = code;
+        notes.push(`…${other.sscc.slice(-6)} was recorded here: now on the unknown-location list`);
+        const otherTask = this._liveTaskFor(other.sscc);
+        if (otherTask && otherTask.status === 'open') { otherTask.status = 'held'; otherTask.heldReason = 'Pallet location unknown'; }
+      }
+      if (to.reservedBy) {
+        const t = this.tasks[to.reservedBy];
+        if (t) this._releaseSlot(t);
+        to.reservedBy = null;
+      }
+      const from = pallet.loc || pallet.missingFrom || 'unknown';
+      this._remove(pallet);
+      this._place(pallet, code);
+      if (pallet.status === 'missing') { pallet.status = pallet.blockReason ? 'blocked' : 'available'; notes.push('found again'); }
+      pallet.missingFrom = null;
+      // Jobs follow the pallet: a planned pick picks it from where it really is; planned shifts are re-planned.
+      if (live && live.status !== 'active') {
+        if (live.type === 'SHIFT' || live.type === 'PUTAWAY') this._cancelQuiet(live);
+        else live.from = code;
+      }
+      const cat = this.items[pallet.itemNo].category;
+      if ((to.kind === 'rack' || to.kind === 'block') && to.category && to.category !== cat) {
+        notes.push(`not a ${this.categories[cat]} location: relocation planned`);
+        this.planRelocations();
+      }
+      (this.transfers = this.transfers || []).unshift({ t: this.now(), sscc, from, to: code, by });
+      if (this.transfers.length > 1000) this.transfers.length = 1000;
+      this.log(`Transfer …${sscc.slice(-6)}: ${from} → ${code} by ${by}${notes.length ? ` (${notes.join('; ')})` : ''}`);
+      this.dispatch();
+      return { ok: true, text: `Recorded at ${code}${notes.length ? `. ${notes.join('. ')}` : ''}` };
+    }
+
+    /** Pallets whose location is unknown (reported missing, or displaced by a transfer). */
+    lostPallets() {
+      return Object.values(this.pallets).filter((p) => p.status === 'missing');
+    }
+
+    /** What a scanned code is: a pallet and where it is, or a location and what's in it. */
+    lookup(raw) {
+      const gs1 = GS1.parse(String(raw));
+      const code = (gs1 && gs1.sscc) || this.resolve(raw);
+      const p = this.pallets[code];
+      if (p) {
+        const item = this.items[p.itemNo];
+        const where = p.status === 'shipped' ? 'shipped' : p.loc ? `at ${p.loc}` : 'location unknown';
+        return { kind: 'pallet', pallet: p, text: `…${p.sscc.slice(-6)} ${item.itemNo} ${item.name} · batch ${p.batch} · BB ${p.expiry} · ${p.qty} cs · ${where}` };
+      }
+      const loc = this.locations[code];
+      if (loc) {
+        const ss = loc.kind === 'rack' ? (loc.sscc ? [loc.sscc] : []) : loc.pallets;
+        const cat = loc.category ? this.categories[loc.category] : 'no category';
+        const what = ss.length ? ss.map((s) => `…${s.slice(-6)} ${this.pallets[s].itemNo} ${this.pallets[s].batch}`).join(', ') : 'empty';
+        return { kind: 'location', location: loc, pallets: ss.map((s) => this.pallets[s]), text: `${code}${loc.kind === 'rack' ? ` (${this.rowName(code)})` : ''} · ${cat}${loc.blocked ? ' · BLOCKED' : ''} · ${what}` };
+      }
+      return null;
+    }
+
+    // ---- Location template by range ---------------------------------------------
+
+    /**
+     * Rack locations between two codes, component by component, in either
+     * naming: "AA01A1"–"AZ43F3" (cell, rack, bay, level, position) or
+     * "31-01-0-10"–"34-86-4-70". Partial codes work: "AA"–"AZ", "31"–"34".
+     */
+    selectLocations(from, to) {
+      const a = this._rangeParts(from, 'min');
+      const b = this._rangeParts(to, 'max');
+      if (!a || !b || a.scheme !== b.scheme) throw new Error('Use two codes in the same naming, e.g. AA01A1 to AZ43F3');
+      const keys = Object.keys(a.parts);
+      return this._racks().filter((l) => {
+        const c = a.scheme === 'row' ? this._rowParts(l.code) : { aisle: Number(l.aisle), bay: l.bay, level: l.level, pos: l.pos };
+        const v = { ...c, cell: c.cell && c.cell.charCodeAt(0), rack: c.rack && c.rack.charCodeAt(0), level: typeof c.level === 'string' ? c.level.charCodeAt(0) - 65 : c.level };
+        return keys.every((k) => v[k] >= a.parts[k] && v[k] <= b.parts[k]);
+      }).map((l) => l.code);
+    }
+
+    _rangeParts(raw, end) {
+      const s = String(raw || '').trim().toUpperCase().replace(/\s/g, '');
+      const big = 9999;
+      let m = /^([A-Z])([A-Z])?(\d{2})?([A-Z])?(\d)?$/.exec(s);
+      if (m) {
+        const pick = (v, f, lo, hi) => (v == null ? (end === 'min' ? lo : hi) : f(v));
+        return { scheme: 'row', parts: {
+          cell: m[1].charCodeAt(0),
+          rack: pick(m[2], (v) => v.charCodeAt(0), 65, 90),
+          bay: pick(m[3], Number, 0, big),
+          level: pick(m[4], (v) => v.charCodeAt(0) - 65, 0, big),
+          pos: pick(m[5], Number, 0, big),
+        } };
+      }
+      m = /^(\d{2})(?:-(\d{2}))?(?:-(\d))?(?:-(\d{2}))?$/.exec(s);
+      if (m) {
+        const pick = (v) => (v == null ? (end === 'min' ? 0 : big) : Number(v));
+        return { scheme: 'current', parts: { aisle: Number(m[1]), bay: pick(m[2]), level: pick(m[3]), pos: pick(m[4]) } };
+      }
+      return null;
+    }
+
+    /** What applying a category to these locations would do, before doing it. */
+    previewTemplate(codes, category) {
+      if (category !== null && !this.categories[category]) throw new Error(`Unknown category ${category}`);
+      const out = { locations: codes.length, changed: 0, from: {}, palletsToMove: 0, palletsHere: 0 };
+      for (const code of codes) {
+        const loc = this.locations[code];
+        if (loc.category !== category) {
+          out.changed++;
+          const k = loc.category || 'none';
+          out.from[k] = (out.from[k] || 0) + 1;
+        }
+        if (loc.sscc) {
+          out.palletsHere++;
+          if (category && this.items[this.pallets[loc.sscc].itemNo].category !== category) out.palletsToMove++;
+        }
+      }
+      return out;
+    }
+
+    /** Apply a category to a selection; pallets now in the wrong category get relocation jobs. */
+    applyTemplate(codes, category, { by = 'office' } = {}) {
+      const preview = this.previewTemplate(codes, category);
+      for (const code of codes) this.locations[code].category = category;
+      this.log(`Template by ${by}: ${preview.changed} of ${codes.length} locations → ${category ? this.categories[category] : 'no category'}`);
+      const moves = this.planRelocations();
+      this.dispatch();
+      return { ...preview, moves };
+    }
+
+    /** Location attributes from the site's location table: code, category, blocked. */
+    importLocations(rows) {
+      const out = { updated: 0, unknown: [] };
+      for (const r of rows) {
+        const code = this.resolve(r.code);
+        const loc = this.locations[code];
+        if (!loc) { out.unknown.push(r.code); continue; }
+        if (r.category !== undefined) loc.category = r.category || null;
+        if (r.blocked !== undefined) loc.blocked = Boolean(r.blocked);
+        out.updated++;
+      }
+      this.planRelocations();
+      return out;
+    }
+
+    // ---- Traceability -----------------------------------------------------------
+
+    /** Everything about a batch: where it came from, what's in stock, who got it. */
+    trace(batch) {
+      const b = String(batch).trim().toUpperCase();
+      const pallets = Object.values(this.pallets).filter((p) => String(p.batch).toUpperCase() === b);
+      const deliveries = [...new Set(pallets.map((p) => p.deliveryId).filter(Boolean))].map((id) => this.deliveries[id]);
+      const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter((p) => String(p.batch).toUpperCase() === b).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t })));
+      return {
+        batch: b,
+        inStock: pallets.filter((p) => p.status !== 'shipped'),
+        received: deliveries.map((d) => ({ id: d.id, supplier: d.supplier, t: d.createdAt })),
+        shipped,
+        customers: [...new Set(shipped.map((s) => s.customer))],
+      };
+    }
+
+    // ---- Save and restore ---------------------------------------------------------
+
+    /** The whole state as plain data (for the server's snapshots). */
+    toJSON() {
+      const out = {};
+      for (const [k, v] of Object.entries(this)) {
+        if (k === 'clock' || k === '_rackList') continue;
+        out[k] = v;
+      }
+      return out;
+    }
+
+    static restore(state, { clock } = {}) {
+      const wh = Object.create(Warehouse.prototype);
+      Object.assign(wh, JSON.parse(JSON.stringify(state)));
+      wh.clock = clock || (() => Date.now());
+      return wh;
     }
 
     // ---- Process stations -------------------------------------------------------
@@ -1371,6 +1645,7 @@
     _truckTakes(truck, task) {
       const types = TRUCK_MODES[truck.mode].types;
       if (types && !types.includes(task.type)) return false;
+      if (truck.mode === 'pick' && task.orderId !== truck.orderId) return false;
       return !truck.categories || truck.categories.includes(task.category);
     }
 
@@ -1791,6 +2066,7 @@
       });
       const delivery = this.deliveries[task.deliveryId];
       delivery.received.push(pallet.sscc);
+      pallet.deliveryId = delivery.id;
       truck.stats.received++;
       truck.stats.receiveInputs += d.inputs || 0;
       task.draft = {};
@@ -1845,7 +2121,7 @@
       }
       const category = this.items[pallet.itemNo].category;
       if (truck.categories && !truck.categories.includes(category)) {
-        return this._fail(truck, `That is ${CATEGORIES[category]} — not one of your categories`);
+        return this._fail(truck, `That is ${this.categories[category]} — not one of your categories`);
       }
 
       const existing = this._liveTaskFor(pallet.sscc);
@@ -1864,7 +2140,7 @@
       const task = this._newTask({ type: 'SHIFT', reason: 'driver', sscc: pallet.sscc, from: loc.code, to: null, category });
       if (!this._reserveSlot(task)) {
         task.status = 'cancelled';
-        return this._fail(truck, `No free ${CATEGORIES[category]} slot for this pallet`);
+        return this._fail(truck, `No free ${this.categories[category]} slot for this pallet`);
       }
       this.log(`${truck.id} started Auto-Shift #${task.id} from ${loc.code}`, { truckId: truck.id, taskId: task.id });
       this._assign(truck, task);
@@ -1891,7 +2167,7 @@
       if (loc.sscc || (loc.reservedBy && loc.reservedBy !== task.id)) return `${code} is taken. Drop at ${task.to}`;
       if (loc.blocked) return `${code} is blocked. Drop at ${task.to}`;
       const cat = this.items[pallet.itemNo].category;
-      if (loc.category !== cat) return `${code} is not a ${CATEGORIES[cat]} location. Drop at ${task.to}`;
+      if (loc.category !== cat) return `${code} is not a ${this.categories[cat]} location. Drop at ${task.to}`;
       if (task.ground && loc.level !== 0) return `This pallet goes on the ground. Drop at ${task.to}`;
       if (loc.aisle !== this._aisle(task.to) && this._capacityLeft(loc.aisle, truck.id) <= 0) return `Aisle ${loc.aisle} is full. Drop at ${task.to}`;
       return null;

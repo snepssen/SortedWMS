@@ -1429,7 +1429,7 @@ td .acts { display: flex; gap: 4px; }
     $('capUp').disabled = cfg.aisleCap >= 4;
     setHTML($('trucklist'), Object.values(wh.trucks).map((t) => `<div class="truckrow">
       <div class="line"><strong>${esc(t.id)}</strong>
-        <span class="seg" role="group" aria-label="${esc(t.id)} mode">${Object.entries(TRUCK_MODES).map(([m, def]) =>
+        <span class="seg" role="group" aria-label="${esc(t.id)} mode">${Object.entries(TRUCK_MODES).filter(([, def]) => !def.manual).map(([m, def]) =>
           `<button type="button" data-truck="${esc(t.id)}" data-mode="${m}" aria-pressed="${t.mode === m}">${def.label}</button>`).join('')}</span></div>
       <div class="line"><span class="hint">Works</span><span class="catpick">${Object.keys(CATEGORIES).map((c) =>
         `<button type="button" class="c-${c}" data-truck="${esc(t.id)}" data-cat="${c}" aria-pressed="${!t.categories || t.categories.includes(c)}">${CATEGORIES[c]}</button>`).join('')}</span></div>
