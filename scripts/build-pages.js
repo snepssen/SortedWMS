@@ -64,7 +64,7 @@ for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site
   fs.copyFileSync(path.join(root, f), path.join(out, f));
 }
 const tags = LOCAL.map((f) => `<script src="${f}"></script>`).join('\n');
-for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'admin.html'], ['loading.html', 'loading.html'], ['try.html', 'wms.html']]) {
+for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'admin.html'], ['loading.html', 'loading.html'], ['try.html', 'wms.html'], ['kit.html', 'kit.html']]) {
   const src = fs.readFileSync(path.join(root, 'server', 'public', from), 'utf8');
   const i = src.indexOf('<script>');
   if (i === -1) throw new Error(`${from}: expected a <script> block`);

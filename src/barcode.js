@@ -1,6 +1,9 @@
 /*
- * Code 128 (set B) as SVG, for the command card the office prints. Shipping
- * and pallet labels don't need this: the label printer draws those from ZPL.
+ * Code 128 as SVG, for what the office prints on paper or shows on a screen:
+ * the command card, and the demo kit's sample pallet and location labels.
+ * GS1-128 (FNC1 first, FNC1 as the separator) for pallet labels; long digit
+ * runs use set C so a label barcode stays short enough to scan. Labels on
+ * the label printers don't need this: the printer draws those from ZPL.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -25,30 +28,69 @@
   const START_B = 104;
   const STOP = 106;
 
-  /** The symbol values for `text` in set B: start, data, check, stop. */
-  function encode(text) {
-    const values = [START_B];
-    for (const ch of String(text)) {
+  const START_C = 105;
+  const CODE_B = 100; // switch to set B (from set C)
+  const CODE_C = 99; // switch to set C (from set B)
+  const FNC1 = 102;
+  const GS = '\x1d'; // in the text, a GS1 separator: encoded as FNC1
+
+  const isDigit = (ch) => ch >= '0' && ch <= '9';
+  const digitRun = (t, i) => { let n = 0; while (i + n < t.length && isDigit(t[i + n])) n++; return n; };
+
+  /**
+   * The symbol values for `text`: start, data, check, stop. Plain text is set
+   * B throughout (the command card). With { gs1: true } the symbol starts with
+   * FNC1, a GS character in the text becomes FNC1, and runs of four or more
+   * digits are packed in pairs (set C).
+   */
+  function encode(text, { gs1 = false } = {}) {
+    const t = String(text);
+    for (const ch of t) {
       const c = ch.charCodeAt(0);
-      if (c < 32 || c > 126) throw new Error(`Code 128 B can't encode ${JSON.stringify(ch)}`);
-      values.push(c - 32);
+      if (ch !== GS && (c < 32 || c > 126)) throw new Error(`Code 128 B can't encode ${JSON.stringify(ch)}`);
     }
+    if (!gs1) {
+      if (t.includes(GS)) throw new Error('A GS separator needs gs1: true');
+      const values = [START_B, ...[...t].map((ch) => ch.charCodeAt(0) - 32)];
+      return finish(values);
+    }
+    let set = digitRun(t, 0) >= 2 && digitRun(t, 0) % 2 === 0 ? 'C' : 'B';
+    const values = [set === 'C' ? START_C : START_B, FNC1];
+    let i = 0;
+    while (i < t.length) {
+      if (t[i] === GS) { values.push(FNC1); i++; continue; }
+      const run = digitRun(t, i);
+      if (set === 'C') {
+        if (run >= 2) { values.push(Number(t.slice(i, i + 2))); i += 2; continue; }
+        values.push(CODE_B); set = 'B'; continue;
+      }
+      // Set B: switch to C for a run of 4+ digits (an odd one keeps its first digit in B).
+      if (run >= 4) {
+        if (run % 2) { values.push(t.charCodeAt(i) - 32); i++; }
+        values.push(CODE_C); set = 'C'; continue;
+      }
+      values.push(t.charCodeAt(i) - 32); i++;
+    }
+    return finish(values);
+  }
+
+  function finish(values) {
     const check = values.reduce((sum, v, i) => sum + v * (i || 1), 0) % 103;
     return [...values, check, STOP];
   }
 
   /** Bars as 1s and spaces as 0s, one per module, without the quiet zones. */
-  function modules(text) {
+  function modules(text, opts) {
     let out = '';
-    for (const v of encode(text)) {
+    for (const v of encode(text, opts)) {
       [...PATTERNS[v]].forEach((w, i) => { out += (i % 2 ? '0' : '1').repeat(Number(w)); });
     }
     return out;
   }
 
   /** An SVG of the barcode: `module` units per module, `height` units tall (unit: '' for px, or 'mm'), 10-module quiet zones. */
-  function svg(text, { module = 2, height = 80, unit = '' } = {}) {
-    const m = modules(text);
+  function svg(text, { module = 2, height = 80, unit = '', gs1 = false } = {}) {
+    const m = modules(text, { gs1 });
     const quiet = 10;
     let x = quiet;
     let rects = '';
@@ -63,5 +105,5 @@
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${+(w * module).toFixed(2)}${unit}" height="${height}${unit}" viewBox="0 0 ${w} 1" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="${w}" height="1" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
   }
 
-  return { encode, modules, svg };
+  return { encode, modules, svg, GS };
 });
