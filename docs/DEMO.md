@@ -32,6 +32,14 @@ npm run start:demo
 8. **Gloves on.** Everything is on the command card: modes, *pallet missing*, *damaged*, *full pallet*, *delivery done*. Reports are confirmed by scanning the same code twice; there are no pop-ups. On the MC9401's keypad, Esc cancels and F1–F5 switch modes.
 9. **The office.** Every scan is in the audit trail with who and when. Batch trace answers "which customers got batch 41/07" in one search.
 
+## A rush: hundreds of jobs at once
+
+Open *Handheld + office* on Pages and switch to **Whole floor**.
+1. **Drop in** 200 pallets to pick and 200 to receive. The board shows what the system made of it: picks, receiving, put-aways, Auto-Shift, each in the coordinator's order.
+2. **Add trucks** (two or three) and **Start driving** at 1×. Every scanner screen shows its job and a countdown to its next scan, as it would on the floor.
+3. Speed up to 10× or 30× to watch the queue drain: receiving fills the dock, put-aways follow, picks go out and orders turn ready.
+4. **Talking point:** nobody hands out work. Change the job order in the office (Settings → Dispatch, for example *Check & label* before *Pick*) and watch orders finish sooner.
+
 ## What to measure
 
 The simulated shift (the Pages front page) counts **scans per pallet move** (2.0) and **inputs per received pallet**. Count the Enter presses and screens for the same jobs in the current system on the same day: that's the comparison that matters to the floor.

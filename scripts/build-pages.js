@@ -55,7 +55,7 @@ ${body.trim()}
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
-for (const f of ['gs1.js', 'labels.js', 'engine.js', 'barcode.js', 'walkthrough.js']) {
+for (const f of ['gs1.js', 'labels.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
 }
 fs.copyFileSync(path.join(root, 'walkthrough.html'), path.join(out, 'walkthrough.html'));
@@ -63,7 +63,7 @@ fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out,
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 
 // The WMS screens with the in-browser backend loaded before their own script.
-const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/engine.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
+const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
 fs.mkdirSync(path.join(out, 'server'), { recursive: true });
 for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.example.json')) {
   fs.copyFileSync(path.join(root, f), path.join(out, f));

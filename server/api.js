@@ -253,6 +253,7 @@
     on('POST', '/api/aisles/:aisle/cell', ({ aisle }, q, b, by) => run('setAisleCell', { aisle, cell: b.cell }, by));
     on('POST', '/api/naming', (_, q, b, by) => run('setNaming', { show: b.show }, by));
     on('POST', '/api/plan/grouping', (_, q, b, by) => run('planGrouping', {}, by));
+    on('POST', '/api/workload', (_, q, b, by) => run('dropWorkload', { seed: Number(b.seed) || (Date.now() % 1e9) + 1, picks: Number(b.picks) || 0, inbound: Number(b.inbound) || 0 }, by));
     on('POST', '/api/plan/counts', (_, q, b, by) => run('planCounts', { from: b.from || null, to: b.to || null, limit: b.limit }, by));
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => run('importItems', { rows: b.rows || b }, by));

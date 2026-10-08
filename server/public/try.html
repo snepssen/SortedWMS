@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SortedWMS handheld and office</title>
+<title>SortedWMS free play</title>
 <meta name="description" content="Try the SortedWMS handheld and office screens in the browser, with demo stock.">
 <style>
   :root { --bg: #e9edf1; --card: #fff; --line: #d3dae1; --ink: #17202a; --dim: #5d6a76; --acc: #1769c2; --on-acc: #fff; }
@@ -25,7 +25,49 @@
   .helper .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .office { flex: 1 1 auto; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .office iframe { display: block; width: 100%; height: calc(100vh - 120px); min-height: 760px; border: 0; }
+  .views { display: flex; gap: 4px; }
+  .views button { background: none; border-color: transparent; font-weight: 600; color: var(--dim); }
+  .views button.on { background: var(--bg); border-color: var(--line); color: var(--ink); }
+  [hidden] { display: none !important; }
+  /* Whole floor: drop in work, drivers, the workload as the system organised it, every scanner's screen */
+  .floor { padding: 16px; display: grid; gap: 16px; max-width: 1500px; margin: 0 auto; }
+  .floor-top { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .card h2 { font-size: 15px; margin: 0 0 6px; }
+  .card .row { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .card input[type=number] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 90px; }
+  .out { margin-top: 8px; font-weight: 600; }
+  .out.bad { color: #c62f28; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; min-width: 92px; }
+  .tile b { display: block; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--dim); font-size: 12px; }
+  .tile.t { border-left: 5px solid var(--tc, var(--line)); }
+  .t-PICK { --tc: #7348ad; } .t-MOVE { --tc: #b15a00; } .t-CHECK { --tc: #2b67a8; } .t-RECEIVE { --tc: #5b6b2a; } .t-PUTAWAY { --tc: #12827a; } .t-SHIFT { --tc: #b23c76; } .t-COUNT { --tc: #4d6072; }
+  .queue { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+  .queue li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-top: 1px solid var(--line); }
+  .queue li:first-child { border-top: 0; }
+  .chip { display: inline-block; min-width: 64px; padding: 0 6px; border-radius: 5px; color: #fff; background: var(--tc, #66737f); font-size: 11px; font-weight: 700; text-align: center; }
+  .queue .why { color: var(--dim); margin-left: auto; text-align: right; white-space: nowrap; }
+  .fleet { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  .scr { background: #101418; color: #f2f5f7; border-radius: 16px; border: 6px solid #222; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 210px; }
+  .scr .top { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #9aa8b4; }
+  .scr .top b { color: #f2f5f7; font-size: 15px; }
+  .scr .top label { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .scr .kick { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #9aa8b4; }
+  .scr .kick.urgent { color: #ffb020; }
+  .scr .big { font: 800 30px/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .02em; overflow-wrap: anywhere; }
+  .scr .sub { font-size: 12.5px; color: #c4cdd5; overflow-wrap: anywhere; }
+  .scr .bar { height: 5px; border-radius: 3px; background: #26303a; overflow: hidden; margin-top: 4px; }
+  .scr .bar div { height: 100%; background: #4aa8ff; }
+  .scr .next { font-size: 12px; color: #9aa8b4; }
+  .scr .msg { font-size: 12.5px; font-weight: 700; border-radius: 8px; padding: 4px 8px; margin-top: auto; }
+  .scr .msg.ok { background: rgba(60, 207, 122, .14); color: #3ccf7a; }
+  .scr .msg.bad { background: rgba(255, 90, 82, .16); color: #ff8a84; }
+  .scr .msg.need { background: rgba(255, 176, 32, .16); color: #ffb020; }
+  .scr button { background: #1b2229; color: #f2f5f7; border-color: #2c3640; padding: 3px 8px; font-size: 12px; }
   @media (max-width: 900px) {
+    .floor { padding: 12px; }
     .wrap { flex-direction: column; padding: 12px; }
     .phone { width: 100%; max-width: 384px; margin: 0 auto; }
     .office { width: 100%; }
@@ -35,11 +77,39 @@
 </head>
 <body>
 <header>
-  <h1>SortedWMS: handheld + office</h1>
+  <h1>SortedWMS free play</h1>
   <span class="hint">The real WMS screens, running in your browser with made-up stock. Changes stay in this browser. <a href="./">Simulated shift</a> · <a href="walkthrough.html">guided shift</a> · <a href="sop.html" target="_blank">SOP</a> · <a href="kit.html" target="_blank">demo kit</a>. On their own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="keys.html" target="_blank">key test</a></span>
+  <nav class="views" aria-label="View"><button data-view="one">Handheld + office</button><button data-view="floor">Whole floor</button></nav>
   <button id="reset">Reset demo data</button>
 </header>
-<div class="wrap">
+<div class="floor" id="floorView" hidden>
+  <div class="floor-top">
+    <section class="card">
+      <h2>Drop in work</h2>
+      <div class="hint">Hundreds of picks and inbound pallets at once. Items, customers, shipping lanes and delivery sizes are drawn at random from the stock that is free to ship and the rack space left. Nothing is pre-planned: the system makes every job and decides who does what, in what order.</div>
+      <div class="row"><label>Pallets to pick <input type="number" id="wPicks" min="0" max="1000" step="10" value="200"></label>
+        <label>Pallets to receive <input type="number" id="wIn" min="0" max="1000" step="10" value="200"></label>
+        <button class="primary" id="wDrop">Drop in</button></div>
+      <div class="out" id="wOut"></div>
+    </section>
+    <section class="card">
+      <h2>Drivers</h2>
+      <div class="hint">Every handheld on Auto drives itself: it scans what its screen asks for, with the time a reach truck takes to get there. Watch it at real speed, or faster. Untick a truck to drive it yourself.</div>
+      <div class="row"><button class="primary" id="dGo">Start driving</button>
+        <label>Speed <select id="dSpeed"><option value="1">1× (real time)</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option><option value="30">30×</option></select></label>
+        <label><input type="checkbox" id="dShip" checked> Trailers collect ready orders</label></div>
+      <div class="row"><span>Add a truck:</span><button data-add="YOG">Yoghurt</button><button data-add="CHE">Cheese</button><button data-add="">Any category</button></div>
+    </section>
+  </div>
+  <section class="card">
+    <h2>Workload, as the system organised it</h2>
+    <div class="tiles" id="wTiles"></div>
+    <div class="hint" style="margin-top:10px">Up next: urgent first, then the job order set in Settings, then oldest first. Each truck takes the nearest job of the first kind it can do.</div>
+    <ol class="queue" id="wQueue"></ol>
+  </section>
+  <div class="fleet" id="fleet"></div>
+</div>
+<div class="wrap" id="oneView">
   <div class="phone">
     <div class="frame"><iframe id="hh" title="Handheld"></iframe></div>
     <div class="helper">
@@ -112,9 +182,214 @@
     const w = $('#hh').contentWindow;
     if (w && w.hhRefresh) w.hhRefresh();
   }
+  // ---- Whole floor: drop in work, drive every handheld, watch it organise itself ------------------------
+
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const { TASK_TYPES } = SortedWMS;
+  const CATS = { YOG: 'Yoghurt', CHE: 'Cheese', PRO: 'Protein drinks' };
+  const drive = {
+    on: ls.get('fp.drive') === '1',
+    speed: Number(ls.get('fp.speed')) || 1,
+    ship: ls.get('fp.ship') !== '0',
+    manual: new Set((ls.get('fp.manual') || '').split(',').filter(Boolean)),
+  };
+  const eta = {}; // handheld -> { key, act, start, at, fails }
+  const readyAt = {}; // order -> when it became ready (real ms)
+  const tab = Math.random().toString(36).slice(2);
+
+  // Only one open copy of this page drives the trucks, or every scan would happen twice.
+  function leader() {
+    const now = Date.now();
+    let cur = null;
+    try { cur = JSON.parse(localStorage.getItem('fp.driver')); } catch (e) { /* ignore */ }
+    if (cur && cur.tab !== tab && now - cur.t < 3000) return false;
+    ls.set('fp.driver', JSON.stringify({ tab, t: now }));
+    return true;
+  }
+
+  function setView(v) {
+    ls.set('fp.view', v);
+    $('#floorView').hidden = v !== 'floor';
+    $('#oneView').hidden = v === 'floor';
+    document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
+    if (v === 'floor') renderFloor();
+  }
+  document.querySelectorAll('[data-view]').forEach((b) => (b.onclick = () => setView(b.dataset.view)));
+
+  function driveButton() {
+    $('#dGo').textContent = drive.on ? 'Stop driving' : 'Start driving';
+    $('#dGo').classList.toggle('primary', !drive.on);
+  }
+  $('#dSpeed').value = String(drive.speed);
+  $('#dShip').checked = drive.ship;
+  driveButton();
+  $('#dGo').onclick = () => { drive.on = !drive.on; ls.set('fp.drive', drive.on ? '1' : '0'); for (const k of Object.keys(eta)) delete eta[k]; driveButton(); renderFloor(); };
+  $('#dSpeed').onchange = () => {
+    drive.speed = Number($('#dSpeed').value) || 1;
+    ls.set('fp.speed', String(drive.speed));
+    for (const e of Object.values(eta)) e.at = e.start + e.act.ms / drive.speed;
+  };
+  $('#dShip').onchange = () => { drive.ship = $('#dShip').checked; ls.set('fp.ship', drive.ship ? '1' : '0'); };
+
+  $('#wDrop').onclick = async () => {
+    const out = $('#wOut');
+    const picks = Number($('#wPicks').value) || 0;
+    const inbound = Number($('#wIn').value) || 0;
+    $('#wDrop').disabled = true;
+    out.className = 'out';
+    out.textContent = 'Planning…';
+    const r = await SortedLocal.fetch('POST', '/api/workload', { picks, inbound });
+    $('#wDrop').disabled = false;
+    out.className = r.status < 400 ? 'out' : 'out bad';
+    out.textContent = r.status < 400 ? `${r.body.text}.${drive.on ? '' : ' Press Start driving to work it.'}` : r.body.error;
+    renderFloor();
+  };
+
+  document.querySelectorAll('[data-add]').forEach((b) => (b.onclick = async () => {
+    const store = await SortedLocal.store();
+    store.sync();
+    const ids = Object.keys(store.wh.trucks).map((id) => Number(id.replace(/\D/g, '')) || 0);
+    const id = `HH${String(Math.max(0, ...ids) + 1).padStart(2, '0')}`;
+    await SortedLocal.fetch('POST', '/api/devices', { id, categories: b.dataset.add ? [b.dataset.add] : null }, { operator: 'office' });
+    await devices();
+    renderFloor();
+  }));
+
+  // The drivers: every half second, each handheld on Auto gets the scan its screen asks for, once its time is up.
+  async function driveLoop() {
+    if (!drive.on || !leader()) return;
+    const store = await SortedLocal.store();
+    store.sync();
+    const wh = store.wh;
+    const now = Date.now();
+    for (const id of Object.keys(wh.trucks)) {
+      if (drive.manual.has(id)) { delete eta[id]; continue; }
+      const truck = wh.trucks[id];
+      const a = SortedDrivers.next(wh, id);
+      if (!a) { delete eta[id]; continue; }
+      const task = truck.taskId && wh.tasks[truck.taskId];
+      const key = `${truck.taskId}:${task ? task.step : ''}:${a.what}`;
+      const e = eta[id];
+      if (!e || e.key !== key) { eta[id] = { key, act: a, start: now, at: now + a.ms / drive.speed, fails: e && e.key === key ? e.fails : 0 }; continue; }
+      if (e.stuck || now < e.at) continue;
+      const r = e.act.qty
+        ? await SortedLocal.fetch('POST', `/api/devices/${id}/qty`, { qty: null }, { operator: id })
+        : await SortedLocal.fetch('POST', `/api/devices/${id}/scan`, { code: e.act.code }, { operator: id });
+      const failed = r.status >= 400 || (r.body && r.body.ok === false && !r.body.difference);
+      if (failed) {
+        // Not what the system wanted: try again in a while, and after three tries hand it to a person.
+        e.fails++;
+        if (e.fails >= 3) e.stuck = (r.body && (r.body.text || r.body.error)) || 'Scan refused';
+        else { e.start = Date.now(); e.at = e.start + 30000 / drive.speed; }
+      } else delete eta[id];
+    }
+    if (drive.ship) {
+      for (const o of Object.values(wh.orders)) {
+        if (o.status !== 'ready') { delete readyAt[o.id]; continue; }
+        readyAt[o.id] = readyAt[o.id] || now;
+        if (now - readyAt[o.id] > (10 * 60000) / drive.speed) { delete readyAt[o.id]; await SortedLocal.fetch('POST', `/api/orders/${encodeURIComponent(o.id)}/ship`, {}, { operator: 'trailer' }); }
+      }
+    }
+  }
+  setInterval(() => { driveLoop().catch((err) => console.warn('drivers', err)); }, 500);
+
+  const clock = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+  function screenHtml(wh, id) {
+    const v = SortedApi.deviceView(wh, id);
+    const I = v.instruction;
+    const t = I.task;
+    const job = t ? `${esc(t.typeLabel)} · #${t.id}${t.orderId ? ` · order ${esc(t.orderId)}` : ''}` : '';
+    const p = I.pallet;
+    const pl = p ? `<div class="sub">${esc(p.itemNo)} ${esc(p.name || '')} · ${esc(p.batch || '')} · …${esc(p.sscc.slice(-6))}</div>` : '';
+    let body;
+    switch (I.kind) {
+      case 'pickup': body = `<div class="kick${t.urgent ? ' urgent' : ''}">${job}</div><div class="sub">Pick up at</div><div class="big">${esc(I.targetName)}</div>${pl}`; break;
+      case 'drop': body = `<div class="kick${t.urgent ? ' urgent' : ''}">${job}</div><div class="sub">Drop at</div><div class="big">${esc(I.targetName)}</div>${pl}`; break;
+      case 'wait': body = `<div class="kick">${job}</div><div class="sub">Waiting at the entry of aisle ${esc(I.aisle)}: two trucks inside</div><div class="big">${esc(I.targetName)}</div>`; break;
+      case 'check-pallet': body = `<div class="kick">${job}</div><div class="sub">Check the pallet on</div><div class="big">${esc(t.fromName)}</div>${pl}`; break;
+      case 'check-label': body = `<div class="kick">${job}</div><div class="sub">Label on, then scan it</div><div class="big">${esc(t.labelCode || '')}</div>`; break;
+      case 'receive': body = `<div class="kick">${job}</div><div class="sub">Receiving ${esc(I.delivery.id)} · ${esc(I.delivery.supplier)}</div><div class="big">${I.delivery.received + 1} of ${I.delivery.expected}</div>`; break;
+      case 'count': body = `<div class="kick">${job}</div><div class="sub">${I.step ? 'Scan what is in' : 'Count at'}</div><div class="big">${esc(I.targetName)}</div>`; break;
+      case 'paused': body = '<div class="kick">Paused</div><div class="sub">No jobs until a mode is chosen</div>'; break;
+      case 'idle': body = '<div class="kick">Auto</div><div class="sub">No job right now. The next one appears by itself.</div>'; break;
+      default: body = `<div class="kick">${esc(v.mode)}</div><div class="sub">A manual mode: driven by hand</div>`;
+    }
+    const e = eta[id];
+    const manual = drive.manual.has(id);
+    let next = '';
+    if (e && e.stuck) next = `<div class="msg need">Needs you: ${esc(wh.display(e.stuck))}</div>`;
+    else if (e && drive.on && !manual) {
+      const total = e.at - e.start;
+      const pct = total > 0 ? Math.min(100, (100 * (Date.now() - e.start)) / total) : 100;
+      next = `<div class="bar"><div style="width:${pct.toFixed(1)}%"></div></div><div class="next">Next scan in ${clock(e.at - Date.now())}: ${esc(e.act.what)}</div>`;
+    }
+    const msg = v.message ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : '';
+    const cats = v.categories ? v.categories.map((c) => CATS[c] || c).join(', ') : 'all categories';
+    return `<div class="scr"><div class="top"><b>${esc(id)}</b><span>${esc(cats)}</span>
+      <label title="Untick to drive this one yourself"><input type="checkbox" data-auto="${esc(id)}" ${manual ? '' : 'checked'}> auto</label><button data-open="${esc(id)}">Open</button></div>
+      ${body}${next}${msg}</div>`;
+  }
+
+  async function renderFloor() {
+    if ($('#floorView').hidden) return;
+    const store = await SortedLocal.store();
+    store.sync();
+    const wh = store.wh;
+    const tasks = Object.values(wh.tasks);
+    const live = tasks.filter((t) => t.status === 'open' || t.status === 'active');
+    const types = Object.keys(TASK_TYPES).filter((k) => live.some((t) => t.type === k));
+    const orders = Object.values(wh.orders);
+    const hour = Date.now() - 3600000 / (drive.on ? drive.speed : 1); // an hour at the speed the trucks are driving
+    const dock = wh.locations['DOCK-IN'] ? wh.locations['DOCK-IN'].pallets.length : 0;
+    const tile = (n, label, cls = '') => `<div class="tile ${cls}"><b>${n}</b><span>${label}</span></div>`;
+    $('#wTiles').innerHTML = [
+      tile(live.filter((t) => t.status === 'open').length, 'jobs queued'),
+      tile(live.filter((t) => t.status === 'active').length, 'on a truck now'),
+      tile(tasks.filter((t) => t.status === 'held' && !t.replacedBy).length, 'held'),
+      tile(tasks.filter((t) => t.status === 'done' && t.type !== 'RECEIVE' && t.doneAt > hour).length, 'pallet moves, last hour'),
+      ...types.map((k) => tile(live.filter((t) => t.type === k).length, `${TASK_TYPES[k].label}`, `t t-${k}`)),
+      tile(orders.filter((o) => o.status === 'open' || o.status === 'picking').length, 'orders being picked'),
+      tile(orders.filter((o) => o.status === 'ready').length, 'orders ready'),
+      tile(orders.filter((o) => o.status === 'shipped').length, 'orders shipped'),
+      tile(dock, 'pallets at the dock'),
+    ].join('');
+    const queued = live.filter((t) => t.status === 'open')
+      .sort((a, b) => (wh.isUrgent(b) - wh.isUrgent(a)) || (wh._priorityOf(a.type) - wh._priorityOf(b.type)) || (a.idleOnly - b.idleOnly) || a.createdAt - b.createdAt || a.id - b.id);
+    const place = (c) => (c ? SortedApi.placeName(wh, c) : 'auto slot');
+    // A put-away waits when its category has no free rack position: say so rather than look stuck.
+    const room = {};
+    for (const l of wh._racks()) if (l.category && !l.sscc && !l.reservedBy && !l.blocked) room[l.category] = (room[l.category] || 0) + 1;
+    const why = (t) => (t.autoSlot && !t.to && t.category && !room[t.category] ? `no free ${CATS[t.category] || t.category} location: give it racks in Locations`
+      : wh.isUrgent(t) ? 'urgent' : t.idleOnly ? 'when a truck is idle' : `priority ${wh._priorityOf(t.type) + 1}`);
+    $('#wQueue').innerHTML = queued.slice(0, 12).map((t) => `<li><span class="chip t-${t.type}">${esc(TASK_TYPES[t.type].short)}</span><span>#${t.id} ${esc(place(t.from))} → ${esc(t.autoSlot && !t.to ? 'best slot' : place(t.to))}${t.orderId ? ` · order ${esc(t.orderId)}` : ''}</span>
+      <span class="why">${esc(why(t))}</span></li>`).join('')
+      + (queued.length > 12 ? `<li><span class="why" style="margin-left:0">and ${queued.length - 12} more</span></li>` : '')
+      || '<li><span class="why" style="margin-left:0">Nothing queued. Drop in some work.</span></li>';
+    const ids = Object.keys(wh.trucks);
+    const fleet = $('#fleet');
+    const typing = fleet.contains(document.activeElement) && document.activeElement.matches('input');
+    if (!typing) fleet.innerHTML = ids.map((id) => screenHtml(wh, id)).join('');
+    fleet.querySelectorAll('[data-auto]').forEach((b) => (b.onchange = () => {
+      if (b.checked) drive.manual.delete(b.dataset.auto); else drive.manual.add(b.dataset.auto);
+      ls.set('fp.manual', [...drive.manual].join(','));
+      delete eta[b.dataset.auto];
+      renderFloor();
+    }));
+    fleet.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => {
+      ls.set('hh.device', b.dataset.open);
+      $('#dev').value = b.dataset.open;
+      $('#hh').src = 'handheld.html';
+      setView('one');
+    }));
+  }
+  setInterval(() => { renderFloor().catch((err) => console.warn('floor', err)); }, 1000);
+  SortedLocal.ready.then(() => setView(ls.get('fp.view') === 'floor' ? 'floor' : 'one'));
+
   $('#reset').onclick = async () => {
     if (!confirm('Start again with fresh demo stock?')) return;
     await SortedLocal.reset();
+    for (const k of Object.keys(eta)) delete eta[k];
     ls.set('hh.device', 'HH01');
     await devices();
     $('#hh').src = 'handheld.html';
