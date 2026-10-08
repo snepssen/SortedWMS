@@ -64,7 +64,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
 <body>
 <header><strong>SortedWMS</strong><span>Guided shift · isolated demo stock</span><nav><a href="index.html">Simulated shift</a><a href="wms.html">Free play</a></nav></header>
 <main>
-  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option></select></div>
+  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option><option value="recall">Batch recall &amp; traceability</option></select></div>
   <div class="progress"><span id="count">Loading shift</span><progress id="progress" value="0" max="22" aria-label="Shift progress"></progress><button id="restart" title="Restart guided shift" aria-label="Restart guided shift">&#8635;</button></div>
   <section class="step"><div><span class="role" id="owner"></span><h1 id="title">Receiving to shipping</h1><p id="detail" class="muted"></p></div><button id="next" class="primary" disabled>Loading</button></section>
   <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -108,8 +108,13 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
       const locs = Object.values(wh.locations).filter((l) => l.kind === 'rack');
       html = `<h2>Storage & assignment</h2>${table(['Category', 'Rack positions'], Object.entries(wh.categories).map(([id, name]) => [name, locs.filter((l) => l.category === id).length]))}<h3>Reach trucks</h3>${table(['Truck', 'Mode', 'Works'], Object.values(wh.trucks).map((t) => [t.id, SortedWMS.TRUCK_MODES[t.mode].label, t.categories.map((c) => wh.categories[c]).join(', ')]))}<div class="summary"><span>One-way aisles: ${wh.config.oneWay ? 'on' : 'off'}</span><span>Aisle limit: ${wh.config.aisleCap}</span><span>Next-out pallets on ground: ${wh.config.groundNextPerItem}</span><span>Check & label: ${wh.config.checkAfterPick ? 'on' : 'off'}</span></div>`;
     } else if (role === 'office') {
-      html = `<h2>Orders & deliveries</h2>${table(['Delivery', 'Supplier', 'Received', 'Status'], Object.values(wh.deliveries).map((d) => [d.id, d.supplier, `${d.received.length} / ${d.expected}`, d.status]))}${table(['Order', 'Customer', 'Status'], Object.values(wh.orders).map((o) => [o.id, o.customer, o.status]))}<h3>Jobs</h3>${table(['Job', 'From', 'To', 'Status'], Object.values(wh.tasks).filter((t) => t.status !== 'done').map((t) => [t.type, wh.label(t.from), t.to ? wh.label(t.to) : 'Auto slot', t.status]))}`;
-      if (demo.trace) html += `<h3>Batch PRO-LATER</h3>${table(['Customer', 'Order', 'Pallet'], demo.trace.shipped.map((s) => [s.customer, s.orderId, s.sscc]))}`;
+      const orderStatus = (o) => o.status !== 'shipped' && o.lines.some((l) => l.allocated.some((s) => wh.shipState(wh.pallets[s]) !== 'ok')) ? `${o.status} / Shipping held` : o.status;
+      html = `<h2>Orders & deliveries</h2>${table(['Delivery', 'Supplier', 'Received', 'Status'], Object.values(wh.deliveries).map((d) => [d.id, d.supplier, `${d.received.length} / ${d.expected}`, d.status]))}${table(['Order', 'Customer', 'Status'], Object.values(wh.orders).map((o) => [o.id, o.customer, orderStatus(o)]))}<h3>Jobs</h3>${table(['Job', 'From', 'To', 'Status'], Object.values(wh.tasks).filter((t) => t.status !== 'done').map((t) => [t.type, wh.label(t.from), t.to ? wh.label(t.to) : 'Auto slot', t.status]))}`;
+      if (demo.trace) html += `<h3>Batch ${esc(demo.trace.batch)}</h3>${table(['Customer', 'Order', 'Pallet'], demo.trace.shipped.map((s) => [s.customer, s.orderId, s.sscc]))}`;
+      if (demo.scenarioId === 'recall' && wh.batchHolds) {
+        const r = wh.batchRecall('Y1001', 'YOG-RECALL');
+        html += `<h3>Recall: ${r.active ? 'Active hold' : 'Released'}</h3>${demo.notice && r.active ? `<p class="error">${esc(demo.notice)}</p>` : ''}${table(['Affected order', 'Customer', 'Status', 'Batch pallets allocated'], r.openOrders.map((o) => [o.id, o.customer, orderStatus(wh.orders[o.id]), o.heldPallets.length]))}<h3>Recall decisions</h3>${table(['Decision', 'Reason', 'By'], r.history.map((e) => [e.kind === 'hold' ? 'Hold placed' : 'Hold released', e.reason, e.by]))}`;
+      }
       if (demo.scenarioId === 'quality') {
         const checked = Object.values(wh.pallets).filter((p) => p.qualityHistory);
         html += `<h3>Quality holds</h3>${table(['Batch', 'Location', 'Reason', 'Can ship'], checked.map((p) => [p.batch, wh.label(p.loc), p.qualityHold ? p.qualityHold.reason : 'Released', wh.shipState(p) === 'ok' ? 'Yes' : 'No']))}<h3>Inspection & release history</h3>${table(['Batch', 'Action', 'Measured C', 'Limits C', 'Reason', 'By'], checked.flatMap((p) => p.qualityHistory.map((e) => [p.batch, e.kind === 'release' ? 'Released' : e.outside ? 'Quality hold' : 'Reading recorded', e.temperature, e.min == null ? '' : `${e.min} to ${e.max}`, e.reason, e.by])))}`;
@@ -118,7 +123,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
     } else if (role === 'scanner') {
       const truck = wh.trucks[demo.truckId];
       const ins = truck ? wh.instruction(demo.truckId) : { kind: 'idle' };
-      const receiving = (demo.scenarioId === 'shipping' && demo.index >= 4 && demo.index <= 5) || (demo.scenarioId === 'quality' && demo.index === 2);
+      const receiving = (demo.scenarioId === 'shipping' && demo.index >= 4 && demo.index <= 5) || (demo.scenarioId === 'quality' && demo.index === 2) || (demo.scenarioId === 'recall' && demo.index === 17);
       const pallet = ins.pallet;
       const barcode = demo.scanCode;
       const target = receiving ? barcode.slice(2) : ins.target || barcode;
@@ -131,7 +136,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
     }
     $('#surface').innerHTML = html;
     const pallets = Object.values(wh.pallets);
-    $('#stock').innerHTML = table(['SSCC', 'Batch', 'Best before', 'Cases', 'Location', 'Status'], pallets.map((p) => [p.sscc, p.batch, p.expiry, p.qty, p.loc ? wh.label(p.loc) : p.status === 'shipped' ? 'Shipped' : p.status === 'missing' ? 'Location unknown' : 'On truck', p.qualityHold ? 'Quality hold' : p.status]));
+    $('#stock').innerHTML = table(['SSCC', 'Batch', 'Best before', 'Cases', 'Location', 'Status'], pallets.map((p) => [p.sscc, p.batch, p.expiry, p.qty, p.loc ? wh.label(p.loc) : p.status === 'shipped' ? 'Shipped' : p.status === 'missing' ? 'Location unknown' : 'On truck', p.status === 'shipped' ? 'shipped' : wh.holdReason(p) || p.status]));
     $('#audit').innerHTML = demo.journal.slice(-8).reverse().map((r) => `<li><strong>${esc(r.by)} · ${esc(r.title)}</strong><br><small>${esc(r.result ? wh.display(r.result) : demo.scenarioId === 'shipping' ? descriptions[r.op] || r.title : r.title)}</small></li>`).join('') || '<li class="muted">No actions yet</li>';
   }
   function restart() { demo = new SortedWalkthrough.Walkthrough(site, $('#scenario').value); role = demo.step.role; $('#message').className = 'message'; $('#message').textContent = ''; draw(); }

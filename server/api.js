@@ -22,6 +22,7 @@
       sscc: p.sscc, itemNo: p.itemNo, name: item && item.name, category: item && item.category, batch: p.batch, expiry: p.expiry,
       qty: p.qty, status: p.status, blockReason: p.blockReason, shipState: wh.shipState(p), loc: p.loc, locName: placeName(wh, p.loc),
       qualityHold: p.qualityHold || null, qualityHistory: p.qualityHistory || [],
+      recallHold: wh.batchHoldFor(p), holdReason: wh.holdReason(p),
       orderId: p.orderId, inProcess: p.proc ? p.proc.route : null,
     };
   }
@@ -124,11 +125,19 @@
     on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
-    on('GET', '/api/orders', () => Object.values(wh().orders));
+    on('GET', '/api/orders', () => Object.values(wh().orders).map((o) => ({ ...o,
+      shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),
+    })));
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
     on('GET', '/api/items', () => Object.values(wh().items));
     on('GET', '/api/stock', () => wh().stockSummary().map((r) => ({ ...r, next: palletView(wh(), r.next) })));
     on('GET', '/api/quality', () => Object.values(wh().pallets).filter((p) => p.qualityHistory && p.qualityHistory.length).map((p) => palletView(wh(), p)));
+    const recallView = (itemNo, batch) => {
+      const r = wh().batchRecall(itemNo, batch);
+      return { ...r, inStock: r.inStock.map((p) => palletView(wh(), p)) };
+    };
+    on('GET', '/api/recalls', () => (wh().batchHolds || []).map((h) => recallView(h.itemNo, h.batch)));
+    on('GET', '/api/recalls/preview', (_, q) => recallView(q.itemNo, q.batch));
     on('GET', '/api/lookup/:code', ({ code }) => {
       const r = wh().lookup(decodeURIComponent(code));
       if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
@@ -168,6 +177,8 @@
     on('POST', '/api/stations/:id/scan', ({ id }, q, b, by) => run('stationScan', { id, code: b.code }, by));
 
     // Office actions
+    on('POST', '/api/recalls', (_, q, b, by) => run('placeBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
+    on('POST', '/api/recalls/release', (_, q, b, by) => run('releaseBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
     on('POST', '/api/config', (_, q, b, by) => run('setConfig', { patch: b }, by));
     on('POST', '/api/tasks/:taskId/urgent', ({ taskId }, q, b, by) => run('setUrgent', { taskId: Number(taskId), urgent: b.urgent !== false }, by));
     on('POST', '/api/tasks/:taskId/cancel', ({ taskId }, q, b, by) => run('cancelTask', { taskId: Number(taskId) }, by));

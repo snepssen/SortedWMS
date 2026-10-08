@@ -73,11 +73,36 @@
     ['office', 'Record the review decision', 'A simulated quality review releases the hold with a reason. Any independent damage block would remain.', 'Release quality hold', (d, run) => run('releaseQualityHold', { sscc: d.first, reason: 'Demo review completed: original measurement investigated and stock accepted by quality.' })],
     ['office', 'Allocate released stock', 'Order 4702 can now take the earlier yoghurt pallet. The inspection and release history remains attached.', 'Release order 4702', (d, run) => run('addOrder', { id: '4702', customer: 'City Deli', lane: 'OUT-02', lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
   ]);
+  const recallSteps = operationSteps([
+    ['office', 'Load the batch', 'Three yoghurt pallets share YOG-RECALL. A fourth pallet belongs to a different, eligible batch.', 'Load stock', (d, run) => run('importStock', { rows: [stock(d, 'AA01A1', d.first, 'YOG-RECALL', '2026-11-20'), stock(d, 'AB01A1', d.second, 'YOG-RECALL', '2026-11-20'), stock(d, 'AA02A1', d.third, 'YOG-RECALL', '2026-11-20'), stock(d, 'AB02A1', d.fourth, 'YOG-CLEAR', '2026-12-20')] })],
+    ['admin', 'Assign the truck', 'RT-YOG picks yoghurt in Auto.', 'Assign truck', (d, run) => run('addTruck', { id: d.truckId, categories: ['YOG'] })],
+    ['office', 'Release the first order', 'Fresh Market orders one pallet before the recall is known.', 'Release order 4801', (d, run) => run('addOrder', { id: '4801', customer: 'Fresh Market', lane: 'OUT-01', lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
+    ['scanner', 'Collect the first pallet', 'Scan the allocated YOG-RECALL pallet.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Drop the first pallet', 'Scan OUT-01.', 'Scan shipping lane', (d) => d.scanExpected()],
+    ['scanner', 'Check the first pallet', 'Generate its shipping label.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Confirm its label', 'The order becomes ready to ship.', 'Scan shipping label', (d) => d.scanExpected()],
+    ['office', 'Record the earlier shipment', 'Fresh Market receives the first pallet. Its recipient record must remain discoverable.', 'Confirm shipment', (d, run) => run('shipOrder', { id: '4801' })],
+    ['office', 'Release the next order', 'City Deli orders another pallet from the same batch.', 'Release order 4802', (d, run) => run('addOrder', { id: '4802', customer: 'City Deli', lane: 'OUT-02', lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
+    ['scanner', 'Collect for City Deli', 'Scan the second YOG-RECALL pallet.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Drop at OUT-02', 'The pallet reaches the shipping lane.', 'Scan shipping lane', (d) => d.scanExpected()],
+    ['scanner', 'Check for City Deli', 'Generate the shipping label.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Confirm the second label', 'City Deli is ready, but has not shipped.', 'Scan shipping label', (d) => d.scanExpected()],
+    ['office', 'Release an uncollected order', 'Corner Shop gets the third pallet. It is assigned to the truck, but not yet collected.', 'Release order 4803', (d, run) => run('addOrder', { id: '4803', customer: 'Corner Shop', lane: 'OUT-03', lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
+    ['office', 'Place the batch recall hold', 'A supplier concern holds every Y1001 / YOG-RECALL pallet. The uncollected pick switches to YOG-CLEAR; City Deli stays stopped at shipping.', 'Hold the batch', (d, run) => run('placeBatchHold', { itemNo: 'Y1001', batch: 'YOG-RECALL', reason: 'Demo supplier recall notice; stock awaiting investigation.' })],
+    ['office', 'Reject loading held stock', 'Attempting to ship the already-checked City Deli pallet is refused. No stock leaves the warehouse.', 'Verify shipment is stopped', (d) => { try { d.wh.shipOrder('4802'); } catch (e) { if (/Batch recall/.test(e.message)) { d.notice = e.message; return; } throw e; } throw new Error('Held stock unexpectedly shipped'); }],
+    ['office', 'Announce a late arrival', 'The supplier sends one more pallet from YOG-RECALL. The active rule must catch new receipts too.', 'Open late delivery', (d, run) => { run('addDelivery', { id: 'RECALL-IN', supplier: 'Demo dairy', category: 'YOG', at: 'desk', list: [{ sscc: d.fifth, itemNo: 'Y1001', batch: 'YOG-RECALL', expiry: '2026-11-20', qty: 96 }] }); return run('deskStart', { id: 'DESK1', deliveryId: 'RECALL-IN' }); }],
+    ['scanner', 'Receive with the recall warning', 'The new pallet is registered at receiving, but cannot ship. Physical segregation is a separate warehouse procedure.', 'Scan supplier SSCC', (d, run) => run('scan', { id: 'DESK1', code: `00${d.fifth}` })],
+    ['office', 'Trace the affected batch', 'The report identifies Fresh Market, held warehouse pallets, and affected open orders. No customer contact is sent by this prototype.', 'Review recall report', (d) => { d.trace = d.wh.batchRecall('Y1001', 'YOG-RECALL'); }],
+    ['office', 'Record a separate quality concern', 'The third pallet also gets a temperature hold. Releasing the recall must not clear this independent restriction.', 'Record inspection', (d, run) => run('recordTemperature', { sscc: d.third, temperature: 9, min: 2, max: 6, reason: 'Separate demo temperature concern; quality review still required.' })],
+    ['office', 'Record a recall decision', 'A simulated supplier investigation closes the recall. The quality hold remains; historical recipients and decisions are retained.', 'Release batch hold', (d, run) => run('releaseBatchHold', { itemNo: 'Y1001', batch: 'YOG-RECALL', reason: 'Demo investigation complete: supplier notice withdrawn and batch accepted.' })],
+    ['office', 'Resume the cleared shipment', 'City Deli can now ship. The third pallet remains blocked by its independent temperature hold.', 'Confirm City Deli shipped', (d, run) => { run('shipOrder', { id: '4802' }); d.trace = d.wh.batchRecall('Y1001', 'YOG-RECALL'); }],
+  ]);
   const scenarios = {
     shipping: { label: 'Receiving to shipping', steps, truckId: 'RT-PRO', complete: 'Received, processed, shipped and traced', outcome: 'Fresh Market received PRO-LATER. PRO-EARLY remains blocked in storage.' },
     shift: { label: 'Auto-Shift & partitioning', steps: shiftSteps, truckId: 'RT-YOG', complete: 'Replenished and relocated', outcome: 'YOG-EARLY is on the ground in yoghurt storage. The repartitioned position is empty; YOG-LATER stays above.' },
     manual: { label: 'Manual work & corrections', steps: manualSteps, truckId: 'RT-YOG', complete: 'Picked, put away and reconciled', outcome: '4602 is ready. The pick for 4601 follows its corrected location. YOG-SPARE is found and the location-unknown list is empty.' },
     quality: { label: 'Temperature & quality holds', steps: qualitySteps, truckId: 'RT-YOG', complete: 'Inspected, held and reviewed', outcome: '4701 took eligible replacement stock. After a recorded quality decision, 4702 allocated YOG-REVIEW. Both readings and the release decision remain in the history.' },
+    recall: { label: 'Batch recall & traceability', steps: recallSteps, truckId: 'RT-YOG', complete: 'Held, traced and reviewed', outcome: 'Fresh Market was identified as an earlier recipient. City Deli stopped at shipping until release; Corner Shop switched to another batch. The late receipt was caught, and the independent temperature hold remains.' },
   };
 
   class Walkthrough {
@@ -96,6 +121,7 @@
       this.second = GS1.makeSscc(3, '8799999', 9102);
       this.third = GS1.makeSscc(3, '8799999', 9103);
       this.fourth = GS1.makeSscc(3, '8799999', 9104);
+      this.fifth = GS1.makeSscc(3, '8799999', 9105);
       this.wh.setConfig({ groundNextPerItem: 0, checkAfterPick: true });
     }
     get step() { return this.steps[this.index] || null; }
@@ -108,6 +134,7 @@
     }
     get scanCode() {
       if (this.scenarioId === 'quality' && this.index === 2) return `00${this.first}`;
+      if (this.scenarioId === 'recall' && this.index === 17) return `00${this.fifth}`;
       if (this.scenarioId === 'shipping' && [4, 5].includes(this.index)) return `00${this.index === 4 ? this.first : this.second}`;
       if (this.scenarioId === 'manual') {
         const codes = { 3: 'O4602', 8: 'CMD-PUTAWAY', 10: this.third, 12: 'CMD-TRANSFER', 13: this.first, 14: 'AA02A1', 15: this.fourth, 16: 'AA03A1' };
@@ -118,8 +145,10 @@
       return ['pickup', 'check-pallet'].includes(ins.kind) ? ins.pallet.sscc : ins.target || null;
     }
     command(op, args, by) {
+      const palletCount = Object.keys(this.wh.pallets).length;
       const result = Commands.COMMANDS[op](this.wh, args, by);
-      if (result && result.ok === false && !(op === 'scan' && args.code === 'CMD-DAMAGED' && this.wh.pallets[this.first].status === 'blocked')) throw new Error(result.text);
+      const receivedWithWarning = op === 'scan' && Object.keys(this.wh.pallets).length > palletCount;
+      if (result && result.ok === false && !receivedWithWarning && !(op === 'scan' && args.code === 'CMD-DAMAGED' && this.wh.pallets[this.first].status === 'blocked')) throw new Error(result.text);
       const actor = ['scan', 'deskStart', 'stationScan'].includes(op) ? args.id : by;
       this.journal.push({ op, args, by: actor, title: this.step.title, t: this.time, result: result && result.text });
       return result;

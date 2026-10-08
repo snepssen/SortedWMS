@@ -6,12 +6,13 @@ A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, chees
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
-**Guided scenarios:** `walkthrough.html` has four selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
+**Guided scenarios:** `walkthrough.html` has five selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
 
 - **Receiving to shipping (22 steps):** protein drinks through partitioning, receiving, Auto put-away, FEFO allocation, damage replacement, pallet change, check & label, shipping and batch trace.
 - **Auto-Shift & partitioning (8 steps):** bring the next-out yoghurt pallet down, change its location's partition, then relocate it into yoghurt storage.
 - **Manual work & corrections (17 steps):** choose one of two orders, pick and label it, put away a dock pallet, correct a misplaced pallet, and recover stock displaced onto the location-unknown list. A pending pick follows the corrected location.
 - **Temperature & quality holds (12 steps):** receive a yoghurt pallet, record an out-of-range temperature, store it on hold, allocate eligible replacement stock, record a follow-up, and release it with a review reason. The example limits are demonstration values, not product requirements.
+- **Batch recall & traceability (22 steps):** identify an earlier shipped recipient, hold ready and uncollected stock, replace an uncollected pick from another batch, catch a late receipt, and release the batch without clearing an independent temperature hold.
 
 Switch between Admin, Office, Scanner and Station to inspect the same warehouse state, including jobs, stock, corrections and the audit. These are demonstration views, not access-controlled roles. Browser labels are generated but are not sent to a printer. Trailer loading verification and the broader refrigerated workflows remain future work.
 
@@ -61,6 +62,7 @@ Each truck is set to the **categories its operator works** (yoghurt, cheese, pro
   - The manager can let a single short pallet ship anyway (e.g. a customer accepts it).
 - **Blocked stock never ships.** That covers pallets reported damaged, or expired on arrival. The coordinator can release them.
 - **Temperature checks and quality holds:** Stock & trace in the office records a pallet's measured temperature, the limits used, an inspection note and the operator. Out-of-range readings create a separate quality hold. In-range follow-ups do not clear it; release requires a recorded reason and leaves independent damage blocks intact. Uncollected picks get replacement stock, and shipment checks eligibility again before removing any pallets. These are recorded spot checks, not continuous temperature monitoring or a physical quarantine-zone workflow.
+- **Batch recalls:** The office's Batch recalls view previews stock and shipped recipients for an exact item and batch, then records a reasoned hold. The rule catches later receipts and opening-stock imports, replaces uncollected picks only with eligible stock, and blocks checking and final shipment even after labels were confirmed. A carried pallet may still be dropped safely. Affected orders remain in the report after replacement; shortage lines are not automatically refilled. Release records a decision without clearing temperature or damage holds. History survives replay and permits a new hold after release. Customer contact, return tracking, disposal and physical quarantine are not implemented; this is a demonstrator, not a certified recall system.
 
 ### Working without Auto
 Each handheld has a mode bar. Auto is the default; the others are for when a driver works on their own:

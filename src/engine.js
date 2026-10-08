@@ -455,7 +455,7 @@
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
     shipState(pallet) {
-      if (pallet.status === 'blocked' || pallet.qualityHold) return 'blocked';
+      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet)) return 'blocked';
       const days = daysBetween(this.today(), pallet.expiry);
       if (days < 0) return 'expired';
       if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
@@ -574,18 +574,71 @@
       (pallet.qualityHistory || (pallet.qualityHistory = [])).push(event);
       if (outside) {
         pallet.qualityHold = event;
-        // Reallocate picks that have not been collected; a carried pallet may still be dropped safely.
-        for (const task of Object.values(this.tasks)) {
-          if (task.sscc !== sscc || task.type !== 'PICK' || !['open', 'active'].includes(task.status) || task.step !== 0) continue;
-          this._unassign(task);
-          task.status = 'held';
-          task.heldReason = 'Quality hold';
-          this._replacePick(task);
-        }
+        this._holdUncollectedPicks([sscc], 'Quality hold');
       }
       this.log(`Pallet …${sscc.slice(-6)}: ${temperature} C (limits ${min} to ${max} C), ${outside ? 'quality hold' : 'reading recorded'}: ${event.reason}`);
       this.dispatch();
       return event;
+    }
+
+    _holdUncollectedPicks(ssccs, reason) {
+      const held = new Set(ssccs);
+      // Carried stock can still be dropped safely; check and shipment gates reject it.
+      for (const task of Object.values(this.tasks)) {
+        if (!held.has(task.sscc) || task.type !== 'PICK' || !['open', 'active'].includes(task.status) || task.step !== 0) continue;
+        this._unassign(task);
+        task.status = 'held';
+        task.heldReason = reason;
+        this._replacePick(task);
+      }
+    }
+
+    batchHoldFor(pallet) {
+      return (this.batchHolds || []).find((h) => h.active && h.itemNo === pallet.itemNo && h.batch === String(pallet.batch).trim().toUpperCase()) || null;
+    }
+
+    _batchIdentity(itemNo, batch) {
+      if (!this.items[itemNo]) throw new Error(`Unknown item ${itemNo}`);
+      if (typeof batch !== 'string' || !batch.trim()) throw new Error('A batch number is required');
+      return batch.trim().toUpperCase();
+    }
+
+    placeBatchHold(itemNo, batch, reason, by = 'office') {
+      const b = this._batchIdentity(itemNo, batch);
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A recall reason is required');
+      let hold = (this.batchHolds || []).find((h) => h.itemNo === itemNo && h.batch === b);
+      if (hold && hold.active) throw new Error('This item and batch already has an active recall hold');
+      const affected = Object.values(this.pallets).filter((p) => p.itemNo === itemNo && String(p.batch).trim().toUpperCase() === b);
+      const event = { kind: 'hold', t: this.now(), reason: reason.trim(), by, orders: [...new Set(affected.map((p) => p.orderId).filter(Boolean))] };
+      if (!hold) {
+        hold = { itemNo, batch: b, active: false, history: [] };
+        (this.batchHolds || (this.batchHolds = [])).push(hold);
+      }
+      // Install the whole-batch rule before allocating any replacement pallets.
+      hold.active = true;
+      hold.history.push(event);
+      this._holdUncollectedPicks(affected.map((p) => p.sscc), `Batch recall: ${b}`);
+      this.log(`${itemNo} batch ${b}: recall hold placed by ${by}: ${event.reason}`);
+      this.dispatch();
+      return hold;
+    }
+
+    releaseBatchHold(itemNo, batch, reason, by = 'office') {
+      const b = this._batchIdentity(itemNo, batch);
+      const hold = (this.batchHolds || []).find((h) => h.itemNo === itemNo && h.batch === b && h.active);
+      if (!hold) throw new Error('This item and batch has no active recall hold');
+      if (typeof reason !== 'string' || !reason.trim()) throw new Error('A recall release reason is required');
+      hold.history.push({ kind: 'release', t: this.now(), reason: reason.trim(), by });
+      hold.active = false;
+      this.log(`${itemNo} batch ${b}: recall hold released by ${by}: ${reason.trim()}`);
+      this.planGround();
+      this.dispatch();
+      return hold;
+    }
+
+    holdReason(pallet) {
+      const recall = this.batchHoldFor(pallet);
+      return [recall && `Batch recall: ${recall.batch}`, pallet.qualityHold && `Quality hold: ${pallet.qualityHold.reason}`, pallet.status === 'blocked' && pallet.blockReason].filter(Boolean).join('; ');
     }
 
     releaseQualityHold(sscc, reason, by = 'office') {
@@ -726,7 +779,10 @@
       const task = this._task(taskId);
       if (task.status !== 'held') return;
       if (task.blockedLoc) this.locations[task.blockedLoc].blocked = false;
-      if (task.replacedBy) {
+      if (task.type === 'PICK' && this.pallets[task.sscc].orderId !== task.orderId) {
+        task.status = 'cancelled';
+        this.log(`Job #${task.id} closed (allocation removed)`, { taskId });
+      } else if (task.replacedBy) {
         task.status = 'cancelled';
         this.log(`Job #${task.id} closed (replaced by #${task.replacedBy})`, { taskId });
       } else {
@@ -789,7 +845,7 @@
       if (order.status !== 'ready') throw new Error(`Order ${id} is not ready to load`);
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const pallet = this.pallets[sscc];
-        if (this.shipState(pallet) !== 'ok') throw new Error(`Pallet …${sscc.slice(-6)} cannot ship: ${pallet.qualityHold ? 'quality hold' : this.shipState(pallet)}`);
+        if (this.shipState(pallet) !== 'ok') throw new Error(`Pallet …${sscc.slice(-6)} cannot ship: ${this.holdReason(pallet) || this.shipState(pallet)}`);
         if (pallet.loc !== order.lane) throw new Error(`Pallet …${sscc.slice(-6)} is not on ${order.lane}`);
       }
       const shipped = [];
@@ -1399,7 +1455,7 @@
       const f = [];
       const state = this.shipState(p);
       if (p.status === 'missing') f.push('location unknown');
-      else if (state === 'blocked') f.push(`BLOCKED${p.qualityHold ? `: Quality hold - ${p.qualityHold.reason}` : p.blockReason ? `: ${p.blockReason}` : ''}`);
+      if (state === 'blocked') f.push(`BLOCKED: ${this.holdReason(p)}`);
       else if (state !== 'ok') f.push(`${state === 'expired' ? 'expired' : 'too short-dated to ship'}`);
       if (p.orderId && p.status !== 'shipped') f.push(`order ${p.orderId}`);
       if (p.proc) f.push(`in process: ${this.routes[p.proc.route] ? this.routes[p.proc.route].name : p.proc.route}`);
@@ -1559,17 +1615,28 @@
     // ---- Traceability -----------------------------------------------------------
 
     /** Everything about a batch: where it came from, what's in stock, who got it. */
-    trace(batch) {
+    trace(batch, itemNo = null) {
       const b = String(batch).trim().toUpperCase();
-      const pallets = Object.values(this.pallets).filter((p) => String(p.batch).toUpperCase() === b);
+      const matches = (p) => String(p.batch).trim().toUpperCase() === b && (!itemNo || p.itemNo === itemNo);
+      const pallets = Object.values(this.pallets).filter(matches);
       const deliveries = [...new Set(pallets.map((p) => p.deliveryId).filter(Boolean))].map((id) => this.deliveries[id]);
-      const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter((p) => String(p.batch).toUpperCase() === b).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t })));
+      const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter(matches).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t })));
       return {
         batch: b,
         inStock: pallets.filter((p) => p.status !== 'shipped'),
         received: deliveries.map((d) => ({ id: d.id, supplier: d.supplier, t: d.createdAt })),
         shipped,
         customers: [...new Set(shipped.map((s) => s.customer))],
+      };
+    }
+
+    batchRecall(itemNo, batch) {
+      const b = this._batchIdentity(itemNo, batch);
+      const hold = (this.batchHolds || []).find((h) => h.itemNo === itemNo && h.batch === b);
+      const trace = this.trace(b, itemNo);
+      const orderIds = new Set([...(hold ? hold.history.flatMap((e) => e.orders || []) : []), ...trace.inStock.map((p) => p.orderId).filter(Boolean)]);
+      return { ...trace, itemNo, active: Boolean(hold && hold.active), history: hold ? hold.history : [],
+        openOrders: Object.values(this.orders).filter((o) => orderIds.has(o.id) && o.status !== 'shipped').map((o) => ({ id: o.id, customer: o.customer, status: o.status, heldPallets: trace.inStock.filter((p) => p.orderId === o.id).map((p) => p.sscc) })),
       };
     }
 
@@ -1935,7 +2002,7 @@
 
     _matchPickup(truck, task, code) {
       const pallet = this.pallets[task.sscc];
-      if (task.type === 'PICK' && this.shipState(pallet) !== 'ok') return { ok: false, text: `Pallet cannot ship (${pallet.qualityHold ? 'quality hold' : this.shipState(pallet)})` };
+      if (task.type === 'PICK' && this.shipState(pallet) !== 'ok') return { ok: false, text: `Pallet cannot ship (${this.holdReason(pallet) || this.shipState(pallet)})` };
       const fromLoc = this.locations[task.from];
       if (code === task.sscc) return { ok: true, text: '' };
       if (fromLoc.kind === 'rack' && code === task.from) return { ok: true, text: '' };
@@ -1956,7 +2023,7 @@
       const loc = this.locations[p.loc];
       if (!loc || (loc.kind !== 'rack' && loc.kind !== 'block')) return 'That pallet is not in storage';
       if (loc.kind === 'block' && !this._reachable(p)) return 'That pallet is buried in the stack';
-      if (this.shipState(p) !== 'ok') return `That pallet can't ship (${p.blockReason || 'too short-dated'})`;
+      if (this.shipState(p) !== 'ok') return `That pallet can't ship (${this.holdReason(p) || this.shipState(p)})`;
       if (p.orderId) return `That pallet is for order ${p.orderId}`;
       if (loc.blocked) return `${loc.code} is blocked`;
       if (this._capacityLeft(loc.aisle, truck.id) <= 0 && loc.aisle !== this._aisle(task.from)) return `Aisle ${loc.aisle} is full`;
@@ -2049,7 +2116,7 @@
         const problem = this._checkProblem(scanned, order);
         if (problem) {
           task.alert = problem;
-          return this._fail(truck, `${problem}. Report it as damaged or call the coordinator`);
+          return this._fail(truck, `${problem}. Call the coordinator`);
         }
         const index = ++order.labels;
         task.labelCode = `SL${order.id}${pad(index, 2)}`;
@@ -2068,6 +2135,11 @@
       }
       if (code !== task.labelCode) return this._fail(truck, `Scan the new shipping label ${task.labelCode}`);
       const pallet = this.pallets[task.sscc];
+      const problem = this._checkProblem(pallet, order);
+      if (problem) {
+        task.alert = problem;
+        return this._fail(truck, `${problem}. Call the coordinator`);
+      }
       pallet.checked = true;
       pallet.labelCode = task.labelCode;
       this._finish(truck, task);
@@ -2079,7 +2151,7 @@
     _checkProblem(pallet, order) {
       if (pallet.orderId !== order.id) return 'Pallet is not allocated to this order';
       const state = this.shipState(pallet);
-      if (state === 'blocked') return `Pallet is blocked (${pallet.qualityHold ? 'Quality hold: ' + pallet.qualityHold.reason : pallet.blockReason})`;
+      if (state === 'blocked') return `Pallet is blocked (${this.holdReason(pallet)})`;
       if (state === 'expired') return 'Pallet is past its expiry date';
       if (state === 'short') return `Only ${this.daysLeft(pallet)} days left, minimum to ship is ${this.items[pallet.itemNo].minShipDays}`;
       if (!order.lines.some((l) => l.itemNo === pallet.itemNo)) return 'Wrong item for this order';
@@ -2318,7 +2390,7 @@
       task.draft = {};
       this._newTask({ type: 'PUTAWAY', category: item.category, sscc: pallet.sscc, from: 'DOCK-IN', to: null });
       const state = this.shipState(pallet);
-      const note = state === 'blocked' ? ` — BLOCKED: ${blockReason}`
+      const note = state === 'blocked' ? ` — BLOCKED: ${this.holdReason(pallet)}`
         : state === 'short' ? ` — short date: ${daysLeft} days left, minimum to ship is ${item.minShipDays}` : '';
       this.log(`${truck.id} received …${pallet.sscc.slice(-6)} ${item.itemNo} batch ${pallet.batch}${note}`, { truckId: truck.id, taskId: task.id });
       const count = `${delivery.received.length} of ${delivery.expected}`;

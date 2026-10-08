@@ -99,6 +99,7 @@
     floor: { label: 'Floor', render: renderFloor },
     locations: { label: 'Locations', render: renderLocations },
     stock: { label: 'Stock & trace', render: renderStock },
+    recalls: { label: 'Batch recalls', render: renderRecalls },
     orders: { label: 'Orders & deliveries', render: renderOrders },
     imports: { label: 'Import', render: renderImports },
     audit: { label: 'Audit', render: renderAudit },
@@ -186,6 +187,28 @@
 
   // ---- Orders and deliveries ------------------------------------------------------------
 
+  function recallReport(r) {
+    return `<p><b>${esc(r.itemNo)} / ${esc(r.batch)}</b> <span class="tag ${r.active ? 'bad' : ''}">${r.active ? 'Recall hold active' : 'No active recall hold'}</span></p>
+      <p>${r.inStock.length} pallet(s) in warehouse (${r.inStock.reduce((n, p) => n + p.qty, 0)} cases). ${r.shipped.length} shipped (${r.shipped.reduce((n, p) => n + p.qty, 0)} cases).</p>
+      <h3>Warehouse stock</h3>${table(['SSCC', 'Location', 'Cases', 'Order', 'Shipping eligibility'], r.inStock.map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.locName || (p.status === 'missing' ? 'Location unknown' : 'On truck'))}</td><td>${p.qty}</td><td>${esc(p.orderId || '')}</td><td>${esc(p.holdReason || p.shipState)}</td></tr>`))}
+      <h3>Affected open orders</h3>${table(['Order', 'Customer', 'Status', 'Batch pallets still allocated'], r.openOrders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td><td>${o.heldPallets.length}</td></tr>`))}
+      <h3>Shipped recipients</h3>${table(['Shipped', 'Customer', 'Order', 'SSCC', 'Cases'], r.shipped.map((s) => `<tr><td>${when(s.t)}</td><td>${esc(s.customer)}</td><td>${esc(s.orderId)}</td><td class="mono">${esc(s.sscc)}</td><td>${s.qty}</td></tr>`))}
+      <h3>Decision history</h3>${table(['When', 'Decision', 'Reason', 'By'], r.history.map((e) => `<tr><td>${when(e.t)}</td><td>${e.kind === 'hold' ? 'Hold placed' : 'Hold released'}</td><td>${esc(e.reason)}</td><td>${esc(e.by)}</td></tr>`))}`;
+  }
+
+  async function renderRecalls() {
+    const items = await api('GET', '/api/items');
+    const recalls = await api('GET', '/api/recalls');
+    return `<section><h2>Batch recall</h2>
+      <form id="recallForm" class="form">
+        <label>Item <select id="rItem">${items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('')}</select></label>
+        <label>Batch <input id="rBatch" required></label>
+        <label>Recall reason <input id="rReason"></label>
+        <button type="submit">Preview affected stock</button><button id="rHold" type="button" disabled>Place recall hold</button>
+      </form><div id="recallOut" class="out" style="display:none"></div><div id="recallPreview"></div>
+      </section>${recalls.map((r, i) => `<section>${recallReport(r)}${r.active ? `<div class="form"><label>Release decision <input id="rRelease-${i}"></label><button data-recall-release="${i}" data-item="${esc(r.itemNo)}" data-batch="${esc(r.batch)}">Release batch hold</button></div>` : ''}</section>`).join('')}`;
+  }
+
   async function renderOrders() {
     const [orders, deliveries, items] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items')]);
     const itemOpts = items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('');
@@ -204,7 +227,7 @@
       <section style="grid-column:1/-1"><h2>Orders</h2>${table(['Order', 'Customer', 'Lane', 'Lines', 'Status', ''], orders.slice().reverse().map((o) => `<tr>
         <td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.lane)}</td>
         <td class="wrap">${o.lines.map((l) => `${esc(l.itemNo)} × ${l.pallets}${l.allocated && l.allocated.length < l.pallets ? ` <span class="tag held">${l.allocated.length} allocated</span>` : ''}${l.process ? ` · ${esc(l.process)}` : ''}`).join('<br>')}</td>
-        <td><span class="tag">${esc(o.status)}</span></td><td>${o.status === 'ready' ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button>` : ''}</td></tr>`))}</section>
+        <td><span class="tag">${esc(o.status)}</span>${o.shippingHolds.length ? `<span class="tag bad">Shipping held</span><div class="hint wrap">${esc([...new Set(o.shippingHolds.map((h) => h.reason))].join('; '))}</div>` : ''}</td><td>${o.status === 'ready' && !o.shippingHolds.length ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button>` : ''}</td></tr>`))}</section>
       <section style="grid-column:1/-1"><h2>Deliveries</h2>${table(['Delivery', 'Supplier', 'Category', 'Pallets', 'Received', 'At', 'Status'], deliveries.slice().reverse().map((d) => `<tr>
         <td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(S.categories[d.category] || d.category)}</td><td>${d.expected}${d.hasList ? ' <span class="hint">(list)</span>' : ''}</td><td>${(d.received || []).length}</td><td>${esc(d.at)}</td><td><span class="tag">${esc(d.status)}</span></td></tr>`))}</section>
     </div>`;
@@ -319,6 +342,35 @@
           ${r.shipped.length ? table(['Shipped', 'Pallet', 'Order', 'Customer'], r.shipped.map((s) => `<tr><td>${when(s.t)}</td><td class="mono">${short(s.sscc)}</td><td>${esc(s.orderId)}</td><td>${esc(s.customer)}</td></tr>`)) : ''}`;
       } catch (e) { $('#trcOut').innerHTML = `<div class="out bad">${esc(e.message)}</div>`; }
     });
+    // Batch recalls
+    const recallAction = async (fn) => {
+      let message = 'Decision recorded', ok = true;
+      try { await fn(); await draw(); } catch (e) { message = e.message; ok = false; }
+      const out = $('#recallOut');
+      if (out) { out.style.display = ''; out.className = `out ${ok ? 'ok' : 'bad'}`; out.textContent = message; }
+    };
+    if ($('#recallForm')) {
+      let previewScope = null;
+      const scope = () => ({ itemNo: $('#rItem').value, batch: $('#rBatch').value.trim() });
+      $('#recallForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const requested = scope();
+        $('#rHold').disabled = true;
+        try {
+          const r = await api('GET', `/api/recalls/preview?${new URLSearchParams(requested)}`);
+          if (JSON.stringify(requested) !== JSON.stringify(scope())) return;
+          $('#recallPreview').innerHTML = recallReport(r);
+          previewScope = requested;
+          $('#rHold').disabled = r.active;
+        } catch (err) { $('#recallPreview').innerHTML = `<div class="out bad">${esc(err.message)}</div>`; }
+      };
+      for (const id of ['#rItem', '#rBatch']) $(id).oninput = () => { previewScope = null; $('#rHold').disabled = true; $('#recallPreview').innerHTML = ''; };
+      on('#rHold', () => {
+        if (!previewScope || JSON.stringify(previewScope) !== JSON.stringify(scope())) return;
+        recallAction(() => api('POST', '/api/recalls', { ...previewScope, reason: $('#rReason').value }));
+      });
+    }
+    document.querySelectorAll('[data-recall-release]').forEach((b) => (b.onclick = () => recallAction(() => api('POST', '/api/recalls/release', { itemNo: b.dataset.item, batch: b.dataset.batch, reason: $(`#rRelease-${b.dataset.recallRelease}`).value }))));
     // Orders
     on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
       const line = { itemNo: $('#oItem').value, pallets: Number(val('#oPal')) || 1 };

@@ -70,7 +70,7 @@ test('shipment rechecks all pallets before changing any stock', () => {
   assert.equal(wh.orders.Q1.status, 'ready');
   wh.recordTemperature(second.sscc, 9, 2, 6, 'Loading inspection');
   const held = JSON.stringify(wh);
-  assert.throws(() => wh.shipOrder('Q1'), /quality hold/);
+  assert.throws(() => wh.shipOrder('Q1'), /quality hold/i);
   assert.equal(JSON.stringify(wh), held);
   assert.equal(first.loc, 'OUT-01');
   wh.releaseQualityHold(second.sscc, 'Reviewed and accepted');
