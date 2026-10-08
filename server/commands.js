@@ -54,8 +54,10 @@
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 
     // Orders and deliveries
-    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines') }),
-    shipOrder: (wh, a) => wh.shipOrder(String(req(a.id, 'id'))),
+    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading }),
+    startLoading: (wh, a, by) => wh.startLoading(String(req(a.id, 'id')), req(a.trailer, 'trailer'), by),
+    scanLoading: (wh, a, by) => wh.scanLoading(String(req(a.id, 'id')), req(a.device, 'device'), req(a.code, 'code'), a.unload === undefined ? false : a.unload, by),
+    shipOrder: (wh, a, by) => wh.shipOrder(String(req(a.id, 'id')), { seal: a.seal }, by),
     addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock' }),
 
     // Master data and imports

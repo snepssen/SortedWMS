@@ -24,12 +24,16 @@
     ['scanner', 'Drop at shipping', 'Scan OUT-01. Checking and labelling follows.', 'Scan shipping lane'],
     ['scanner', 'Check the pallet', 'Scan the picked pallet to generate its shipping label.', 'Scan pallet'],
     ['scanner', 'Confirm the label', 'Scan the generated shipping label.', 'Scan shipping label'],
-    ['office', 'Confirm shipment', 'The order is ready. This prototype records shipment with an office confirmation; trailer verification is still a future workflow.', 'Confirm shipped'],
+    ['office', 'Confirm shipment', 'This original scenario uses office shipment confirmation. The separate Trailer loading scenario adds pallet-to-trailer verification and sealing.', 'Confirm shipped'],
     ['office', 'Trace the shipped batch', 'Follow the replacement batch from delivery to Fresh Market. The damaged batch remains in stock on hold.', 'Trace batch'],
   ].map(([role, title, detail, action]) => ({ role, title, detail, action }));
 
   const operationSteps = (rows) => rows.map(([role, title, detail, action, execute]) => ({ role, title, detail, action, execute }));
   const stock = (d, code, sscc, batch, expiry) => ({ code, sscc, itemNo: 'Y1001', batch, expiry, qty: 96 });
+  const rejected = (d, action, pattern) => {
+    try { action(); } catch (e) { if (pattern.test(e.message)) { d.notice = e.message; return; } throw e; }
+    throw new Error('Unsafe operation unexpectedly succeeded');
+  };
   const shiftSteps = operationSteps([
     ['office', 'Load opening stock', 'Two yoghurt batches stand on upper levels. The earlier date should ship first.', 'Load stock', (d, run) => run('importStock', { rows: [stock(d, 'AA01C1', d.first, 'YOG-EARLY', '2026-11-20'), stock(d, 'AB01D1', d.second, 'YOG-LATER', '2026-12-20')] })],
     ['admin', 'Assign Auto-Shift work', 'RT-YOG handles yoghurt replenishment and relocation only.', 'Assign truck', (d, run) => run('addTruck', { id: d.truckId, categories: ['YOG'], mode: 'shift' })],
@@ -112,6 +116,35 @@
     ['scanner', 'Confirm return to normal storage', 'Scan the assigned, non-quarantine yoghurt position. This physical confirmation completes the quarantine workflow.', 'Scan normal storage position', (d) => d.scanExpected()],
     ['office', 'Allocate the returned pallet', 'Order 4902 can now allocate the earlier pallet. Requests, arrival, release and return remain in the history.', 'Release order 4902', (d, run) => run('addOrder', { id: '4902', customer: 'City Deli', lane: 'OUT-02', lines: [{ itemNo: 'Y1001', pallets: 1 }] })],
   ]);
+  const loadingSteps = operationSteps([
+    ['office', 'Prepare outbound stock', 'Two yoghurt pallets are available for Fresh Market.', 'Load stock', (d, run) => run('importStock', { rows: [stock(d, 'AA01A1', d.first, 'YOG-LOAD-A', '2026-11-20'), stock(d, 'AB01A1', d.second, 'YOG-LOAD-B', '2026-12-20')] })],
+    ['admin', 'Assign picking', 'RT-YOG picks and labels the outbound order.', 'Assign truck', (d, run) => run('addTruck', { id: d.truckId, categories: ['YOG'] })],
+    ['office', 'Require verified loading', 'Order 5001 requires both pallets on its assigned trailer and a seal before dispatch.', 'Release order 5001', (d, run) => run('addOrder', { id: '5001', customer: 'Fresh Market', lane: 'OUT-01', verifyLoading: true, lines: [{ itemNo: 'Y1001', pallets: 2 }] })],
+    ['scanner', 'Pick the earlier batch', 'Scan the first FEFO allocation.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Stage the earlier batch', 'Scan OUT-01.', 'Scan shipping lane', (d) => d.scanExpected()],
+    ['scanner', 'Pick the second batch', 'Scan the remaining allocation.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Stage the second batch', 'Both pallets must reach the order lane.', 'Scan shipping lane', (d) => d.scanExpected()],
+    ['scanner', 'Check the first pallet', 'Generate its shipping label.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Confirm the first label', 'Scan the label attached to the pallet.', 'Scan shipping label', (d) => d.scanExpected()],
+    ['scanner', 'Check the second pallet', 'Generate the remaining shipping label.', 'Scan pallet', (d) => d.scanExpected()],
+    ['scanner', 'Confirm the second label', 'Ready means checked, not yet loaded.', 'Scan shipping label', (d) => d.scanExpected()],
+    ['office', 'Assign trailer DEMO-07', 'Open the manifest. The trailer cannot belong to another active order.', 'Open loading manifest', (d, run) => run('startLoading', { id: '5001', trailer: 'DEMO-07' })],
+    ['scanner', 'Identify the first pallet for loading', 'LOAD-01 scans its SSCC. The pallet stays on OUT-01 until the destination is confirmed.', 'Scan pallet', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: d.first })],
+    ['scanner', 'Reject the wrong trailer', 'Scanning DEMO-99 cannot move the pallet. The pending scan remains available for correction.', 'Scan wrong trailer', (d) => rejected(d, () => d.wh.scanLoading('5001', 'LOAD-01', 'TRAILER-DEMO-99'), /Wrong destination/)],
+    ['scanner', 'Confirm the correct trailer', 'Scan TRAILER-DEMO-07. The stock location changes from staging to trailer.', 'Scan trailer', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: 'TRAILER-DEMO-07' })],
+    ['office', 'Prevent incomplete departure', 'The seal cannot bypass the second pallet still on the shipping lane.', 'Verify dispatch is stopped', (d) => rejected(d, () => d.wh.shipOrder('5001', { seal: 'DEMO-SEAL-07' }), /loaded on/)],
+    ['scanner', 'Identify the second pallet', 'Scan its SSCC for the same manifest.', 'Scan pallet', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: d.second })],
+    ['scanner', 'Confirm the second loading', 'Scan the trailer again. Each pallet gets its own destination confirmation.', 'Scan trailer', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: 'TRAILER-DEMO-07' })],
+    ['office', 'Record a concern after loading', 'A simulated 9 C spot check creates a quality hold even though the first pallet is loaded. Example limits are not product requirements.', 'Record quality hold', (d, run) => run('recordTemperature', { sscc: d.first, temperature: 9, min: 2, max: 6, reason: 'Demo concern discovered during outbound loading.' })],
+    ['office', 'Stop the held shipment', 'The final dispatch gate rechecks every pallet. Neither pallet leaves the system.', 'Verify shipment is stopped', (d) => rejected(d, () => d.wh.shipOrder('5001', { seal: 'DEMO-SEAL-07' }), /Quality hold/)],
+    ['scanner', 'Identify stock to unload', 'Held stock can always be unloaded. The loader selects Unload and scans the first pallet.', 'Scan pallet for unloading', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: d.first, unload: true })],
+    ['scanner', 'Confirm unloading at staging', 'Scan OUT-01. The hold remains attached; the trailer manifest now has one of two pallets.', 'Scan OUT-01', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: 'OUT-01', unload: true })],
+    ['office', 'Record the quality decision', 'A simulated investigation accepts the stock. This decision does not reload it.', 'Release quality hold', (d, run) => run('releaseQualityHold', { sscc: d.first, reason: 'Demo investigation complete; stock accepted for dispatch.' })],
+    ['scanner', 'Identify the cleared pallet', 'Scan it again for loading.', 'Scan pallet', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: d.first })],
+    ['scanner', 'Confirm reloading', 'Scan TRAILER-DEMO-07. Both checked pallets are now on the assigned trailer.', 'Scan trailer', (d, run) => run('scanLoading', { id: '5001', device: 'LOAD-01', code: 'TRAILER-DEMO-07' })],
+    ['office', 'Seal and dispatch', 'Record DEMO-SEAL-07. Completeness, locations, checks and shipping eligibility are validated together before stock is removed.', 'Seal & dispatch', (d, run) => run('shipOrder', { id: '5001', seal: 'DEMO-SEAL-07' })],
+    ['office', 'Trace the sealed shipment', 'The recipient, trailer, seal and scan history remain available after departure.', 'Review shipment trace', (d) => { d.trace = d.wh.trace('YOG-LOAD-A'); }],
+  ]);
   const scenarios = {
     shipping: { label: 'Receiving to shipping', steps, truckId: 'RT-PRO', complete: 'Received, processed, shipped and traced', outcome: 'Fresh Market received PRO-LATER. PRO-EARLY remains blocked in storage.' },
     shift: { label: 'Auto-Shift & partitioning', steps: shiftSteps, truckId: 'RT-YOG', complete: 'Replenished and relocated', outcome: 'YOG-EARLY is on the ground in yoghurt storage. The repartitioned position is empty; YOG-LATER stays above.' },
@@ -119,6 +152,7 @@
     quality: { label: 'Temperature & quality holds', steps: qualitySteps, truckId: 'RT-YOG', complete: 'Inspected, held and reviewed', outcome: '4701 took eligible replacement stock. After a recorded quality decision, 4702 allocated YOG-REVIEW. Both readings and the release decision remain in the history.' },
     recall: { label: 'Batch recall & traceability', steps: recallSteps, truckId: 'RT-YOG', complete: 'Held, traced and reviewed', outcome: 'Fresh Market was identified as an earlier recipient. City Deli stopped at shipping until release; Corner Shop switched to another batch. The late receipt was caught, and the independent temperature hold remains.' },
     quarantine: { label: 'Physical quarantine & release', steps: quarantineSteps, truckId: 'RT-YOG', complete: 'Segregated, reviewed and returned', outcome: 'The held pallet was scanned into quarantine, reviewed, then scanned back into normal storage before allocation to City Deli. Fresh Market used eligible replacement stock, and the quarantine position is free again.' },
+    loading: { label: 'Trailer loading & dispatch', steps: loadingSteps, truckId: 'RT-YOG', complete: 'Verified, sealed and dispatched', outcome: 'Fresh Market received two verified pallets on DEMO-07 under seal DEMO-SEAL-07. A wrong trailer, incomplete manifest and late quality hold stopped departure. Unloading, review and reloading remain in the history.' },
   };
 
   class Walkthrough {
@@ -149,6 +183,10 @@
       return this.run('scan', { id: this.truckId, code });
     }
     get scanCode() {
+      if (this.scenarioId === 'loading' && this.index >= 12) {
+        const codes = { 12: this.first, 13: 'TRAILER-DEMO-99', 14: 'TRAILER-DEMO-07', 16: this.second, 17: 'TRAILER-DEMO-07', 20: this.first, 21: 'OUT-01', 23: this.first, 24: 'TRAILER-DEMO-07' };
+        return codes[this.index] || null;
+      }
       if (this.scenarioId === 'quality' && this.index === 2) return `00${this.first}`;
       if (this.scenarioId === 'recall' && this.index === 17) return `00${this.fifth}`;
       if (this.scenarioId === 'shipping' && [4, 5].includes(this.index)) return `00${this.index === 4 ? this.first : this.second}`;
@@ -165,12 +203,13 @@
       const result = Commands.COMMANDS[op](this.wh, args, by);
       const receivedWithWarning = op === 'scan' && Object.keys(this.wh.pallets).length > palletCount;
       if (result && result.ok === false && !receivedWithWarning && !(op === 'scan' && args.code === 'CMD-DAMAGED' && this.wh.pallets[this.first].status === 'blocked')) throw new Error(result.text);
-      const actor = ['scan', 'deskStart', 'stationScan'].includes(op) ? args.id : by;
+      const actor = op === 'scanLoading' ? args.device : ['scan', 'deskStart', 'stationScan'].includes(op) ? args.id : by;
       this.journal.push({ op, args, by: actor, title: this.step.title, t: this.time, result: result && result.text });
       return result;
     }
     next() {
       if (!this.step) return;
+      if (this.scenarioId === 'loading') this.notice = null;
       const run = (op, args) => this.run(op, args);
       if (this.step.execute) { this.step.execute(this, run); this.index++; return; }
       switch (this.index) {

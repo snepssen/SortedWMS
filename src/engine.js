@@ -539,6 +539,7 @@
     /** Put existing stock straight into a location (opening balance, imports). */
     stockPallet(code, { sscc, itemNo, batch, expiry, qty, receivedAt, status = 'available', blockReason = null }) {
       const loc = this._loc(code);
+      if (loc.kind === 'trailer') throw new Error('Use loading scans to put stock on a trailer');
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       sscc = sscc || this.nextSscc();
@@ -664,6 +665,7 @@
     requestQuarantine(sscc, reason, by = 'office') {
       const pallet = this._pallet(sscc);
       if (!pallet.loc || ['missing', 'shipped'].includes(pallet.status)) throw new Error('Pallet must have a known warehouse location and not be on a truck');
+      if (this.locations[pallet.loc].kind === 'trailer') throw new Error('Unload this pallet before requesting quarantine');
       if (this.items[pallet.itemNo].storage === 'block' || pallet.proc || this.locations[pallet.loc].kind === 'station') throw new Error('Quarantine moves support rack pallets outside process stations only');
       if (pallet.quarantine) throw new Error('Pallet already has a quarantine workflow');
       if (typeof reason !== 'string' || !reason.trim()) throw new Error('A quarantine reason is required');
@@ -913,11 +915,12 @@
      * (FEFO), oldest received first on a tie (FIFO). Blocked and expired
      * stock is never picked.
      */
-    addOrder({ id, customer, lane, lines }) {
+    addOrder({ id, customer, lane, lines, verifyLoading = false }) {
       if (this.orders[id]) throw new Error(`Order ${id} already exists`);
+      if (typeof verifyLoading !== 'boolean') throw new Error('Loading verification must be true or false');
       const laneLoc = this._loc(lane);
       if (laneLoc.kind !== 'lane' || laneLoc.role !== 'out') throw new Error(`${lane} is not a shipping lane`);
-      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0 };
+      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading };
       this.orders[id] = order;
       for (const line of lines) {
         const item = this.items[line.itemNo];
@@ -938,15 +941,100 @@
       return order;
     }
 
-    /** Truck loaded: the order's checked pallets leave the building. */
-    shipOrder(id) {
+    _loadingPallets(order) {
+      if (order.lines.some((l) => l.short || l.allocated.length !== l.pallets)) throw new Error('Loading requires a fully allocated order; resolve shortages first');
+      const ssccs = order.lines.flatMap((l) => l.allocated);
+      if (!ssccs.length || new Set(ssccs).size !== ssccs.length) throw new Error('Order has no complete, unique pallet manifest');
+      return ssccs.map((s) => {
+        const p = this._pallet(s);
+        if (p.orderId !== order.id) throw new Error('Pallet allocation does not match this order');
+        return p;
+      });
+    }
+
+    startLoading(id, trailer, by = 'office') {
+      const order = this.orders[id];
+      if (!order || order.status !== 'ready') throw new Error('Order must be checked and ready before loading');
+      if (order.loading) throw new Error('This order already has a trailer; unload or complete its existing manifest');
+      if (typeof trailer !== 'string' || !/^[A-Z0-9][A-Z0-9-]{0,29}$/.test(trailer.trim().toUpperCase())) throw new Error('Trailer ID must be 1 to 30 letters, digits or hyphens');
+      trailer = trailer.trim().toUpperCase();
+      const location = `TRAILER-${trailer}`;
+      if (Object.values(this.orders).some((o) => o.loading?.trailer === trailer && o.status !== 'shipped')) throw new Error('Trailer already belongs to another active order');
+      if (this.locations[location] && (this.locations[location].kind !== 'trailer' || this.locations[location].pallets.length)) throw new Error('Trailer location is not empty');
+      const pallets = this._loadingPallets(order);
+      for (const p of pallets) {
+        const problem = this._checkProblem(p, order);
+        if (problem || !p.checked || p.loc !== order.lane || this._liveTaskFor(p.sscc)) throw new Error(problem || 'Every pallet must be checked, staged on its shipping lane and free of active work');
+      }
+      this.locations[location] = { code: location, kind: 'trailer', aisle: null, pallets: [], blocked: false };
+      order.verifyLoading = true;
+      order.loading = { trailer, location, startedAt: this.now(), by, pending: {}, history: [{ kind: 'opened', t: this.now(), by }] };
+      this.log(`Order ${id}: loading opened on trailer ${trailer} by ${by}`);
+      return order.loading;
+    }
+
+    scanLoading(id, device, raw, unload = false, by = 'loader') {
+      const order = this.orders[id];
+      if (!order?.loading || order.status === 'shipped') throw new Error('No open loading manifest for this order');
+      if (typeof device !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(device)) throw new Error('Scanner ID must be 1 to 40 letters, digits, underscores or hyphens');
+      if (typeof raw !== 'string' || !raw.trim()) throw new Error('Scan a pallet or destination');
+      if (typeof unload !== 'boolean') throw new Error('Unloading setting must be true or false');
+      const code = raw.trim().replace(/^\]C1/i, '').toUpperCase();
+      const loading = order.loading;
+      const pending = Object.hasOwn(loading.pending, device) ? loading.pending[device] : null;
+      if (code === 'CMD-CANCEL') {
+        delete loading.pending[device];
+        return { ok: true, text: 'Pending scan cancelled; no pallet moved' };
+      }
+      // Unloading must remain available even when another pallet caused a shortage.
+      const returning = pending ? pending.unload : unload;
+      const pallets = returning ? order.lines.flatMap((l) => l.allocated).map((s) => this.pallets[s]) : this._loadingPallets(order);
+      const validate = (p, returning) => {
+        if (!p || !pallets.includes(p)) throw new Error('That pallet is not allocated to this order');
+        if (this._liveTaskFor(p.sscc)) throw new Error('Pallet has active warehouse work');
+        if (p.loc !== (returning ? loading.location : order.lane)) throw new Error(returning ? 'Pallet is not on this trailer' : `Pallet is not staged on ${order.lane}, or is already loaded`);
+        if (!returning) {
+          if (order.status !== 'ready') throw new Error('Order is not ready to load');
+          const problem = this._checkProblem(p, order);
+          if (problem || !p.checked) throw new Error(problem || 'Pallet must be checked and labelled before loading');
+        }
+      };
+      if (!pending) {
+        const p = this.pallets[GS1.parse(code)?.sscc || code];
+        validate(p, unload);
+        Object.defineProperty(loading.pending, device, { value: { sscc: p.sscc, unload }, writable: true, configurable: true, enumerable: true });
+        return { ok: true, text: `Pallet identified. Scan ${unload ? order.lane : loading.location}` };
+      }
+      const destination = pending.unload ? order.lane : loading.location;
+      if (this.resolve(code) !== destination) throw new Error(`Wrong destination. Scan ${destination}`);
+      const p = this.pallets[pending.sscc];
+      validate(p, pending.unload);
+      if (this.locations[destination].blocked) throw new Error('Destination is blocked');
+      this._remove(p);
+      this._place(p, destination);
+      loading.history.push({ kind: pending.unload ? 'unloaded' : 'loaded', sscc: p.sscc, t: this.now(), device, by });
+      delete loading.pending[device];
+      this.log(`Order ${id}: …${p.sscc.slice(-6)} ${pending.unload ? 'unloaded to ' + order.lane : 'loaded on ' + loading.trailer} by ${by}`);
+      return { ok: true, text: pending.unload ? `Unloaded to ${order.lane}` : `Loaded on ${loading.trailer}` };
+    }
+
+    /** Dispatch removes the complete, eligible manifest only after all checks pass. */
+    shipOrder(id, { seal = null } = {}, by = 'office') {
       const order = this.orders[id];
       if (!order) throw new Error(`No order ${id}`);
       if (order.status !== 'ready') throw new Error(`Order ${id} is not ready to load`);
+      if (order.verifyLoading) {
+        if (!order.loading) throw new Error('Open a trailer manifest and scan every pallet before dispatch');
+        this._loadingPallets(order);
+        if (Object.keys(order.loading.pending).length) throw new Error('Complete or cancel pending loading scans before dispatch');
+        if (typeof seal !== 'string' || !seal.trim() || seal.trim().length > 40) throw new Error('A seal ID of 1 to 40 characters is required');
+      }
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const pallet = this.pallets[sscc];
         if (this.shipState(pallet) !== 'ok') throw new Error(`Pallet …${sscc.slice(-6)} cannot ship: ${this.holdReason(pallet) || this.shipState(pallet)}`);
-        if (pallet.loc !== order.lane) throw new Error(`Pallet …${sscc.slice(-6)} is not on ${order.lane}`);
+        const expected = order.loading ? order.loading.location : order.lane;
+        if (pallet.loc !== expected || !pallet.checked) throw new Error(`Pallet …${sscc.slice(-6)} must be checked and ${order.loading ? 'loaded on' : 'on'} ${expected}`);
+        if (this.locations[expected].blocked) throw new Error('Dispatch location is blocked');
       }
       const shipped = [];
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
@@ -957,7 +1045,12 @@
       }
       order.status = 'shipped';
       order.shippedAt = this.now();
-      (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped });
+      if (order.loading) {
+        order.loading.seal = seal.trim();
+        order.loading.closedAt = this.now();
+        order.loading.history.push({ kind: 'dispatched', seal: seal.trim(), t: this.now(), by });
+      }
+      (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped, ...(order.loading ? { trailer: order.loading.trailer, seal: order.loading.seal, loadingHistory: order.loading.history.map((e) => ({ ...e })) } : {}) });
       this.log(`Order ${id} loaded and shipped`);
     }
 
@@ -1485,6 +1578,7 @@
       if (pallet.status === 'shipped') return { ok: false, text: 'That pallet was shipped. Check the label' };
       const to = this.locations[code];
       if (!to) return { ok: false, text: `${code} is not a location` };
+      if (to.kind === 'trailer' || this.locations[pallet.loc]?.kind === 'trailer') return { ok: false, text: 'Use loading or unloading scans for trailer stock' };
       if (pallet.loc === code) return { ok: true, text: `…${sscc.slice(-6)} is already recorded at ${code}` };
       const live = this._liveTaskFor(sscc);
       if (live && live.status === 'active' && (live.step > 0 || this.trucks[live.truckId]?.load === sscc)) {
@@ -1730,7 +1824,7 @@
       const matches = (p) => String(p.batch).trim().toUpperCase() === b && (!itemNo || p.itemNo === itemNo);
       const pallets = Object.values(this.pallets).filter(matches);
       const deliveries = [...new Set(pallets.map((p) => p.deliveryId).filter(Boolean))].map((id) => this.deliveries[id]);
-      const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter(matches).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t })));
+      const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter(matches).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t, ...(s.trailer ? { trailer: s.trailer, seal: s.seal } : {}) })));
       return {
         batch: b,
         inStock: pallets.filter((p) => p.status !== 'shipped'),

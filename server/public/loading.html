@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17231f">
+<title>SortedWMS loading</title>
+<style>
+  :root { color-scheme: light; --ink: #17231f; --dim: #61706a; --line: #d8e1dc; --green: #24634f; --red: #a72e32; --bg: #f4f7f5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
+  header { padding: 16px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: white; border-bottom: 1px solid var(--line); }
+  header strong { font-size: 20px; } header span { color: var(--dim); } header a { margin-left: auto; color: var(--green); }
+  main { max-width: 1000px; margin: auto; padding: 0 24px 32px; }
+  section { padding: 24px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 8px 0 16px; overflow-wrap: anywhere; }
+  h2 { font-size: 18px; margin: 0 0 12px; } p { margin: 8px 0; }
+  label { display: flex; flex-direction: column; gap: 5px; font-size: 14px; color: var(--dim); min-width: 0; }
+  input, select, button { font: inherit; border-radius: 6px; padding: 10px 12px; border: 1px solid var(--line); min-height: 44px; min-width: 0; }
+  input, select { color: var(--ink); background: white; width: 100%; }
+  button { color: var(--ink); background: white; cursor: pointer; }
+  button.primary { background: var(--green); color: white; border-color: var(--green); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .row label { flex: 1 1 160px; } .row .wide { flex: 2 1 240px; }
+  .small { color: var(--dim); font-size: 14px; } .mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+  .summary { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .count { font-size: 24px; font-weight: 700; }
+  progress { width: 100%; height: 8px; accent-color: var(--green); margin: 12px 0; }
+  .modes { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; width: max-content; overflow: hidden; }
+  .modes label { padding: 10px 16px; flex-direction: row; align-items: center; color: var(--ink); cursor: pointer; background: white; }
+  .modes label:has(input:checked) { background: var(--ink); color: white; }
+  .modes input { width: 16px; min-height: 16px; margin: 0; accent-color: var(--green); }
+  .target { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
+  .barcode { background: white; max-width: 100%; padding: 10px; }
+  .barcode svg { display: block; max-width: 100%; width: 260px; height: 68px; }
+  #scan { font-size: 20px; }
+  .table { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+  th { font-weight: 600; color: var(--dim); } td.wrap { white-space: normal; min-width: 140px; }
+  .ok { color: var(--green); } .bad { color: var(--red); }
+  #message { padding: 12px 0; min-height: 48px; font-weight: 600; overflow-wrap: anywhere; }
+  details { margin-top: 12px; } details label { max-width: 400px; margin-top: 8px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 600px) { header { padding: 12px 16px; gap: 8px; } main { padding: 0 16px 24px; } h1 { font-size: 24px; } .scan-row { flex-wrap: nowrap; } .scan-row label { flex-basis: auto; } }
+</style>
+</head>
+<body>
+<header><strong>SortedWMS</strong><span>Outbound loading</span><a id="office" href="admin">Office</a></header>
+<main>
+  <section><div class="row">
+    <label class="wide">Order <select id="order"><option value="">Select order</option></select></label>
+    <label>Scanner ID <input id="device" value="LOAD-01" pattern="[A-Za-z0-9_-]{1,40}" maxlength="40" required></label>
+    <label>Operator <input id="operator" maxlength="40"></label>
+  </div><details><summary>Connection</summary><label>Server token <input id="token" type="password"></label></details></section>
+  <div id="message" role="status" aria-live="polite"></div>
+  <section id="open" hidden><h2>Assign trailer</h2><form id="openForm" class="row"><label>Trailer ID <input id="trailer" maxlength="30" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,29}" required></label><button class="primary" id="openButton">Open manifest</button></form><p id="openStatus" class="small"></p></section>
+  <section id="work" hidden>
+    <div class="summary"><div><h2 id="customer"></h2><div id="trip" class="small"></div></div><div id="count" class="count"></div></div>
+    <progress id="progress" value="0" max="1" aria-label="Pallets loaded"></progress>
+    <div id="scanWork"><div class="modes" role="group" aria-label="Movement"><label><input type="radio" name="direction" value="load" checked> Load</label><label><input type="radio" name="direction" value="unload"> Unload</label></div>
+    <div class="target"><div><h1 id="target"></h1><div id="pending" class="small mono"></div></div><div id="barcode" class="barcode" hidden></div></div>
+    <form id="scanForm" class="row scan-row"><label class="wide">Scan <input id="scan" autocomplete="off" autocapitalize="characters" required></label><button class="primary">Confirm</button></form>
+    <button id="cancel" type="button" hidden>Cancel pending scan</button><p id="otherPending" class="small"></p></div>
+    <div id="dispatched" class="ok" hidden></div>
+  </section>
+  <section id="manifestSection" hidden><h2>Manifest</h2><div id="manifest" class="table"></div></section>
+  <section id="dispatch" hidden><h2>Dispatch</h2><p id="dispatchStatus" class="small"></p><form id="dispatchForm" class="row"><label>Seal ID <input id="seal" maxlength="40" required></label><button id="dispatchButton" class="primary">Seal &amp; dispatch</button></form></section>
+  <section id="historySection" hidden><h2>Loading history</h2><div id="history" class="table"></div></section>
+</main>
+<script src="src/barcode.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const table = (head, rows) => `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.join('') : '<tr><td>No scans yet</td></tr>'}</tbody></table>`;
+  let selected = new URLSearchParams(location.search).get('order') || '', view = null, busy = false;
+  const rememberScanner = () => { try { for (const k of ['device', 'operator']) localStorage.setItem('load.' + k, $('#' + k).value); } catch (e) { /* storage optional */ } };
+  try { for (const k of ['device', 'operator']) if (localStorage.getItem('load.' + k)) $('#' + k).value = localStorage.getItem('load.' + k); } catch (e) { /* storage optional */ }
+  if (window.SortedLocal) $('#office').href = 'admin.html';
+  function message(text, ok = true) { $('#message').textContent = text; $('#message').className = ok ? 'ok' : 'bad'; }
+  async function api(method, path, body) {
+    const operator = $('#operator').value.trim() || $('#device').value.trim() || 'loader';
+    if (window.SortedLocal) {
+      const r = await window.SortedLocal.fetch(method, path, body, { operator });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
+    const r = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': $('#token').value, 'x-operator': operator }, body: body ? JSON.stringify(body) : undefined });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.statusText);
+    return data;
+  }
+  function render() {
+    const l = view && view.loading, shipped = view && view.status === 'shipped';
+    $('#open').hidden = !view || Boolean(l) || shipped;
+    $('#work').hidden = !l;
+    $('#manifestSection').hidden = !view;
+    $('#historySection').hidden = !l;
+    $('#dispatch').hidden = !l || shipped;
+    $('#openButton').disabled = !view || view.status !== 'ready';
+    if (!view) return;
+    $('#openStatus').textContent = `${view.customer} / ${view.lane} / ${view.status}`;
+    $('#manifest').innerHTML = table(['SSCC', 'Item / batch', 'Position', 'Eligibility'], view.pallets.map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.itemNo)}<br>${esc(p.batch)}</td><td>${esc(p.locName || (shipped ? 'Shipped' : 'On truck'))}</td><td class="wrap ${p.shipState === 'ok' ? 'ok' : 'bad'}">${esc(p.holdReason || p.shipState)}</td></tr>`));
+    if (!l) return;
+    const device = $('#device').value.trim(), pending = Object.hasOwn(l.pending, device) ? l.pending[device] : null;
+    $('#customer').textContent = `${view.id} / ${view.customer}`;
+    $('#trip').textContent = `Trailer ${l.trailer} / staging ${view.lane}`;
+    $('#count').textContent = shipped ? `${view.total} dispatched` : `${view.loaded} / ${view.total} loaded`;
+    $('#progress').max = view.total || 1; $('#progress').value = shipped ? view.total : view.loaded;
+    $('#scanWork').hidden = shipped;
+    $('#dispatched').hidden = !shipped;
+    $('#dispatched').textContent = `Dispatched / seal ${l.seal || ''}`;
+    const target = pending && (pending.unload ? view.lane : l.location);
+    $('#target').textContent = target ? `Scan ${target}` : 'Scan pallet SSCC';
+    $('#pending').textContent = pending ? `${pending.unload ? 'Unload' : 'Load'} ${pending.sscc}` : '';
+    $('#barcode').hidden = !target;
+    $('#barcode').innerHTML = target ? SortedBarcode.svg(target) : '';
+    $('#cancel').hidden = !pending;
+    document.querySelectorAll('[name=direction]').forEach((i) => { i.disabled = Boolean(pending); if (pending) i.checked = i.value === (pending.unload ? 'unload' : 'load'); });
+    const waiting = Object.keys(l.pending);
+    $('#otherPending').textContent = waiting.filter((id) => id !== device).map((id) => `Pending on ${id}: ${l.pending[id].sscc}`).join('; ');
+    $('#dispatchButton').disabled = view.status !== 'ready' || view.loaded !== view.total || view.pallets.some((p) => p.shipState !== 'ok') || Object.keys(l.pending).length > 0;
+    $('#dispatchStatus').textContent = view.pallets.some((p) => p.shipState !== 'ok') ? 'Shipping eligibility held; review the manifest.' : waiting.length ? `Pending confirmation: ${waiting.join(', ')}` : view.loaded !== view.total ? `${view.total - view.loaded} pallet(s) not loaded.` : view.status !== 'ready' ? 'Order is not ready.' : 'Manifest complete. Ready for seal and departure.';
+    $('#history').innerHTML = table(['Time', 'Action', 'SSCC / seal', 'Scanner', 'Operator'], l.history.slice().reverse().map((e) => `<tr><td>${esc(new Date(e.t).toLocaleTimeString())}</td><td>${esc(e.kind)}</td><td class="mono">${esc(e.sscc || e.seal || '')}</td><td>${esc(e.device || '')}</td><td>${esc(e.by)}</td></tr>`));
+  }
+  async function refresh() {
+    const orders = await api('GET', '/api/orders');
+    $('#order').innerHTML = '<option value="">Select order</option>' + orders.slice().reverse().map((o) => `<option value="${esc(o.id)}">${esc(o.id)} / ${esc(o.customer)} / ${esc(o.status)}</option>`).join('');
+    $('#order').value = selected;
+    view = selected ? await api('GET', `/api/orders/${encodeURIComponent(selected)}/loading`) : null;
+    render();
+  }
+  async function act(action) {
+    if (busy) return;
+    busy = true;
+    rememberScanner();
+    try { const result = await action(); message(result && result.text || 'Manifest opened'); }
+    catch (e) { message(e.message, false); }
+    finally { try { await refresh(); } catch (e) { message('Connection unavailable: ' + e.message, false); } busy = false; }
+  }
+  $('#order').onchange = () => { selected = $('#order').value; message(''); refresh().catch((e) => message(e.message, false)); };
+  for (const k of ['device', 'operator', 'token']) $('#' + k).onchange = () => { rememberScanner(); refresh().catch((e) => message(e.message, false)); };
+  $('#openForm').onsubmit = (e) => { e.preventDefault(); act(() => api('POST', `/api/orders/${encodeURIComponent(selected)}/loading`, { trailer: $('#trailer').value })); };
+  const scan = (code) => api('POST', `/api/orders/${encodeURIComponent(selected)}/loading/scan`, { device: $('#device').value.trim(), code, unload: $('[name=direction]:checked').value === 'unload' });
+  $('#scanForm').onsubmit = (e) => { e.preventDefault(); const code = $('#scan').value; $('#scan').value = ''; act(() => scan(code)).finally(() => $('#scan').focus()); };
+  $('#cancel').onclick = () => act(() => scan('CMD-CANCEL'));
+  $('#dispatchForm').onsubmit = (e) => { e.preventDefault(); act(async () => { await api('POST', `/api/orders/${encodeURIComponent(selected)}/ship`, { seal: $('#seal').value }); return { text: 'Shipment dispatched' }; }); };
+  refresh().catch((e) => message('Connection unavailable: ' + e.message, false));
+  window.addEventListener('focus', () => { if (!busy) refresh().catch((e) => message(e.message, false)); });
+})();
+</script>
+</body>
+</html>

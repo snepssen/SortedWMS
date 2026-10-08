@@ -238,6 +238,7 @@
         <label>Shipping lane <select id="oLane">${[1, 2, 3, 4].map((n) => `<option>OUT-0${n}</option>`).join('')}</select></label></div>
         <div class="form"><label>Item <select id="oItem">${itemOpts}</select></label><label>Pallets <input id="oPal" size="3" value="1"></label>
         <label>Process <select id="oProc"><option value="">none</option><option value="CHANGE">Pallet change</option><option value="FOIL">Crates off + foil</option></select></label>
+        <label><span><input id="oVerify" type="checkbox" checked> Verify trailer loading</span></label>
         <button class="primary" id="oGo">Add order</button></div><div class="out" id="oOut" style="display:none"></div></section>
       <section><h2>Announce a delivery</h2><div class="form">
         <label>Delivery no. <input id="dId" size="8"></label><label>Supplier <input id="dSup" size="14"></label>
@@ -247,7 +248,7 @@
       <section style="grid-column:1/-1"><h2>Orders</h2>${table(['Order', 'Customer', 'Lane', 'Lines', 'Status', ''], orders.slice().reverse().map((o) => `<tr>
         <td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.lane)}</td>
         <td class="wrap">${o.lines.map((l) => `${esc(l.itemNo)} × ${l.pallets}${l.allocated && l.allocated.length < l.pallets ? ` <span class="tag held">${l.allocated.length} allocated</span>` : ''}${l.process ? ` · ${esc(l.process)}` : ''}`).join('<br>')}</td>
-        <td><span class="tag">${esc(o.status)}</span>${o.shippingHolds.length ? `<span class="tag bad">Shipping held</span><div class="hint wrap">${esc([...new Set(o.shippingHolds.map((h) => h.reason))].join('; '))}</div>` : ''}</td><td>${o.status === 'ready' && !o.shippingHolds.length ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button>` : ''}</td></tr>`))}</section>
+        <td><span class="tag">${esc(o.status)}</span>${o.loading ? `<div class="hint">Trailer ${esc(o.loading.trailer)}${o.loading.seal ? ` / seal ${esc(o.loading.seal)}` : ''}</div>` : o.verifyLoading ? '<div class="hint">Trailer verification required</div>' : ''}${o.shippingHolds.length ? `<span class="tag bad">Shipping held</span><div class="hint wrap">${esc([...new Set(o.shippingHolds.map((h) => h.reason))].join('; '))}</div>` : ''}</td><td>${o.status === 'ready' && !o.shippingHolds.length && !o.verifyLoading ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button> ` : ''}<a href="${window.SortedLocal ? 'loading.html' : 'loading'}?order=${encodeURIComponent(o.id)}">${o.status === 'shipped' ? 'Manifest' : 'Loading'}</a></td></tr>`))}</section>
       <section style="grid-column:1/-1"><h2>Deliveries</h2>${table(['Delivery', 'Supplier', 'Category', 'Pallets', 'Received', 'At', 'Status'], deliveries.slice().reverse().map((d) => `<tr>
         <td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(S.categories[d.category] || d.category)}</td><td>${d.expected}${d.hasList ? ' <span class="hint">(list)</span>' : ''}</td><td>${(d.received || []).length}</td><td>${esc(d.at)}</td><td><span class="tag">${esc(d.status)}</span></td></tr>`))}</section>
     </div>`;
@@ -411,14 +412,14 @@
     on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
       const line = { itemNo: $('#oItem').value, pallets: Number(val('#oPal')) || 1 };
       if ($('#oProc').value) line.process = $('#oProc').value;
-      await api('POST', '/api/orders', { id: val('#oId'), customer: val('#oCust'), lane: $('#oLane').value, lines: [line] });
+      await api('POST', '/api/orders', { id: val('#oId'), customer: val('#oCust'), lane: $('#oLane').value, lines: [line], verifyLoading: $('#oVerify').checked });
       return `Order ${val('#oId')} added`;
     }); });
     on('#dGo', () => { $('#dOut').style.display = ''; act('#dOut', async () => {
       await api('POST', '/api/deliveries', { id: val('#dId'), supplier: val('#dSup'), category: $('#dCat').value, pallets: Number(val('#dPal')) || 1, at: $('#dAt').value });
       return `Delivery ${val('#dId')} announced`;
     }); });
-    document.querySelectorAll('[data-ship]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/orders/${b.dataset.ship}/ship`))));
+    document.querySelectorAll('[data-ship]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/orders/${encodeURIComponent(b.dataset.ship)}/ship`))));
     // Imports
     document.querySelectorAll('[data-import]').forEach((b) => (b.onclick = () => {
       const k = b.dataset.import;

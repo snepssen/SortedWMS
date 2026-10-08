@@ -64,7 +64,7 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
 <body>
 <header><strong>SortedWMS</strong><span>Guided shift · isolated demo stock</span><nav><a href="index.html">Simulated shift</a><a href="wms.html">Free play</a></nav></header>
 <main>
-  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option><option value="recall">Batch recall &amp; traceability</option><option value="quarantine">Physical quarantine &amp; release</option></select></div>
+  <div class="scenario"><label for="scenario">Scenario</label><select id="scenario"><option value="shipping">Receiving to shipping</option><option value="shift">Auto-Shift &amp; partitioning</option><option value="manual">Manual work &amp; corrections</option><option value="quality">Temperature &amp; quality holds</option><option value="recall">Batch recall &amp; traceability</option><option value="quarantine">Physical quarantine &amp; release</option><option value="loading">Trailer loading &amp; dispatch</option></select></div>
   <div class="progress"><span id="count">Loading shift</span><progress id="progress" value="0" max="22" aria-label="Shift progress"></progress><button id="restart" title="Restart guided shift" aria-label="Restart guided shift">&#8635;</button></div>
   <section class="step"><div><span class="role" id="owner"></span><h1 id="title">Receiving to shipping</h1><p id="detail" class="muted"></p></div><button id="next" class="primary" disabled>Loading</button></section>
   <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -124,6 +124,10 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
         const reviewed = Object.values(wh.pallets).filter((p) => p.quarantineHistory);
         html += `<h3>Quarantine workflow</h3>${table(['Batch', 'Location', 'State', 'Can ship'], reviewed.map((p) => [p.batch, p.loc ? wh.label(p.loc) : 'On truck', p.quarantine ? p.quarantine.state : 'Returned', wh.shipState(p) === 'ok' ? 'Yes' : 'No']))}<h3>Quarantine history</h3>${table(['Action', 'Position', 'Reason', 'By'], reviewed.flatMap((p) => p.quarantineHistory.map((e) => [e.kind, wh.label(e.location), e.reason, e.by])))}`;
       }
+      if (demo.scenarioId === 'loading' && wh.orders['5001']?.loading) {
+        const o = wh.orders['5001'], l = o.loading;
+        html += `<h3>Trailer ${esc(l.trailer)}${l.seal ? ` / seal ${esc(l.seal)}` : ''}</h3>${table(['SSCC', 'Batch', 'Position', 'Can ship'], o.lines.flatMap((line) => line.allocated).map((s) => wh.pallets[s]).map((p) => [p.sscc, p.batch, p.status === 'shipped' ? 'Shipped' : wh.label(p.loc), wh.shipState(p) === 'ok' ? 'Yes' : wh.holdReason(p)]))}<h3>Loading history</h3>${table(['Action', 'SSCC / seal', 'Scanner', 'By'], l.history.map((e) => [e.kind, e.sscc || e.seal, e.device, e.by]))}`;
+      }
       html += `<h3>Location unknown</h3>${table(['Pallet', 'Batch', 'Last known location'], wh.lostPallets().map((p) => [p.sscc, p.batch, wh.label(p.missingFrom)]))}<h3>Recent corrections</h3>${table(['Pallet', 'From', 'To', 'By'], (wh.transfers || []).map((t) => [t.sscc, wh.label(t.from), wh.label(t.to), t.by]))}`;
     } else if (role === 'scanner') {
       const truck = wh.trucks[demo.truckId];
@@ -134,6 +138,11 @@ aside li { padding-bottom: 16px; overflow-wrap: anywhere; }
       const target = receiving ? barcode.slice(2) : ins.target || barcode;
       const reason = ins.task && ins.task.type === 'SHIFT' ? SortedWMS.SHIFT_REASONS[ins.task.reason] : null;
       html = `<div class="scanner"><span class="role">${receiving ? 'DESK1 · Receiving' : `${esc(demo.truckId)} · ${esc(truck ? SortedWMS.TRUCK_MODES[truck.mode].label : 'Unassigned')}`}</span><h2>${receiving ? 'Scan supplier SSCC' : esc(ins.kind.replace(/-/g, ' '))}</h2>${reason ? `<p>${esc(reason)}</p>` : ''}<div class="target mono">${esc(target ? wh.label(target) : 'Waiting for work')}</div>${pallet ? `<dl><dt>Item</dt><dd>${esc(wh.items[pallet.itemNo].name)}</dd><dt>Batch</dt><dd>${esc(pallet.batch)}</dd><dt>Best before</dt><dd>${esc(pallet.expiry)}</dd><dt>SSCC</dt><dd class="mono">${esc(pallet.sscc)}</dd></dl>` : ''}${barcode ? `<div class="barcode" role="img" aria-label="Demo scan barcode ${esc(barcode)}">${SortedBarcode.svg(barcode)}</div>` : ''}${truck && truck.message ? `<p>${esc(wh.display(truck.message.text))}</p>` : ''}</div>`;
+      if (demo.scenarioId === 'loading' && demo.index >= 12) {
+        const o = wh.orders['5001'], l = o.loading, pending = l.pending['LOAD-01'];
+        const loaded = o.lines.flatMap((line) => line.allocated).filter((s) => wh.pallets[s].loc === l.location).length;
+        html = `<div class="scanner"><span class="role">LOAD-01 / ${pending?.unload || demo.index === 20 ? 'Unload' : 'Load'}</span><h2>${esc(o.customer)} / ${loaded} of 2 loaded</h2><p>Trailer ${esc(l.trailer)} / ${esc(o.lane)}</p><div class="target mono">${esc(barcode || 'No scan pending')}</div>${barcode ? `<div class="barcode" role="img" aria-label="Demo scan barcode ${esc(barcode)}">${SortedBarcode.svg(barcode)}</div>` : ''}${pending ? `<p class="mono">Pallet ${esc(pending.sscc)} identified</p>` : ''}${demo.notice ? `<p>${esc(demo.notice)}</p>` : ''}</div>`;
+      }
     } else {
       const st = wh.stations.PRESS;
       const pallets = Object.values(wh.pallets).filter((p) => p.loc === st.code);
