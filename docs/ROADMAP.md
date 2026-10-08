@@ -6,7 +6,9 @@ The prototype holds the rules: Auto dispatch, aisle limits, categories, FEFO, re
 
 - **Location table** → import as CSV: code (`38-02-0-10`), category, and anything blocked. Aisle, bay, side (odd/even), level and position follow from the code. Add each aisle's one-way direction and which cell it is in.
 - **Relabelling (optional):** the proposed names (`AA03C2`: cell, rack, bay, level, position) are generated from the same table. New rack labels can be printed on the label printers, and both barcodes keep working during the changeover.
-- **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum days left to ship.
+- **Item master** → item number, EAN/GTIN, category, cases per pallet, minimum days left to ship, and whether it's stored in racks or block stacks.
+- **Block lanes** → lane, number of stacks, stack height, category.
+- **Stations and routes** → each station (machine, operators, standard minutes, SOP text) and each process route (stations in order, warm-room times).
 - **Opening stock** → SSCC, item, batch, expiry, quantity, location, blocked yes/no.
 
 At this stage the prototype can run **next to the current WMS as an advisor**, without changing anything on the floor:
@@ -62,3 +64,5 @@ The demo keeps everything in the browser. For real use:
 - Which aisles are in which cell, and which side of each aisle gets the first rack letter?
 - Does each order have to be checked and labelled, or only some customers?
 - How many reach trucks per shift, and who works which category?
+- How many block lanes, how many stacks deep, and is it always one batch per lane?
+- The process steps not seen yet: which stations, standard times, warm-room times, and does a pallet change always need a new pallet label?

@@ -59,6 +59,34 @@ The system picks the slot, and the driver scans twice. Jobs are created when:
 
 Put-away uses the same slotting rules from the start. It prefers a free position next to the same batch. It sends the next-out pallet low and later batches higher, to keep the ground free. Blocked stock goes to the top.
 
+### Block stacks (cheese crate pallets)
+Crate pallets stand on the floor in block lanes, 6 high. The system knows the stacking order.
+- Each lane holds one item, batch and expiry.
+- A lane is filled from the back and emptied from the front.
+- A truck is only sent to the pallet it can actually lift: the top of the front-most stack. A pick for a buried pallet waits until the pallets in front of it have gone.
+- FEFO still applies: since a lane is one batch, the reachable pallet is as good as any.
+- One truck per lane at a time (a setting).
+
+### Process floor: pallets through stations
+Some pallets go through a process before they ship or go back into storage:
+- **Pallet change:** the hydraulic press flips the load onto a new pallet and back, then it's sealed with foil. A new pallet label prints at the station.
+- **Crates off + foil:** crates removed, load wrapped.
+- **Hole forming:** plate press (plate on) → warm room for a set time → plate press (plate off) → back into storage.
+
+A process is a **route** of stations. It can be set on an order line ("pallet change before shipping") or started by the coordinator. Every step is tracked:
+- **Moves** between storage, stations and shipping lanes are Auto jobs for the reach trucks: two scans, as always.
+- **At a work station** the operator scans the pallet to start and scans it again when done. The station screen shows the SOP and a timer against the standard time. There's nothing to tick off.
+- **In a dwell room** (the warm room) the system holds the clock. When the time is up it creates the move out and flags it urgent. There are no timers on team leaders' phones.
+- **The process log** records every step: pallet, station, actual time and standard time. Each pallet keeps its own trail.
+
+### Receiving desk (two operators)
+For deliveries that need keyboard work, two people receive at a desk:
+1. The person at the keyboard reads the call-out from the screen: **BATCH**, **PALLET**, **GS1**.
+2. The person with the scanner scans that label.
+3. Anything without a usable barcode (e.g. a quantity missing from the label) is typed in.
+
+The pallet is registered as soon as it's complete, and its put-away goes to the trucks straight away. Deliveries can be announced for the desk or for a truck handheld at the dock.
+
 ### Labels
 Checking a picked pallet sends a 4×6" shipping label to the label printer at that shipping lane. The label is ZPL, the language most networked thermal label printers accept on port 9100. It carries the customer, order, item, batch, best-before date, a label barcode the driver scans to confirm it's on, and the GS1-128 SSCC.
 
@@ -69,7 +97,7 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping and pallet labels. |
-| `index.html` | The demo: floor, handhelds, coordinator tabs, job queue, stock. |
+| `index.html` | The demo: floor and block stacks, handhelds, process floor and receiving desk, coordinator tabs, job queue, stock. |
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `scripts/build-pages.js` | Builds the demo site for GitHub Pages into `_site/` (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |

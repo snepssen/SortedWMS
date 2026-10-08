@@ -166,6 +166,29 @@ select, .field { min-height: 36px; padding: 4px 8px; border-radius: 6px; border:
 .occ.full { color: var(--bad); border-color: var(--bad); background: var(--bad-bg); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--muted); margin-top: 10px; align-items: center; }
 
+/* Block stacks */
+.blocks { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.blocks .name small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blocklane { position: relative; height: 54px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 5px; background: var(--lane); border: 1px solid var(--line); }
+.stack { position: relative; border-radius: 3px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; display: flex; align-items: flex-end; }
+.stack i { display: block; width: 100%; background: var(--cc, var(--muted)); opacity: .9; }
+.stack span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font: 600 .7rem var(--mono); color: var(--ink); }
+.stack.next { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stack .truck { top: 16px; left: 50%; }
+
+/* Process floor */
+.stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.sop { margin: 0; padding-left: 1.3em; font-size: .82rem; color: var(--screen-dim); display: grid; gap: 1px; }
+.timer { height: 8px; border-radius: 4px; background: var(--screen-2); overflow: hidden; }
+.timer i { display: block; height: 100%; background: #4cc283; }
+.timer.over i { background: #f0786d; }
+.plist { display: grid; gap: 3px; font-size: .8rem; }
+.plist div { display: flex; justify-content: space-between; gap: 8px; }
+.callout { font: 700 clamp(2.2rem, 7vw, 3.2rem)/1 var(--display); letter-spacing: .06em; color: #f0b429; }
+.keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.keys label { display: grid; gap: 2px; font-size: .75rem; color: var(--muted); }
+.keys input { min-height: 34px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--lane); font-family: var(--mono); min-width: 0; }
+
 /* Handhelds */
 .terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .term { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; min-width: 0; align-content: start; }
@@ -305,7 +328,7 @@ td .acts { display: flex; gap: 4px; }
 </header>
 
 <main class="page">
-  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles, one-way traffic in every aisle. Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, best-before, item, SSCC and quantity from the supplier label, or from the bottom barcode alone with a delivery list. Picks follow <b>first expired, first out</b>, and nothing with fewer days left than the manager's minimum is shipped.</p>
+  <p class="intro">A simulated shift with yoghurt and cheese in separate aisles, one-way traffic in every aisle, cheese crate pallets in block stacks, and a process floor (pallet change, crates off + foil, plate press and warm room). Trucks on <b>Auto</b> get their next job the moment they finish, only in their own categories, in the order the coordinator sets, and <b>never more than two in one aisle</b>. Moving a pallet is <b>two scans</b>. Receiving reads batch, best-before, item, SSCC and quantity from the supplier label, or from the bottom barcode alone with a delivery list. Picks follow <b>first expired, first out</b>, and nothing with fewer days left than the manager's minimum is shipped.</p>
 
   <div class="summary" id="summary"></div>
 
@@ -315,10 +338,12 @@ td .acts { display: flex; gap: 4px; }
         <div class="panel-head"><h2 id="board-h">Floor</h2><span class="hint">Docks and lanes at the front. Aisle front on the left. Bays on both sides, ground + 4 levels, 3 positions per bay. Location names: Locations tab.</span></div>
         <div class="lanes" id="lanes"></div>
         <div class="board" id="board"></div>
+        <div class="blocks" id="blocks"></div>
         <div class="legend">
           <span class="cat c-YOG">Yoghurt</span><span class="cat c-CHE">Cheese</span><span class="cat c-PRO">Protein drinks</span>
           <span class="type t-PICK">Pick</span><span class="type t-CHECK">Check</span><span class="type t-RECEIVE">Receive</span><span class="type t-PUTAWAY">Put-away</span><span class="type t-SHIFT">Auto-Shift</span>
           <span>▪ pallet on the forks</span>
+          <span>Block stacks: stack 01 at the front, 6 high, one batch per lane, the outlined stack is next out</span>
           <span>Each aisle: odd bays (first row) on top, even bays (second row) below · ▸ one-way, enter from the front · ◂ enter from the back</span>
         </div>
       </section>
@@ -327,6 +352,11 @@ td .acts { display: flex; gap: 4px; }
         <div class="panel-head"><h2 id="terms-h">Handhelds</h2><span class="hint">Press “Drive it yourself” to scan for a truck. The scanner sends the Enter on its own.</span></div>
         <div class="terms" id="terms"></div>
       </section>
+
+      <section aria-labelledby="proc-h">
+        <div class="panel-head"><h2 id="proc-h">Process floor</h2><span class="hint">Operators scan a pallet to start and again when done. The SOP is on the screen and every step is timed by the system.</span></div>
+        <div class="stations" id="stations"></div>
+      </section>
     </div>
 
     <aside class="panel" aria-label="Coordinator">
@@ -334,6 +364,7 @@ td .acts { display: flex; gap: 4px; }
         <button type="button" role="tab" aria-selected="true" data-tab="auto" id="tab-auto">Auto</button>
         <button type="button" role="tab" aria-selected="false" data-tab="orders" id="tab-orders">Orders</button>
         <button type="button" role="tab" aria-selected="false" data-tab="inbound" id="tab-inbound">Inbound</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="process" id="tab-process">Process</button>
         <button type="button" role="tab" aria-selected="false" data-tab="locations" id="tab-locations">Locations</button>
         <button type="button" role="tab" aria-selected="false" data-tab="expiry" id="tab-expiry">Expiry</button>
         <button type="button" role="tab" aria-selected="false" data-tab="labels" id="tab-labels">Labels</button>
@@ -392,6 +423,9 @@ td .acts { display: flex; gap: 4px; }
             <label for="oItem">Item<select id="oItem"></select></label>
             <label for="oPallets">Pallets<input class="field num" type="number" id="oPallets" min="1" max="12" value="2"></label>
           </div>
+          <label for="oProc">Before shipping
+            <select id="oProc"><option value="">Nothing, straight to the lane</option><option value="CHANGE">Pallet change (flip press)</option><option value="FOIL">Crates off + foil</option></select>
+          </label>
           <div class="err" id="orderErr" role="status"></div>
           <div class="term-actions">
             <button class="btn primary" type="submit">Create order</button>
@@ -419,6 +453,9 @@ td .acts { display: flex; gap: 4px; }
               <option value="list">3-barcode label + delivery list (bottom barcode only)</option>
               <option value="separate">No usable label (4 scans + confirm qty)</option>
             </select>
+          </label>
+          <label for="dAt">Receive at
+            <select id="dAt"><option value="dock">Dock, on a truck handheld</option><option value="desk">Receiving desk (2 operators)</option></select>
           </label>
           <label class="hint" style="display:flex;gap:6px;align-items:center;color:var(--ink)" for="dShort"><input type="checkbox" id="dShort"> One pallet with a short expiry</label>
           <div class="err" id="delErr" role="status"></div>
@@ -494,6 +531,26 @@ td .acts { display: flex; gap: 4px; }
         </div>
       </div>
 
+      <div class="tabpanel" role="tabpanel" data-panel="process" aria-labelledby="tab-process" hidden>
+        <div>
+          <div class="panel-head"><h3>Process routes</h3><span class="hint">Stations in order</span></div>
+          <div class="list" id="routes"></div>
+        </div>
+        <form class="form" id="procForm" novalidate>
+          <h3>Send pallets to a process</h3>
+          <div class="two">
+            <label for="pRoute">Process<select id="pRoute"></select></label>
+            <label for="pCount">Pallets<input class="field num" type="number" id="pCount" min="1" max="10" value="2"></label>
+          </div>
+          <div class="err" id="procErr" role="status"></div>
+          <div class="term-actions"><button class="btn primary" type="submit">Send</button></div>
+        </form>
+        <div>
+          <div class="panel-head"><h3>Process log</h3><span class="hint">Every step, timed</span></div>
+          <div class="scroll"><table><thead><tr><th>Done</th><th>Pallet</th><th>Step</th><th>Took</th><th>Std</th></tr></thead><tbody id="plog"></tbody></table></div>
+        </div>
+      </div>
+
       <div class="tabpanel" role="tabpanel" data-panel="expiry" aria-labelledby="tab-expiry" hidden>
         <div>
           <div class="panel-head"><h3>Minimum days left to ship</h3><span class="hint">Set by the manager</span></div>
@@ -559,13 +616,32 @@ td .acts { display: flex; gap: 4px; }
     ['C2002', 'Mature cheddar block 400 g', 'CHE', 120, 30, 120],
     ['C2003', 'Grated mozzarella 200 g', 'CHE', 150, 25, 60],
     ['C2004', 'Brie wedge 200 g', 'CHE', 140, 14, 40],
+    ['C2005', 'Gouda wheels 12 kg, crate pallet', 'CHE', 24, 30, 90, 'block'],
+    ['C2006', 'Emmental wheels, crate pallet', 'CHE', 20, 30, 120, 'block'],
     ['P3001', 'Protein shake chocolate 330 ml', 'PRO', 72, 60, 270],
     ['P3002', 'Protein shake vanilla 330 ml', 'PRO', 72, 60, 270],
-  ]; // itemNo, name, category, cases per pallet, minimum days left to ship, typical shelf life
+  ]; // itemNo, name, category, cases per pallet, minimum days left to ship, typical shelf life, storage
+
+  const BLOCKS = ['BL01', 'BL02', 'BL03', 'BL04', 'BL05', 'BL06'].map((id) => ({ id, stacks: 8, height: 6, category: 'CHE' }));
+  const STATIONS = [
+    { id: 'PRESS', name: 'Pallet change', machine: 'Hydraulic flip press', minutes: 5, operators: 2,
+      sop: ['New pallet on the press', 'Clamp and flip the load onto it', 'Pull out the old pallet', 'Flip back upright', 'Seal with foil'] },
+    { id: 'FOIL', name: 'Crates off + foil', machine: 'Stretch wrapper', minutes: 4, operators: 1,
+      sop: ['Lift off the crates', 'Stack crates for return', 'Wrap the load in foil'] },
+    { id: 'PLATE', name: 'Plate press', machine: 'Plate press', minutes: 3, operators: 1,
+      sop: ['Centre the crate stack', 'Apply / remove the metal plate', 'Check the plate is seated'] },
+    { id: 'WARM', name: 'Warm room', dwell: true, capacity: 24 },
+  ];
+  const ROUTES = [
+    { id: 'CHANGE', name: 'Pallet change', steps: [{ station: 'PRESS', op: 'Change pallet', reprint: true }] },
+    { id: 'FOIL', name: 'Crates off + foil', steps: [{ station: 'FOIL', op: 'Crates off, foil' }] },
+    { id: 'HOLES', name: 'Hole forming', steps: [{ station: 'PLATE', op: 'Apply plate' }, { station: 'WARM', dwellMin: 180 }, { station: 'PLATE', op: 'Remove plate' }] },
+  ];
 
   let wh, simNow, rng, running = true, eta = {}, manual = {}, problemOpen = {}, holding = false;
   let nextOrder = 0, nextDelivery = 0, orderSeq = 4500, delSeq = 2040, truckSeq = 0;
   let incoming = {}; // deliveryId -> physical pallets still on the truck, with their barcodes
+  let opStd = {}, nextHoles = 0, deskIdle = 0;
   let labelSel = null, tab = 'auto';
 
   const $ = (id) => document.getElementById(id);
@@ -588,6 +664,9 @@ td .acts { display: flex; gap: 4px; }
 
   function locHtml(code, cls = '') {
     if (!code) return '<span class="loc auto">auto slot</span>';
+    const L = wh.locations[code];
+    if (L && L.kind === 'station') return `<span class="loc lanecode ${cls}">${esc(wh.stations[L.station].name)}</span>`;
+    if (L && L.kind === 'block') return `<span class="loc ${cls}"><b>${esc(L.lane)}</b>-${p2(L.stack)}</span>`;
     if (!parseRack(code)) return `<span class="loc lanecode ${cls}">${esc(code)}</span>`;
     const name = wh.label(code);
     return `<span class="loc ${cls}" title="${esc(wh.naming.show === 'row' ? code : wh.rowName(code))}"><b>${esc(name.slice(0, 2))}</b>${esc(name.slice(2))}</span>`;
@@ -595,6 +674,7 @@ td .acts { display: flex; gap: 4px; }
   // Aisle 31, or its two rack rows "AA/AB" in the proposed naming.
   const aisleName = (a) => (wh.naming.show === 'row' ? wh.rowsOf(a).join('/') : a);
   const show = (text) => esc(wh.display(text));
+  const isStorage = (code) => Boolean(parseRack(code) || (wh.locations[code] && wh.locations[code].kind === 'block'));
   // "Say A3C2 · cell A" under a big location, in the proposed naming.
   const spokenHtml = (code) => {
     if (wh.naming.show !== 'row' || !parseRack(code)) return '';
@@ -616,8 +696,8 @@ td .acts { display: flex; gap: 4px; }
   function seedStock() {
     const today = isoDay(simNow);
     const slots = (cat) => Object.values(wh.locations).filter((l) => l.kind === 'rack' && l.category === cat && !l.sscc);
-    for (const [itemNo, , cat, , minShip, shelf] of ITEMS) {
-      if (cat === 'PRO') continue;
+    for (const [itemNo, , cat, , minShip, shelf, storage] of ITEMS) {
+      if (cat === 'PRO' || storage === 'block') continue;
       const free = slots(cat).filter((l) => l.aisle === pick([...new Set(slots(cat).map((s) => s.aisle))]));
       // Several batches per item, mostly standing together in one bay level, a few scattered.
       const batches = between(6, 8);
@@ -642,8 +722,28 @@ td .acts { display: flex; gap: 4px; }
     }
   }
 
+  // Crate pallets in the block stacks: one batch per lane, lanes part full.
+  function seedBlocks() {
+    const today = isoDay(simNow);
+    const lanes = [...BLOCKS.map((b) => b.id)];
+    for (const [itemNo, , , , minShip, shelf, storage] of ITEMS) {
+      if (storage !== 'block') continue;
+      for (let k = 0; k < 2; k++) {
+        const lane = lanes.shift();
+        const expiry = addDays(today, minShip + 5 + k * 20 + between(0, 6));
+        const batch = batchCode(itemNo, expiry);
+        const n = between(14, 40);
+        for (let i = 0; i < n; i++) {
+          const spot = wh.nextBlockSpot(lane);
+          if (!spot) break;
+          wh.stockPallet(spot, { itemNo, batch, expiry, receivedAt: simNow - between(3, 15) * DAY });
+        }
+      }
+    }
+  }
+
   function makeIncoming(cat, count, labels, withShort) {
-    const items = ITEMS.filter((i) => i[2] === cat);
+    const items = ITEMS.filter((i) => i[2] === cat && (labels === 'desk' || i[6] !== 'block' || rng() < 0.5));
     const today = isoDay(simNow);
     const [itemNo, , , qty, , shelf] = pick(items);
     const expiry = addDays(today, Math.round(shelf * 0.9));
@@ -653,7 +753,7 @@ td .acts { display: flex; gap: 4px; }
       const short = withShort && i === count - 1;
       const exp = short ? addDays(today, between(2, 5)) : expiry;
       const sscc = GS1.makeSscc(3, '8712345', between(1e6, 9e6) * 10 + i); // supplier's own SSCCs
-      pallets.push({ itemNo, gtin: wh.items[itemNo].gtin, batch: short ? batchCode(itemNo, exp) : batch, expiry: exp, sscc, qty, labels, scanned: 0 });
+      pallets.push({ itemNo, gtin: wh.items[itemNo].gtin, batch: short ? batchCode(itemNo, exp) : batch, expiry: exp, sscc, qty, labels, scanned: 0, noCount: rng() < 0.5 });
     }
     return pallets;
   }
@@ -669,12 +769,19 @@ td .acts { display: flex; gap: 4px; }
     return [p.batch, GS1.toYymmdd(p.expiry), p.gtin.slice(1), p.sscc];
   }
 
-  function announce(cat, count, labels, withShort) {
+  // What the desk scanner operator scans when the keyboard operator calls a word out.
+  function deskBarcode(p, word) {
+    if (word === 'BATCH') return p.batch;
+    if (word === 'PALLET') return `00${p.sscc}`;
+    return `02${p.gtin}15${GS1.toYymmdd(p.expiry)}${p.noCount ? '' : `37${p.qty}`}`;
+  }
+
+  function announce(cat, count, labels, withShort, at = 'dock') {
     const id = `D-${++delSeq}`;
     const suppliers = { YOG: 'Dairy supplier', CHE: 'Cheese supplier', PRO: 'Drinks supplier' };
-    const pallets = makeIncoming(cat, count, labels, withShort);
-    const list = labels === 'list' ? pallets.map((p) => ({ sscc: p.sscc, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, qty: p.qty })) : null;
-    wh.addDelivery({ id, supplier: suppliers[cat], category: cat, pallets: count, list });
+    const pallets = makeIncoming(cat, count, at === 'desk' ? 'desk' : labels, withShort);
+    const list = labels === 'list' && at !== 'desk' ? pallets.map((p) => ({ sscc: p.sscc, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, qty: p.qty })) : null;
+    wh.addDelivery({ id, supplier: suppliers[cat], category: cat, pallets: count, list, at });
     incoming[id] = pallets;
     return id;
   }
@@ -687,21 +794,36 @@ td .acts { display: flex; gap: 4px; }
     for (let i = 0; i < n; i++) {
       const r = pick(usable);
       if (lines.some((l) => l.itemNo === r.item.itemNo)) continue;
-      lines.push({ itemNo: r.item.itemNo, pallets: Math.min(r.available, rng() < 0.7 ? 1 : 2) });
+      const process = r.item.category === 'CHE' && rng() < 0.2 ? pick(['CHANGE', 'FOIL']) : undefined;
+      lines.push({ itemNo: r.item.itemNo, pallets: Math.min(r.available, rng() < 0.7 ? 1 : 2), process });
     }
     const busyLanes = new Set(Object.values(wh.orders).filter((o) => o.status !== 'shipped').map((o) => o.lane));
     const lane = ['OUT-01', 'OUT-02', 'OUT-03', 'OUT-04'].find((l) => !busyLanes.has(l)) || pick(['OUT-01', 'OUT-02', 'OUT-03', 'OUT-04']);
     return wh.addOrder({ id: String(++orderSeq), customer: pick(['Corner Shop', 'Fresh Market', 'City Deli', 'Hotel Supplies']), lane, lines });
   }
 
+  // Emmental crate pallets that can go to hole forming now: reachable, free, not on an order.
+  function sendToProcess(routeId, n) {
+    const live = new Set(Object.values(wh.tasks).filter((t) => ['open', 'active', 'held'].includes(t.status)).map((t) => t.sscc));
+    const want = routeId === 'HOLES' ? (p) => p.itemNo === 'C2006' : (p) => wh.items[p.itemNo].category === 'CHE';
+    const cands = Object.values(wh.pallets).filter((p) => p.loc && want(p) && !p.proc && !p.orderId && !live.has(p.sscc) && !p.lastProc
+      && wh.locations[p.loc].kind !== 'lane' && wh.locations[p.loc].kind !== 'station' && wh._reachable(p));
+    const sent = [];
+    for (const p of cands.slice(0, n)) { wh.startProcess(p.sscc, routeId); sent.push(p); }
+    return sent;
+  }
+
   function boot() {
     rng = mulberry32(20261007);
     simNow = SHIFT_START - 30 * MIN;
-    eta = {}; manual = {}; problemOpen = {}; incoming = {}; truckSeq = 0; orderSeq = 4500; delSeq = 2040; labelSel = null;
-    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, clock: () => simNow, config: { oneWay: true } });
-    ITEMS.forEach(([itemNo, name, category, palletQty, minShipDays], i) => wh.addItem({ itemNo, name, category, palletQty, minShipDays, gtin: GS1.makeGtin13('20012', 3000 + i) }));
+    eta = {}; manual = {}; problemOpen = {}; incoming = {}; opStd = {}; truckSeq = 0; orderSeq = 4500; delSeq = 2040; labelSel = null;
+    wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, blocks: BLOCKS, stations: STATIONS, clock: () => simNow, config: { oneWay: true } });
+    ITEMS.forEach(([itemNo, name, category, palletQty, minShipDays, , storage], i) => wh.addItem({ itemNo, name, category, palletQty, minShipDays, storage, gtin: GS1.makeGtin13('20012', 3000 + i) }));
+    ROUTES.forEach((r) => wh.addRoute(r));
+    wh.addDesk('DESK1', { name: 'Receiving desk' });
     AISLES.forEach((a, i) => wh.setLocationCategory({ aisle: a }, i < 4 ? 'YOG' : 'CHE'));
     seedStock();
+    seedBlocks();
 
     // Before the shift: some orders and two trucks at the door.
     randomOrder();
@@ -710,18 +832,24 @@ td .acts { display: flex; gap: 4px; }
     announce('YOG', 4, 'three', false);
     simNow += 14 * MIN;
     announce('CHE', 3, 'list', true);
+    announce('CHE', 3, 'three', false, 'desk');
     randomOrder();
+    sendToProcess('HOLES', 2);
     simNow = SHIFT_START;
     wh.planGround();
 
-    for (const cats of [['YOG'], ['YOG'], ['CHE'], ['CHE']]) addTruck('auto', cats);
+    for (const cats of [['YOG'], ['YOG'], ['CHE'], ['CHE'], ['CHE']]) addTruck('auto', cats);
     nextOrder = simNow + 4 * MIN;
     nextDelivery = simNow + 25 * MIN;
+    nextHoles = simNow + 40 * MIN;
+    deskIdle = simNow;
     wh.events.length = 0;
-    wh.log('Shift started. RT-01 and RT-02 on yoghurt, RT-03 and RT-04 on cheese');
+    wh.log('Shift started. RT-01 and RT-02 on yoghurt, RT-03 to RT-05 on cheese');
     fillItemSelect();
     buildExpiry();
     buildTerminals();
+    buildStations();
+    fillRouteSelect();
     render(true);
   }
 
@@ -783,6 +911,12 @@ td .acts { display: flex; gap: 4px; }
       if (!eta[truck.id] || eta[truck.id].key !== key) eta[truck.id] = { key, at: simNow + act.ms };
       else if (simNow >= eta[truck.id].at) { delete eta[truck.id]; doAction(truck, act); }
     }
+    tickStations();
+    tickDesk();
+    if (simNow >= nextHoles) {
+      sendToProcess('HOLES', between(1, 2));
+      nextHoles = simNow + between(50, 80) * MIN;
+    }
     if (simNow >= nextOrder) {
       randomOrder();
       nextOrder = simNow + between(9, 16) * MIN;
@@ -790,7 +924,7 @@ td .acts { display: flex; gap: 4px; }
     if (simNow >= nextDelivery) {
       const cats = ['YOG', 'CHE'];
       if (Object.values(wh.locations).some((l) => l.category === 'PRO')) cats.push('PRO');
-      announce(pick(cats), between(3, 5), pick(['three', 'three', 'list', 'separate']), rng() < 0.3);
+      announce(pick(cats), between(3, 5), pick(['three', 'three', 'list', 'separate']), rng() < 0.3, rng() < 0.35 ? 'desk' : 'dock');
       nextDelivery = simNow + between(40, 70) * MIN;
     }
     for (const o of Object.values(wh.orders)) {
@@ -799,6 +933,48 @@ td .acts { display: flex; gap: 4px; }
         if (simNow - o.readyAt > 12 * MIN) wh.shipOrder(o.id);
       }
     }
+  }
+
+  // Station operators: start the first queued pallet after a minute, finish around the standard time.
+  function tickStations() {
+    for (const st of Object.values(wh.stations)) {
+      if (st.dwell || manual[`st:${st.id}`]) continue;
+      const v = wh.stationView(st.id);
+      if (v.working.length) {
+        const w = v.working[0];
+        const sscc = w.pallet.sscc;
+        opStd[sscc] = opStd[sscc] || st.minutes * (0.85 + rng() * 0.45);
+        if (w.mins >= opStd[sscc]) { wh.stationScan(st.id, sscc); delete opStd[sscc]; }
+      } else if (v.queue.length && simNow - v.queue[0].proc.queuedAt >= MIN) {
+        wh.stationScan(st.id, v.queue[0].sscc);
+      }
+    }
+  }
+
+  // Receiving desk: the keyboard operator calls out, the second operator scans; a missing count is typed.
+  const deskEta = { key: null, at: 0 };
+  function tickDesk() {
+    if (manual.desk) return;
+    const desk = wh.desks.DESK1;
+    if (!desk.taskId) {
+      const waiting = Object.values(wh.tasks).some((t) => t.type === 'RECEIVE' && t.status === 'open' && t.deskOnly);
+      if (waiting && simNow - (desk.idleSince || deskIdle) > 2 * MIN) wh.deskStart('DESK1');
+      return;
+    }
+    const task = wh.tasks[desk.taskId];
+    const p = (incoming[task.deliveryId] || [])[0];
+    const c = wh.deskCallout('DESK1');
+    const key = p ? `${p.sscc}:${c && c.word}:${p.gs1Done ? 1 : 0}` : 'finish';
+    if (deskEta.key !== key) { deskEta.key = key; deskEta.at = simNow + (p && p.scanned === 0 && c && c.word === 'BATCH' ? 40000 : 10000); return; }
+    if (simNow < deskEta.at) return;
+    deskEta.key = null;
+    if (!p) { wh.finishReceiving('DESK1'); return; }
+    if (c && c.word === 'GS1' && p.gs1Done) wh.deskEnter('DESK1', 'qty', String(p.qty));
+    else if (c) {
+      const r = wh.scan('DESK1', deskBarcode(p, c.word));
+      if (r.ok) { p.scanned++; if (c.word === 'GS1') p.gs1Done = true; }
+    }
+    syncIncoming();
   }
 
   // ---- Rendering --------------------------------------------------------
@@ -832,6 +1008,7 @@ td .acts { display: flex; gap: 4px; }
       `<div class="stat ${held ? 'alert' : ''}"><b>${held}</b> held</div>`,
       `<div class="stat"><b>${orders.filter((o) => o.status === 'ready').length}</b> orders ready · <b>${orders.filter((o) => o.status === 'shipped').length}</b> shipped</div>`,
       `<div class="stat"><b>${blockedPallets}</b> pallets can't ship</div>`,
+      `<div class="stat"><b>${Object.values(wh.pallets).filter((p) => p.proc).length}</b> pallets in a process</div>`,
       `<div class="stat good"><b>${inputsPer(trucks, 'move')}</b> scans per pallet move</div>`,
       `<div class="stat good"><b>${inputsPer(trucks, 'recv')}</b> inputs per received pallet</div>`,
     ].join(''));
@@ -857,15 +1034,16 @@ td .acts { display: flex; gap: 4px; }
     const trucks = Object.values(wh.trucks);
     const open = wh.openTasks();
 
-    const laneCodes = Object.values(wh.locations).filter((l) => l.kind === 'lane').map((l) => l.code);
+    const laneCodes = Object.values(wh.locations).filter((l) => l.kind === 'lane' || l.kind === 'station').map((l) => l.code);
     let lanes = laneCodes.map((code) => {
       const lane = wh.locations[code];
       const here = trucks.filter((t) => { const tg = truckTarget(t); return tg === code && !parseRack(tg); });
       const order = Object.values(wh.orders).find((o) => o.lane === code && o.status !== 'shipped');
-      const sub = code === 'DOCK-IN'
+      const sub = lane.kind === 'station' ? `${lane.pallets.length} here`
+        : code === 'DOCK-IN'
         ? `${lane.pallets.length} pallet${lane.pallets.length === 1 ? '' : 's'} to put away`
         : order ? `${esc(order.id)} · ${lane.pallets.length} on lane` : `${lane.pallets.length} on lane`;
-      return `<div class="lanebox"><div class="top"><strong>${code}</strong><span class="hint num">${sub}</span></div><div class="trucks">${here.map((t) => truckTag(t)).join('')}</div></div>`;
+      return `<div class="lanebox"><div class="top"><strong>${lane.kind === 'station' ? esc(wh.stations[lane.station].name) : code}</strong><span class="hint num">${sub}</span></div><div class="trucks">${here.map((t) => truckTag(t)).join('')}</div></div>`;
     }).join('');
     const idle = trucks.filter((t) => !truckTarget(t));
     lanes += `<div class="lanebox"><div class="top"><strong>Idle</strong><span class="hint">${idle.length ? '' : 'none'}</span></div><div class="trucks">${idle.map((t) => truckTag(t)).join('')}</div></div>`;
@@ -910,6 +1088,27 @@ td .acts { display: flex; gap: 4px; }
       </div>`;
     }
     setHTML($('board'), html);
+
+    // Block stacks: one row per lane, stack 01 (front) on the left.
+    let blocks = '<div class="panel-head" style="margin:0"><h3>Block stacks · cheese crate pallets</h3><span class="hint">6 high · filled from the back, emptied from the front</span></div>';
+    for (const lane of wh.layout.blocks) {
+      const stacks = wh._blockStacks(lane);
+      const seq = wh._blockSeq(lane);
+      const top = seq[0] && wh.pallets[seq[0]];
+      const n = (occ[lane] || []).length;
+      const capL = wh.capOf(lane);
+      const nextStack = top ? top.loc : null;
+      const cells = stacks.map((st) => {
+        const here = (occ[lane] || []).map((id) => wh.trucks[id]).filter((t) => truckTarget(t) === st.code);
+        return `<div class="stack c-${st.category} ${st.code === nextStack ? 'next' : ''}" title="${st.code}: ${st.pallets.length} of ${st.height}"><i style="height:${(st.pallets.length / st.height) * 100}%"></i><span>${st.pallets.length || ''}</span>${here.map((t) => truckTag(t, 'position:absolute;transform:translateX(-50%)')).join('')}</div>`;
+      }).join('');
+      blocks += `<div class="row">
+        <div class="name">${lane}<small>${top ? `${esc(wh.items[top.itemNo].name.split(',')[0])}` : 'empty'}</small><small>${top ? esc(top.batch) : ''}</small></div>
+        <div class="blocklane">${cells}</div>
+        <div class="occ num ${n >= capL ? 'full' : n ? 'some' : ''}" aria-label="${n} of ${capL} trucks in ${lane}">${n}/${capL}</div>
+      </div>`;
+    }
+    setHTML($('blocks'), blocks);
   }
 
   function buildTerminals() {
@@ -986,7 +1185,7 @@ td .acts { display: flex; gap: 4px; }
     let body = '';
     const t = ins.task;
     if (t) {
-      const why = t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.dispatchReason || '';
+      const why = t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note || '' : t.dispatchReason || '';
       body += `<div class="scr-top"><span>${typeHtml(t.type)}</span><span>${esc(why)}</span><span class="num">#${t.id}</span></div>`;
     }
     if (ins.kind === 'receive') {
@@ -1015,8 +1214,8 @@ td .acts { display: flex; gap: 4px; }
       } else if (ins.kind === 'pickup') {
         const enter = wh.entryFor(truck, ins.target);
         if (enter) body += `<div class="sub">One-way: enter aisle <b>${esc(aisleName(aisleOf(ins.target)))}</b> from the <b>${enter}</b></div>`;
-        body += `<div class="verb">Pick up ${parseRack(ins.target) ? 'at' : `at ${esc(ins.target)}`}</div>`;
-        body += parseRack(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
+        body += `<div class="verb">Pick up ${isStorage(ins.target) ? 'at' : `at ${esc(wh._placeName(ins.target))}`}</div>`;
+        body += isStorage(ins.target) ? `<div>${locHtml(ins.target, 'lg')}</div>${spokenHtml(ins.target)}` : `<div class="sub">Scan pallet <b>…${esc(t.sscc.slice(-6))}</b></div>`;
         body += `<div class="sub">${palletLine(ins.pallet)}</div><div class="sub">then to ${t.to ? esc(wh.label(t.to)) : 'auto slot'}</div>`;
       } else {
         const enter = wh.entryFor(truck, ins.target);
@@ -1054,6 +1253,126 @@ td .acts { display: flex; gap: 4px; }
     }
     const s = truck.stats;
     setHTML(el.querySelector('.stats'), `${s.moves} moves · ${s.received} pallets received · ${s.wrongScans} wrong scans`);
+  }
+
+  // ---- Process floor: station screens and the receiving desk ----------------
+
+  function buildStations() {
+    const box = $('stations');
+    box.innerHTML = '';
+    for (const st of Object.values(wh.stations)) {
+      const el = document.createElement('article');
+      el.className = 'term';
+      el.dataset.station = st.id;
+      el.innerHTML = `
+        <div class="term-head"><strong>${esc(st.name)}</strong><span class="chips">${st.dwell ? `<span class="chip">${st.capacity} places</span>` : `<span class="chip">${esc(st.machine)}</span><span class="chip">${st.operators} operator${st.operators > 1 ? 's' : ''}</span>`}</span></div>
+        <div class="screen"></div>
+        <form class="scanrow" novalidate>
+          <input type="text" id="st-${st.id}" aria-label="Scan at ${esc(st.name)}" placeholder="Scan pallet" autocomplete="off" spellcheck="false">
+          <button class="btn primary" type="button" data-act="scan">Scan</button>
+        </form>
+        <div class="term-actions"><button class="btn small" type="button" data-act="drive"></button></div>`;
+      box.appendChild(el);
+    }
+    const desk = document.createElement('article');
+    desk.className = 'term';
+    desk.id = 'deskCard';
+    desk.style.gridColumn = '1 / -1';
+    desk.innerHTML = `
+      <div class="term-head"><strong>Receiving desk</strong><span class="chips"><span class="chip">2 operators: keyboard + scanner</span></span></div>
+      <div class="screen" id="deskScreen"></div>
+      <form class="scanrow" id="deskScanForm" novalidate>
+        <input type="text" id="deskScan" aria-label="Desk scanner" placeholder="Scanner (second operator)" autocomplete="off" spellcheck="false">
+        <button class="btn primary" type="button" id="deskScanBtn">Scan</button>
+      </form>
+      <form class="form" id="deskKeys" novalidate>
+        <div class="keys">
+          <label for="dk-batch">Batch<input id="dk-batch" autocomplete="off"></label>
+          <label for="dk-expiry">Best before<input id="dk-expiry" placeholder="dd-mm-yyyy" autocomplete="off"></label>
+          <label for="dk-item">Item / EAN<input id="dk-item" autocomplete="off"></label>
+          <label for="dk-sscc">Pallet SSCC<input id="dk-sscc" autocomplete="off"></label>
+          <label for="dk-qty">Quantity<input id="dk-qty" inputmode="numeric" autocomplete="off"></label>
+        </div>
+        <div class="term-actions">
+          <button class="btn" type="submit">Enter typed values</button>
+          <button class="btn small" type="button" id="deskStartBtn">Take next delivery</button>
+          <button class="btn small" type="button" id="deskEndBtn">End delivery</button>
+          <button class="btn small" type="button" id="deskDrive"></button>
+        </div>
+      </form>
+      <div class="stats num" id="deskStats"></div>`;
+    box.appendChild(desk);
+  }
+
+  const mmss = (mins) => { const s = Math.max(0, Math.round(mins * 60)); return `${Math.floor(s / 60)}:${p2(s % 60)}`; };
+  const pline = (p) => `<b>…${esc(p.sscc.slice(-6))}</b> ${esc(p.itemNo)} · ${esc(p.batch)}`;
+
+  function renderStations() {
+    document.querySelectorAll('#stations [data-station]').forEach((el) => {
+      const v = wh.stationView(el.dataset.station);
+      const st = v.station;
+      let body = '';
+      if (st.dwell) {
+        body += `<div class="scr-top"><span>${v.dwelling.length} of ${st.capacity} in</span><span>${v.coming ? `${v.coming} on the way` : ''}</span></div>`;
+        body += v.dwelling.length ? `<div class="plist">${v.dwelling.slice(0, 8).map((d) => {
+          const pctDone = Math.min(100, ((d.total - d.left) / d.total) * 100);
+          return `<div><span>${pline(d.pallet)}</span><span class="num">${d.left > 0 ? `${wh._duration(Math.ceil(d.left))} left` : 'time up'}</span></div><div class="timer"><i style="width:${pctDone}%"></i></div>`;
+        }).join('')}</div>` : '<div class="sub">Empty. Pallets arrive by Auto moves; the system calls the move out when time is up.</div>';
+        if (v.waiting.length) body += `<div class="sub" style="color:#f0b429">${v.waiting.length} time up, waiting for a truck</div>`;
+      } else {
+        const w = v.working[0];
+        if (w) {
+          const over = w.mins > st.minutes;
+          body += `<div class="scr-top"><span>${esc(w.step.op)}</span><span class="num">${mmss(w.mins)} / ${st.minutes}:00</span></div>`;
+          body += `<div class="verb">${pline(w.pallet)}</div><div class="timer ${over ? 'over' : ''}"><i style="width:${Math.min(100, (w.mins / st.minutes) * 100)}%"></i></div>`;
+          body += `<ol class="sop">${st.sop.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`;
+          body += `<div class="sub">Scan the pallet again when done</div>`;
+        } else {
+          body += `<div class="verb" style="font-size:1.15rem">${v.queue.length ? 'Scan the next pallet to start' : 'Waiting for a pallet'}</div>`;
+          body += `<ol class="sop">${st.sop.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`;
+        }
+        body += `<div class="plist">${v.queue.slice(0, 4).map((p) => `<div><span>${pline(p)}</span><span class="num">waiting ${Math.round((simNow - p.proc.queuedAt) / MIN)} min</span></div>`).join('')}</div>`;
+        const ready = v.waiting.length;
+        body += `<div class="sub">${v.queue.length} queued · ${ready} ready for a truck · ${v.coming} on the way · ${st.done} done</div>`;
+      }
+      if (st.message) body += `<div class="msg ${st.message.ok ? 'ok' : 'bad'}">${esc(st.message.text)}</div>`;
+      setHTML(el.querySelector('.screen'), body);
+      el.querySelector('[data-act="drive"]').textContent = manual[`st:${st.id}`] ? 'Let the demo operate it' : 'Operate it yourself';
+      el.querySelector('[data-act="scan"]').textContent = st.dwell ? 'Check a pallet' : v.working.length ? 'Scan: done' : v.queue.length ? 'Scan: start' : 'Scan';
+    });
+
+    const desk = wh.desks.DESK1;
+    const task = desk.taskId && wh.tasks[desk.taskId];
+    let body = '';
+    if (!task) {
+      const waiting = Object.values(wh.tasks).filter((t) => t.type === 'RECEIVE' && t.status === 'open' && t.deskOnly).length;
+      body += `<div class="verb">${waiting ? `${waiting} deliver${waiting === 1 ? 'y' : 'ies'} waiting` : 'No delivery at the desk'}</div><div class="sub">Deliveries announced for the desk are received here by two operators. Put-away jobs go to the trucks as each pallet is registered.</div>`;
+    } else {
+      const del = wh.deliveries[task.deliveryId];
+      const c = wh.deskCallout('DESK1');
+      const d = task.draft;
+      body += `<div class="scr-top"><span>Delivery <b>${esc(del.id)}</b> · ${esc(del.supplier)}</span><span>pallet ${del.received.length + 1} of ${del.expected}</span></div>`;
+      body += `<div class="sub">Call out</div><div class="callout">${c ? c.word : '–'}</div>`;
+      body += `<dl class="recv">${RECEIVE_FIELDS.map((f) => `<dt class="${c && c.fields.includes(f) && !d[f] ? 'now' : ''}">${FIELD_LABELS[f]}</dt><dd>${d[f] ? esc(f === 'item' ? `${d.item} ${wh.items[d.item].name}` : f === 'expiry' ? dmy(d.expiry) : f === 'sscc' ? `…${d.sscc.slice(-8)}` : d[f]) : '–'}</dd>`).join('')}</dl>`;
+      if (c && c.word === 'GS1' && d.item && d.expiry && !d.qty) body += `<div class="sub" style="color:#f0b429">No count on the label: type the quantity</div>`;
+    }
+    if (desk.message) body += `<div class="msg ${desk.message.ok ? 'ok' : 'bad'}">${esc(desk.message.text)}</div>`;
+    setHTML($('deskScreen'), body);
+    $('deskDrive').textContent = manual.desk ? 'Let the demo run it' : 'Run it yourself';
+    $('deskStartBtn').disabled = Boolean(task);
+    $('deskEndBtn').disabled = !task;
+    const s = desk.stats;
+    setHTML($('deskStats'), `${s.received} pallet${s.received === 1 ? '' : 's'} received · ${s.received ? (s.receiveInputs / s.received).toFixed(1) : '–'} inputs per pallet (scans + typed)`);
+  }
+
+  function fillRouteSelect() {
+    $('pRoute').innerHTML = Object.values(wh.routes).map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+  }
+
+  function renderProcess() {
+    setHTML($('routes'), Object.values(wh.routes).map((r) => `<div class="item"><span><b>${esc(r.name)}</b><br><span class="hint">${r.steps.map((st) => `${esc(wh.stations[st.station].name)}${st.dwellMin ? ` (${wh._duration(st.dwellMin)})` : st.op ? `: ${esc(st.op)}` : ''}`).join(' → ')} → storage or shipping lane</span></span></div>`).join(''));
+    setHTML($('plog'), wh.processLog.slice(0, 20).map((e) => `<tr><td class="num">${hhmm(e.end)}</td><td>${ssccHtml(e.sscc)}</td><td>${esc(wh.stations[e.station].name)}${e.op && !wh.stations[e.station].dwell ? ` · ${esc(e.op)}` : ''}</td>
+      <td class="num ${e.standard && e.minutes > e.standard * 1.2 ? 'status held' : ''}">${wh._duration(e.minutes)}</td><td class="num">${e.standard ? wh._duration(e.standard) : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No steps finished yet.</td></tr>');
   }
 
   function renderAuto() {
@@ -1271,13 +1590,15 @@ td .acts { display: flex; gap: 4px; }
     $('clock').textContent = `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()]} ${d.getUTCDate()} Oct ${hhmm(simNow)}`;
     renderSummary();
     renderBoard();
-    document.querySelectorAll('.term').forEach(renderTerminal);
+    document.querySelectorAll('#terms .term').forEach(renderTerminal);
     if (tab === 'auto') renderAuto();
     if (tab === 'orders') renderOrders();
     if (tab === 'inbound') renderInbound();
     if (tab === 'locations') renderLocations();
     if (tab === 'labels') renderLabels();
     if (tab === 'expiry') renderExpiry();
+    if (tab === 'process') renderProcess();
+    renderStations();
     renderQueue();
     renderStock();
   }
@@ -1401,7 +1722,7 @@ td .acts { display: flex; gap: 4px; }
   $('orderForm').addEventListener('submit', (ev) => {
     ev.preventDefault();
     try {
-      const o = wh.addOrder({ id: String(++orderSeq), customer: $('oCustomer').value, lane: $('oLane').value, lines: [{ itemNo: $('oItem').value, pallets: Math.max(1, Number($('oPallets').value) || 1) }] });
+      const o = wh.addOrder({ id: String(++orderSeq), customer: $('oCustomer').value, lane: $('oLane').value, lines: [{ itemNo: $('oItem').value, pallets: Math.max(1, Number($('oPallets').value) || 1), process: $('oProc').value || undefined }] });
       const short = o.lines[0].short;
       say('orderErr', short ? `Order ${o.id} created, ${short} pallet(s) short: not enough stock that can ship` : `Order ${o.id} created. Pallets allocated by expiry date`, !short);
     } catch (e) { say('orderErr', e.message, false); }
@@ -1413,8 +1734,9 @@ td .acts { display: flex; gap: 4px; }
   $('delForm').addEventListener('submit', (ev) => {
     ev.preventDefault();
     try {
-      const id = announce($('dCat').value, Math.max(1, Math.min(20, Number($('dPallets').value) || 1)), $('dLabels').value, $('dShort').checked);
-      say('delErr', `Delivery ${id} is at the door. A receiving job is in the queue`, true);
+      const at = $('dAt').value;
+      const id = announce($('dCat').value, Math.max(1, Math.min(20, Number($('dPallets').value) || 1)), $('dLabels').value, $('dShort').checked, at);
+      say('delErr', at === 'desk' ? `Delivery ${id} is waiting for the receiving desk` : `Delivery ${id} is at the door. A receiving job is in the queue`, true);
     } catch (e) { say('delErr', e.message, false); }
     render(true);
   });
@@ -1483,6 +1805,82 @@ td .acts { display: flex; gap: 4px; }
       if (btn.dataset.cancel) wh.cancelTask(Number(btn.dataset.cancel));
       if (btn.dataset.release) wh.releaseTask(Number(btn.dataset.release));
     });
+  });
+
+  $('procForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    try {
+      const sent = sendToProcess($('pRoute').value, Math.max(1, Math.min(10, Number($('pCount').value) || 1)));
+      say('procErr', sent.length ? `${sent.length} pallet(s) sent. Auto moves are in the queue` : 'No suitable pallet free right now (it must be reachable and not on an order)', sent.length > 0);
+    } catch (e) { say('procErr', e.message, false); }
+    render(true);
+  });
+
+  $('stations').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    const card = btn.closest('[data-station]');
+    if (!card) return;
+    const id = card.dataset.station;
+    act(() => {
+      if (btn.dataset.act === 'drive') { manual[`st:${id}`] = !manual[`st:${id}`]; return; }
+      if (btn.dataset.act !== 'scan') return;
+      manual[`st:${id}`] = true;
+      const input = card.querySelector('input');
+      if (input.value.trim()) { wh.stationScan(id, input.value); input.value = ''; return; }
+      const v = wh.stationView(id);
+      const p = v.working[0] ? v.working[0].pallet : v.queue[0] || (v.dwelling[0] && v.dwelling[0].pallet);
+      if (p) wh.stationScan(id, p.sscc);
+      else wh.stations[id].message = { ok: false, text: 'No pallet here to scan' };
+    });
+  });
+  $('stations').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    if (ev.target.id === 'deskScanForm') { deskScanNow(); return; }
+    if (ev.target.id === 'deskKeys') { deskTyped(); return; }
+    const card = ev.target.closest('[data-station]');
+    if (!card) return;
+    const input = card.querySelector('input');
+    if (input.value.trim()) act(() => { manual[`st:${card.dataset.station}`] = true; wh.stationScan(card.dataset.station, input.value); input.value = ''; });
+  });
+
+  function deskScanNow() {
+    act(() => {
+      manual.desk = true;
+      const input = $('deskScan');
+      if (input.value.trim()) { wh.scan('DESK1', input.value); input.value = ''; syncIncoming(); return; }
+      const desk = wh.desks.DESK1;
+      const task = desk.taskId && wh.tasks[desk.taskId];
+      const p = task && (incoming[task.deliveryId] || [])[0];
+      const c = wh.deskCallout('DESK1');
+      if (p && c) {
+        if (c.word === 'GS1' && p.gs1Done) { desk.message = { ok: false, text: 'The label has no count: type the quantity' }; return; }
+        const r = wh.scan('DESK1', deskBarcode(p, c.word));
+        if (r.ok) { p.scanned++; if (c.word === 'GS1') p.gs1Done = true; }
+        syncIncoming();
+      }
+    });
+  }
+  function deskTyped() {
+    act(() => {
+      manual.desk = true;
+      for (const f of RECEIVE_FIELDS) {
+        const input = $(`dk-${f}`);
+        if (!input.value.trim()) continue;
+        const r = wh.deskEnter('DESK1', f, input.value);
+        if (r && r.ok === false) break;
+        input.value = '';
+      }
+      syncIncoming();
+    });
+  }
+  document.addEventListener('click', (ev) => {
+    const t = ev.target.closest('#deskScanBtn, #deskStartBtn, #deskEndBtn, #deskDrive');
+    if (!t) return;
+    if (t.id === 'deskScanBtn') deskScanNow();
+    if (t.id === 'deskStartBtn') act(() => wh.deskStart('DESK1'));
+    if (t.id === 'deskEndBtn') act(() => { wh.finishReceiving('DESK1'); });
+    if (t.id === 'deskDrive') act(() => { manual.desk = !manual.desk; });
   });
 
   $('play').addEventListener('click', () => { running = !running; $('play').textContent = running ? 'Pause shift' : 'Run shift'; });
