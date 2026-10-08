@@ -81,8 +81,12 @@
       for (let i = 0; i < 3; i++) list.push({ sscc: GS1.makeSscc(3, '8799999', 5000 + i), itemNo: pro.itemNo, batch: batchCode(pro.itemNo, expiry), expiry, qty: pro.palletQty });
       store.exec('addDelivery', { id: 'D-2041', supplier: 'Drinks supplier', category: 'PRO', pallets: list.length, list }, 'seed');
     }
+    // Real skyr pallets can be received too: no list, so their own labels are scanned (and typed where they have no barcode).
+    const skyr = store.wh.items['05459'] || store.wh.items.E0960;
+    if (skyr) store.exec('addDelivery', { id: 'D-2042', supplier: 'A-ware (real labels)', category: skyr.category, pallets: 6 }, 'seed');
     return [
       `Demo stock: ${stock.added} pallets${stock.errors.length ? ` (${stock.errors.length} skipped)` : ''}, handhelds HH01–HH04, orders 4501 and 4502.`,
+      skyr ? 'Delivery D-2042 (A-ware skyr, 6 pallets) takes real pallet labels: Gutes Land Skyr and JA! skyr natuur.' : '',
       list.length ? `Delivery D-2041 (protein drinks) is announced with its list. Scan these SSCCs at the dock to receive it:\n  ${list.map((p) => `00${p.sscc}`).join('\n  ')}` : '',
     ].filter(Boolean).join('\n');
   }

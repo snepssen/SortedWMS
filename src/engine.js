@@ -146,15 +146,36 @@
     return Number.isNaN(t) || isoDay(t) !== iso ? null : iso;
   }
 
-  /** Expiry as a scanner or a person might send it. */
-  function parseDate(raw) {
+  /**
+   * Expiry as a scanner or a person might send it. Typed on a keypad, dates
+   * come as day-month-year: 09112026, 091126, 9-11-26. Six digits are also
+   * what a date-only barcode holds (YYMMDD), so with `today` given the reading
+   * that makes sense for a best-before date wins: from a year ago to ten ahead.
+   */
+  function parseDate(raw, today = null) {
     const s = String(raw).trim();
     let m;
     if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s))) return validIso(m[1], m[2], m[3]);
     if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(s))) return validIso(m[3], m[2], m[1]);
     if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})$/.exec(s))) return validIso(2000 + Number(m[3]), m[2], m[1]);
-    if (/^\d{6}$/.test(s)) return GS1.yymmdd(s);
+    if (/^\d{8}$/.test(s)) {
+      const ymd = /^20/.test(s) ? validIso(s.slice(0, 4), s.slice(4, 6), s.slice(6, 8)) : null; // 20261109
+      const dmy8 = validIso(s.slice(4, 8), s.slice(2, 4), s.slice(0, 2)); // 09112026
+      return pickDate([dmy8, ymd], today);
+    }
+    if (/^\d{6}$/.test(s)) {
+      if (!today) return GS1.yymmdd(s);
+      return pickDate([GS1.yymmdd(s), validIso(2000 + Number(s.slice(4, 6)), s.slice(2, 4), s.slice(0, 2))], today);
+    }
     return null;
+  }
+
+  // The first candidate that is a believable best-before date (a year back to ten years ahead).
+  function pickDate(candidates, today) {
+    const ok = candidates.filter(Boolean);
+    if (!today) return ok[0] || null;
+    const days = (iso) => daysBetween(today, iso);
+    return ok.find((iso) => days(iso) >= -366 && days(iso) <= 3653) || null;
   }
 
   // ---- Warehouse ------------------------------------------------------------
@@ -431,11 +452,24 @@
     // ---- Master data --------------------------------------------------------
 
     /** storage: 'rack' (default) or 'block' for crate pallets stacked on the floor. */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack' }) {
+    /**
+     * gtin: the case (trade unit) on the pallet. unitGtin + unitsPerCase: the
+     * consumer unit's EAN, for labels that count pots instead of cases, e.g.
+     * "(02)4316268741606(37)0960" = 960 pots = 80 cases of 12. codes: other
+     * numbers that mean this item, such as a supplier's article number,
+     * printed as "(91)40012009" on the label.
+     */
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [] }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
-      this.items[itemNo] = { itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShipDays, storage };
+      if (unitGtin && !GS1.isValidGtin(unitGtin)) throw new Error(`Unit EAN ${unitGtin} has a wrong check digit`);
+      if (unitGtin && !(Number.isInteger(Number(unitsPerCase)) && Number(unitsPerCase) > 0)) throw new Error('Units per case must be a whole number above 0');
+      const list = (Array.isArray(codes) ? codes : String(codes).split(/[\s,;]+/)).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+      this.items[itemNo] = {
+        itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShipDays, storage,
+        unitGtin: unitGtin ? GS1.gtin14(unitGtin) : null, unitsPerCase: unitGtin ? Number(unitsPerCase) : null, codes: list,
+      };
       return this.items[itemNo];
     }
 
@@ -492,11 +526,15 @@
     findItem(raw) {
       const s = String(raw).trim().toUpperCase();
       if (this.items[s]) return this.items[s];
+      const items = Object.values(this.items);
       if (/^\d{8,14}$/.test(s)) {
         const g = GS1.gtin14(s);
-        return Object.values(this.items).find((i) => i.gtin === g) || null;
+        const hit = items.find((i) => i.gtin === g || i.unitGtin === g);
+        if (hit) return hit;
       }
-      return null;
+      const byCode = (c) => items.find((i) => (i.codes || []).includes(c));
+      // A supplier's own number, typed or scanned; scanned without the GS1 prefix it still starts with its AI (91…).
+      return byCode(s) || (/^9[0-2]\d+$/.test(s) && byCode(s.slice(2))) || null;
     }
 
     /**
@@ -2159,8 +2197,8 @@
         if (!v || v.length > 20) return this._fail(desk, 'A batch is 1–20 characters');
         fields.batch = v.toUpperCase();
       } else if (field === 'expiry') {
-        const iso = parseDate(v);
-        if (!iso) return this._fail(desk, 'Not a date. Type it as 31-10-2026');
+        const iso = parseDate(v, this.today());
+        if (!iso) return this._fail(desk, 'Not a date. Type it as 31-10-2026 or 31102026');
         fields.expiry = iso;
       } else if (field === 'item') {
         const item = this.findItem(v);
@@ -2555,15 +2593,27 @@
       const fields = {};
       const gs1 = GS1.parse(input);
       if (gs1) {
-        Object.assign(fields, gs1);
+        const { internal, ...rest } = gs1;
+        Object.assign(fields, rest);
         if (gs1.gtin) {
           const item = this.findItem(gs1.gtin);
           if (!item) return this._fail(truck, `GTIN ${gs1.gtin} is not in the item list — call the coordinator`);
           fields.item = item.itemNo;
+          // Counted in consumer units (pots) under the unit EAN: convert to cases.
+          if (gs1.qty != null && item.unitGtin === GS1.gtin14(gs1.gtin) && item.gtin !== item.unitGtin) {
+            if (gs1.qty % item.unitsPerCase) return this._fail(truck, `${gs1.qty} units is not whole cases of ${item.unitsPerCase} — type the number of cases`);
+            fields.qty = gs1.qty / item.unitsPerCase;
+          }
+        }
+        if (internal) {
+          const item = this.findItem(internal);
+          if (!item) return this._fail(truck, `Supplier code ${internal} is not in the item list — call the coordinator`);
+          if (fields.item && fields.item !== item.itemNo) return this._fail(truck, `The label's codes point at two items (${fields.item}, ${item.itemNo}) — call the coordinator`);
+          fields.item = item.itemNo;
         }
       } else {
         const plain = input.replace(/^\(00\)/, '');
-        const asItem = /^\d{8,14}$/.test(plain) && this.findItem(plain);
+        const asItem = /^[\dA-Z]{4,}$/i.test(plain) && this.findItem(plain);
         if (!d.sscc && /^\d{18}$/.test(plain) && GS1.isValidSscc(plain)) fields.sscc = plain;
         else if (!d.item && asItem) fields.item = asItem.itemNo;
         else {
@@ -2572,8 +2622,8 @@
             if (input.length > 20) return this._fail(truck, 'That is too long for a batch number');
             fields.batch = input.toUpperCase();
           } else if (field === 'expiry') {
-            const iso = parseDate(input);
-            if (!iso) return this._fail(truck, 'Not a date. Scan the best-before date (e.g. 261031 or 31-10-2026)');
+            const iso = parseDate(input, this.today());
+            if (!iso) return this._fail(truck, 'Not a date. Type the best-before date as day month year, e.g. 09112026');
             fields.expiry = iso;
           } else if (field === 'item') {
             return this._fail(truck, `${input} is not a known item number or EAN`);
@@ -2612,7 +2662,13 @@
       }
 
       const got = [];
-      for (const f of RECEIVE_FIELDS) if (fields[f] != null) { d[f] = fields[f]; got.push(FIELD_LABELS[f].toLowerCase()); }
+      for (const f of RECEIVE_FIELDS) {
+        if (fields[f] == null) continue;
+        d[f] = fields[f];
+        // Read back what was typed or scanned, so a keypad slip is seen straight away.
+        const shown = f === 'expiry' ? dmy(fields[f]) : f === 'batch' || f === 'qty' ? fields[f] : null;
+        got.push(`${FIELD_LABELS[f].toLowerCase()}${shown != null ? ` ${shown}` : ''}`);
+      }
       if (RECEIVE_FIELDS.every((f) => d[f])) return this._registerReceived(truck, task);
       const next = RECEIVE_FIELDS.find((f) => !d[f]);
       if (truck.kind === 'desk') {

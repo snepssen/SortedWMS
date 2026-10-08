@@ -21,7 +21,12 @@
     '15': { key: 'expiry', len: 6, date: true }, // best before
     '17': { key: 'expiry', len: 6, date: true }, // use by
     '37': { key: 'qty', max: 8 },
+    // Company-internal codes, e.g. a supplier's article number: "(91)40012009".
+    '90': { key: 'internal', max: 30 },
+    '91': { key: 'internal', max: 90 },
+    '92': { key: 'internal', max: 90 },
   };
+  const GTIN_AIS = ['01', '02'];
 
   function checkDigit(body) {
     let sum = 0;
@@ -74,20 +79,22 @@
     const hadPrefix = s !== String(raw).trim();
     const out = {};
 
-    const put = (ai, value) => {
+    const put = (ai, value, into = out) => {
       const def = AIS[ai];
       if (!def) return false;
+      // Some suppliers print the 13-digit EAN where GS1 wants 14 digits: (02)4316268741606.
+      if (GTIN_AIS.includes(ai) && value.length === 13 && isValidGtin(value)) value = gtin14(value);
       if (def.len && value.length !== def.len) return false;
       if (def.max && (value.length < 1 || value.length > def.max)) return false;
       if (def.date) {
         const d = yymmdd(value);
         if (!d) return false;
-        out[def.key] = d;
+        into[def.key] = d;
       } else if (def.key === 'qty') {
         if (!/^\d+$/.test(value)) return false;
-        out.qty = Number(value);
+        into.qty = Number(value);
       } else {
-        out[def.key] = value;
+        into[def.key] = value;
       }
       return true;
     };
@@ -108,25 +115,40 @@
     // so a plain batch number like "10023" is never mistaken for AI 10.
     if (!/^\d{2}/.test(s)) return null;
     const strong = hadPrefix || s.includes(GS) || (/^\d{16,}/.test(s) && /^(00|01|02)/.test(s));
-    let count = 0;
-    while (s.length) {
-      if (s[0] === GS) { s = s.slice(1); continue; }
-      const ai = AIS[s.slice(0, 2)] ? s.slice(0, 2) : null;
-      if (!ai) return null;
+    // Elements one after another. A variable-length element ends at an FNC1
+    // separator, or at the end. Scanners set up without the separator glue
+    // the elements together, "3796" + "15261110": then every split is tried
+    // and the one where all the rest reads as valid elements is taken.
+    const walk = (rest, into, n) => {
+      if (rest[0] === GS) return walk(rest.slice(1), into, n);
+      if (!rest.length) return n;
+      const ai = rest.slice(0, 2);
       const def = AIS[ai];
-      s = s.slice(2);
-      let value;
+      if (!def) return 0;
+      const body = rest.slice(2);
+      const tries = [];
       if (def.len) {
-        value = s.slice(0, def.len);
-        s = s.slice(def.len);
+        tries.push([body.slice(0, def.len), body.slice(def.len)]);
+        // The 13-digit EAN case, (02)4316268741606: only when the 14-digit reading leaves the rest unreadable.
+        if (GTIN_AIS.includes(ai) && isValidGtin(body.slice(0, 13))) tries.push([body.slice(0, 13), body.slice(13)]);
       } else {
-        const end = s.indexOf(GS);
-        value = end === -1 ? s : s.slice(0, end);
-        s = end === -1 ? '' : s.slice(end + 1);
+        const end = body.indexOf(GS);
+        if (end !== -1) tries.push([body.slice(0, end), body.slice(end + 1)]);
+        else {
+          tries.push([body, '']);
+          for (let k = 1; k <= Math.min(def.max, body.length - 1); k++) tries.push([body.slice(0, k), body.slice(k)]);
+        }
       }
-      if (!put(ai, value)) return null;
-      count++;
-    }
+      for (const [value, next] of tries) {
+        const mine = {};
+        if (!put(ai, value, mine)) continue;
+        const after = {};
+        const total = walk(next, after, n + 1);
+        if (total) { Object.assign(into, mine, after); return total; }
+      }
+      return 0;
+    };
+    const count = walk(s, out, 0);
     return count && (strong || count >= 2) ? out : null;
   }
 

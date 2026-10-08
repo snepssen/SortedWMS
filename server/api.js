@@ -179,6 +179,8 @@
     on('GET', '/api/process-log', () => wh().processLog.slice(0, 200));
     on('GET', '/api/events', () => wh().events.slice(0, 200).map((e) => ({ ...e, text: wh().display(e.text) })));
     on('GET', '/api/journal', (_, q) => store.journal({ limit: q.limit, op: q.op, by: q.by, before: q.before }));
+    on('GET', '/api/printers', () => (printers.list ? printers.list() : []));
+    on('GET', '/api/printers/:name/status', ({ name }) => (printers.status ? printers.status(decodeURIComponent(name)) : { status: 404, error: 'No printers here' }));
     on('GET', '/api/print-queue', () => ({ jobs: wh().printQueue.slice(0, 50).map((j) => ({ id: j.id, printer: j.printer, at: j.at, label: j.label })), results: printers.results.slice(0, 50) }));
 
     // Handheld and desk actions
@@ -236,10 +238,15 @@
       const url = new URL(rawUrl, 'http://x');
       const route = routes.find((r) => r.method === method && r.re.test(url.pathname));
       if (!route) return { status: 404, body: { error: `No route ${method} ${url.pathname}` } };
-      try {
-        const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
+      const answer = (out) => {
         if (out && out.status && out.error) return { status: out.status, body: { error: out.error } };
         return { status: 200, body: out === undefined ? { ok: true } : out };
+      };
+      try {
+        const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
+        // Asking a printer goes over the network: those routes answer with a promise.
+        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: 400, body: { error: e.message } }));
+        return answer(out);
       } catch (e) {
         return { status: 400, body: { error: e.message } };
       }

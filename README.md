@@ -94,10 +94,12 @@ Each handheld has a mode bar. Auto is the default; the others are for when a dri
 | Put-away, pick, Auto-Shift | 2 scans: the pallet (or its location), then the drop location |
 | Check & label | 2 scans: the picked pallet, then the new shipping label once it's on |
 | Receiving, supplier label + delivery list | **1 scan**: the bottom barcode (SSCC) |
+| Receiving, full GS1 label (e.g. A-ware Kruibeke) | **2 scans**: item + count + best-before + batch in one barcode, then the SSCC |
 | Receiving, 3-barcode supplier label | 3 scans, any order: top (item + count), middle (best-before + batch), bottom (SSCC) |
+| Receiving, label without batch/date barcodes (e.g. A-ware Packaging) | 2 scans (SSCC, item + count) + batch and best-before typed on the keypad |
 | Receiving, no usable label | batch → best-before → item → SSCC (4 scans) + 1 tap for quantity |
 
-An SSCC or a known EAN is recognised whenever it's scanned, whatever field is next. If the label and the delivery list disagree, the driver is told and nothing is registered.
+An SSCC or a known EAN is recognised whenever it's scanned, whatever field is next. So is a supplier's own article number (a `(91)` barcode), and a count in consumer units is converted to cases (960 pots = 80 cases of 12). Typed values are read back on the screen, and dates are typed day-month-year (`09112026`). The two real A-ware labels are worked through in [docs/HARDWARE.md](docs/HARDWARE.md). If the label and the delivery list disagree, the driver is told and nothing is registered.
 
 The scanner sends its own Enter. A wrong scan explains what's wrong and changes nothing.
 
@@ -163,6 +165,8 @@ The pallet is registered as soon as it's complete, and its put-away goes to the 
 ### Labels
 Checking a picked pallet sends a 4×6" shipping label to the label printer at that shipping lane. The label is ZPL, the language most networked thermal label printers accept on port 9100. It carries the customer, order, item, batch, best-before date, a label barcode the driver scans to confirm it's on, and the GS1-128 SSCC.
 
+The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer's resolution is set in the site file and labels are scaled to it. The office can ask a printer for its status (paper, ribbon, head, pause). The handhelds are Zebra MC9401s: the handheld page has a compact layout for their screen, and Esc and F1–F5 work on their keypad. Setup for both is in [docs/HARDWARE.md](docs/HARDWARE.md).
+
 ## Running the WMS
 
 The server is the real thing: one source of truth for every handheld, desk and office screen. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node).
@@ -198,7 +202,7 @@ Settings, through environment variables:
 | --- | --- |
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
-| `src/labels.js` | ZPL shipping and pallet labels. |
+| `src/labels.js` | ZPL shipping and pallet labels, scaled to the printer's dpi. |
 | `src/barcode.js` | Code 128 as SVG, for the command card. |
 | `server/index.js` | The WMS server: JSON API, handheld and office pages, clock tick, printing. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
@@ -213,6 +217,7 @@ Settings, through environment variables:
 | `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
+| `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
 ## Locations
 

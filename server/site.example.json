@@ -293,6 +293,28 @@
       "palletQty": 72,
       "minShipDays": 60,
       "storage": "rack"
+    },
+    {
+      "itemNo": "05459",
+      "name": "Netto Gutes Land Skyr 12x500g",
+      "category": "YOG",
+      "palletQty": 80,
+      "minShipDays": 10,
+      "storage": "rack",
+      "unitGtin": "4316268741606",
+      "unitsPerCase": 12,
+      "codes": [
+        "40012009"
+      ]
+    },
+    {
+      "itemNo": "E0960",
+      "name": "JA! skyr natuur 12x500g",
+      "category": "YOG",
+      "palletQty": 96,
+      "minShipDays": 10,
+      "storage": "rack",
+      "gtin": "04388860261127"
     }
   ],
   "printers": {
@@ -301,5 +323,6 @@
     "LP-OUT-03": "",
     "LP-OUT-04": "",
     "LP-ST-PRESS": ""
-  }
+  },
+  "_printers": "Printer by name: \"host:port\", or {\"address\": \"10.0.4.51:9100\", \"dpi\": 300}. A Zebra ZT421 is 203 or 300 dpi (see its configuration label)."
 }
