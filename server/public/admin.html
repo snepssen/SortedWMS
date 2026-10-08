@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SortedWMS office</title>
+<style>
+  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --chip: #eef2f5; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 7px 11px; border-radius: 8px; color: var(--dim); font-weight: 600; }
+  nav button.on { background: var(--chip); color: var(--ink); }
+  main { padding: 16px; max-width: 1280px; margin: 0 auto; display: grid; gap: 16px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .hint { color: var(--dim); font-size: 13px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button.small { padding: 2px 8px; font-size: 12px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  textarea { width: 100%; min-height: 120px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 8px; }
+  .form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
+  .table { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; }
+  td.wrap { white-space: normal; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .kpi b { display: block; font-size: 24px; }
+  .kpi span { color: var(--dim); font-size: 12px; }
+  .out { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--chip); white-space: pre-wrap; font-size: 13px; }
+  .out.bad { color: var(--bad); }
+  .out.ok { color: var(--ok); }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--chip); font-size: 12px; font-weight: 600; }
+  .tag.urgent, .tag.held { color: var(--warn); }
+  .tag.bad { color: var(--bad); }
+  @media (max-width: 600px) { main { padding: 10px; } .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SortedWMS office</h1>
+  <nav id="nav"></nav>
+  <span class="hint" id="status"></span>
+</header>
+<main id="main"></main>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ls = { get: (k) => { try { return localStorage.getItem('adm.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('adm.' + k, v); } catch (e) { /* ignore */ } } };
+  let token = ls.get('token') || new URLSearchParams(location.search).get('token') || '';
+  let user = ls.get('user') || '';
+  let tab = ls.get('tab') || 'floor';
+  let S = null; // summary
+  const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const when = (t) => new Date(t).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dmy = (iso) => (iso ? iso.split('-').reverse().join('-') : '');
+  const short = (s) => (s ? '…' + s.slice(-6) : '–');
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: user || 'office' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': user || 'office' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+  // Run an action and show the result in the box next to it.
+  async function act(outId, fn) {
+    const out = $(outId);
+    try { const r = await fn(); if (out) { out.className = 'out ok'; out.textContent = typeof r === 'string' ? r : JSON.stringify(r, null, 1); } await refresh(); }
+    catch (e) { if (out) { out.className = 'out bad'; out.textContent = e.message; } }
+  }
+  const val = (id) => ($(id).value || '').trim();
+  const catOptions = (sel, none) => (none ? `<option value="">no category</option>` : '') + Object.entries(S.categories).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  const table = (heads, rows) => `<div class="table"><table><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.join('') || `<tr><td colspan="${heads.length}" class="hint">Nothing here</td></tr>`}</table></div>`;
+  function csv(text) {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    const split = (l) => l.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''));
+    const head = split(lines.shift());
+    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|gtin|itemNo)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
+  }
+
+  const TABS = {
+    floor: { label: 'Floor', render: renderFloor },
+    locations: { label: 'Locations', render: renderLocations },
+    stock: { label: 'Stock & trace', render: renderStock },
+    orders: { label: 'Orders & deliveries', render: renderOrders },
+    imports: { label: 'Import', render: renderImports },
+    audit: { label: 'Audit', render: renderAudit },
+    settings: { label: 'Settings', render: renderSettings },
+  };
+
+  function renderNav() {
+    $('#nav').innerHTML = Object.entries(TABS).map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'on' : ''}">${t.label}</button>`).join('');
+    document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; ls.set('tab', tab); renderNav(); draw(); }));
+  }
+
+  // ---- Floor: trucks, jobs ------------------------------------------------------------
+
+  async function renderFloor() {
+    const [devices, tasks] = await Promise.all([api('GET', '/api/devices'), api('GET', '/api/tasks')]);
+    const kpi = (n, l) => `<div class="kpi"><b>${n}</b><span>${l}</span></div>`;
+    return `<div class="kpis">${kpi(S.openJobs, 'open jobs')}${kpi(S.activeJobs, 'in progress')}${kpi(S.heldJobs, 'held')}${kpi(S.orders, 'open orders')}${kpi(S.pallets, 'pallets in stock')}${kpi(S.cantShip, "pallets can't ship")}${kpi(S.lost, 'location unknown')}${kpi(S.inProcess, 'in a process')}</div>
+      <section><h2>Handhelds</h2>${table(['ID', 'Mode', 'Categories', 'Now', 'Last message'], devices.map((d) => `<tr>
+        <td><b>${esc(d.id)}</b> <span class="hint">${d.kind}</span></td>
+        <td>${d.kind === 'truck' ? `<select data-dev-mode="${esc(d.id)}">${d.modes.map((m) => `<option value="${m.id}" ${m.id === d.mode ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select>` : ''}</td>
+        <td>${esc((d.categories || ['all']).join(', '))}</td>
+        <td class="wrap">${d.instruction.task ? `${esc(d.instruction.task.typeLabel)} #${d.instruction.task.id} ${esc(d.instruction.targetName || '')}` : esc(d.instruction.kind)}</td>
+        <td class="wrap">${d.message ? `<span style="color:var(--${d.message.ok ? 'ok' : 'bad'})">${esc(d.message.text)}</span>` : ''}</td></tr>`))}</section>
+      <section><h2>Jobs</h2><div class="out" id="taskOut" style="display:none"></div>${table(['#', 'Job', 'Pallet', 'From', 'To', 'Truck', 'Status', 'Why', ''], tasks.sort((a, b) => b.urgent - a.urgent || a.id - b.id).map((t) => `<tr>
+        <td>${t.id}</td><td>${esc(t.typeLabel)}${t.orderId ? ` · ${esc(t.orderId)}` : ''}</td><td class="mono">${short(t.sscc)}</td>
+        <td>${esc(t.fromName || '')}</td><td>${esc(t.toName || 'auto slot')}</td><td>${esc(t.truckId || '')}</td>
+        <td><span class="tag ${t.urgent ? 'urgent' : ''} ${t.status}">${t.urgent ? 'urgent ' : ''}${t.status}</span>${t.heldReason ? `<div class="hint">${esc(t.heldReason)}</div>` : ''}</td>
+        <td class="wrap hint">${esc(t.why || '')}</td>
+        <td>${t.status === 'held' ? `<button class="small" data-task="release" data-id="${t.id}">Release</button>` : `<button class="small" data-task="urgent" data-id="${t.id}" data-on="${!t.urgent}">${t.urgent ? 'Not urgent' : 'Urgent'}</button>`}
+            ${t.status !== 'active' ? `<button class="small" data-task="cancel" data-id="${t.id}">Cancel</button>` : ''}</td></tr>`))}</section>`;
+  }
+
+  // ---- Locations: template ranges, lookup, transfers, lost pallets ---------------------------
+
+  async function renderLocations() {
+    const [lost, transfers] = await Promise.all([api('GET', '/api/lost'), api('GET', '/api/transfers')]);
+    return `<div class="grid">
+      <section><h2>Location template: set a category on a range</h2>
+        <p class="hint">Either naming works: <span class="mono">AA01A1</span> → <span class="mono">AH10E3</span>, a partial range like <span class="mono">AA</span> → <span class="mono">AD</span> (whole racks), or <span class="mono">31</span> → <span class="mono">34</span> (whole aisles). Pallets left in the wrong category get Auto-Shift relocation jobs.</p>
+        <div class="form"><label>From <input id="tFrom" size="9" value="${esc(ls.get('tFrom') || 'AA01A1')}"></label><label>To <input id="tTo" size="9" value="${esc(ls.get('tTo') || 'AH10E3')}"></label>
+          <label>Category <select id="tCat">${catOptions(ls.get('tCat') ?? Object.keys(S.categories)[0], true)}</select></label>
+          <button id="tPrev">Preview</button><button class="primary" id="tApply" disabled>Apply</button></div>
+        <div class="out" id="tOut">Preview first, then apply.</div></section>
+      <section><h2>Find a pallet or location</h2>
+        <div class="form"><input id="lkIn" placeholder="SSCC, AA03C2, 38-02-0-10 or A3C2" style="flex:1"><button id="lkGo">Find</button></div>
+        <div class="out" id="lkOut" style="display:none"></div></section>
+      <section><h2>Office transfer</h2>
+        <p class="hint">Record where a pallet really stands. A pallet the system had in that spot goes on the unknown-location list. Drivers do the same on the handheld in Transfer mode: scan pallet, scan location.</p>
+        <div class="form"><label>Pallet SSCC <input id="trS" size="20"></label><label>Now at <input id="trTo" size="11"></label><button class="primary" id="trGo">Record</button></div>
+        <div class="out" id="trOut" style="display:none"></div></section>
+      <section><h2>Location unknown (${lost.length})</h2><p class="hint">Reported missing, or pushed out by a transfer. Scan one anywhere in Transfer mode to put it back on the map.</p>
+        ${table(['Pallet', 'Item', 'Batch', 'Last known'], lost.map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.missingFromName || '')}</td></tr>`))}</section>
+      <section style="grid-column:1/-1"><h2>Recent transfers</h2>${table(['When', 'Pallet', 'From', 'To', 'By'], transfers.slice(0, 50).map((t) => `<tr><td>${when(t.t)}</td><td class="mono">${short(t.sscc)}</td><td>${esc(t.fromName)}</td><td>${esc(t.toName)}</td><td>${esc(t.by)}</td></tr>`))}</section>
+    </div>`;
+  }
+
+  // ---- Stock and trace ----------------------------------------------------------------
+
+  async function renderStock() {
+    const stock = await api('GET', '/api/stock');
+    return `<div class="grid">
+      <section style="grid-column:1/-1"><h2>Stock per item</h2>${table(['Item', 'Name', 'Category', 'Can ship', 'Cases', 'Batches', 'Short-dated', 'Blocked', 'Next out', 'Min. days', ''], stock.map((r) => `<tr>
+        <td>${esc(r.item.itemNo)}</td><td>${esc(r.item.name)}</td><td>${esc(S.categories[r.item.category] || r.item.category)}</td>
+        <td>${r.available}</td><td>${r.qty}</td><td>${r.batches}</td><td>${r.short ? `<span class="tag held">${r.short}</span>` : 0}</td><td>${r.blocked ? `<span class="tag bad">${r.blocked}</span>` : 0}</td>
+        <td>${r.next ? `${esc(r.next.batch)} · ${dmy(r.next.expiry)} · ${esc(r.next.locName || '')}` : ''}</td>
+        <td><input data-minship="${esc(r.item.itemNo)}" value="${r.item.minShipDays}" size="3"></td><td><button class="small" data-minship-save="${esc(r.item.itemNo)}">Save</button></td></tr>`))}</section>
+      <section><h2>Batch trace (recall)</h2><div class="form"><input id="trcIn" placeholder="Batch number" style="flex:1"><button id="trcGo">Trace</button></div><div id="trcOut"></div></section>
+    </div>`;
+  }
+
+  // ---- Orders and deliveries ------------------------------------------------------------
+
+  async function renderOrders() {
+    const [orders, deliveries, items] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items')]);
+    const itemOpts = items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('');
+    return `<div class="grid">
+      <section><h2>New order</h2><div class="form">
+        <label>Order no. <input id="oId" size="7"></label><label>Customer <input id="oCust" size="14"></label>
+        <label>Shipping lane <select id="oLane">${[1, 2, 3, 4].map((n) => `<option>OUT-0${n}</option>`).join('')}</select></label></div>
+        <div class="form"><label>Item <select id="oItem">${itemOpts}</select></label><label>Pallets <input id="oPal" size="3" value="1"></label>
+        <label>Process <select id="oProc"><option value="">none</option><option value="CHANGE">Pallet change</option><option value="FOIL">Crates off + foil</option></select></label>
+        <button class="primary" id="oGo">Add order</button></div><div class="out" id="oOut" style="display:none"></div></section>
+      <section><h2>Announce a delivery</h2><div class="form">
+        <label>Delivery no. <input id="dId" size="8"></label><label>Supplier <input id="dSup" size="14"></label>
+        <label>Category <select id="dCat">${catOptions()}</select></label><label>Pallets <input id="dPal" size="3" value="1"></label>
+        <label>Received at <select id="dAt"><option value="dock">Dock (truck handheld)</option><option value="desk">Receiving desk</option></select></label>
+        <button class="primary" id="dGo">Announce</button></div><div class="out" id="dOut" style="display:none"></div></section>
+      <section style="grid-column:1/-1"><h2>Orders</h2>${table(['Order', 'Customer', 'Lane', 'Lines', 'Status', ''], orders.slice().reverse().map((o) => `<tr>
+        <td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.lane)}</td>
+        <td class="wrap">${o.lines.map((l) => `${esc(l.itemNo)} × ${l.pallets}${l.allocated && l.allocated.length < l.pallets ? ` <span class="tag held">${l.allocated.length} allocated</span>` : ''}${l.process ? ` · ${esc(l.process)}` : ''}`).join('<br>')}</td>
+        <td><span class="tag">${esc(o.status)}</span></td><td>${o.status === 'ready' ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button>` : ''}</td></tr>`))}</section>
+      <section style="grid-column:1/-1"><h2>Deliveries</h2>${table(['Delivery', 'Supplier', 'Category', 'Pallets', 'Received', 'At', 'Status'], deliveries.slice().reverse().map((d) => `<tr>
+        <td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(S.categories[d.category] || d.category)}</td><td>${d.expected}${d.hasList ? ' <span class="hint">(list)</span>' : ''}</td><td>${(d.received || []).length}</td><td>${esc(d.at)}</td><td><span class="tag">${esc(d.status)}</span></td></tr>`))}</section>
+    </div>`;
+  }
+
+  // ---- Imports -----------------------------------------------------------------------
+
+  async function renderImports() {
+    const ex = {
+      items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nY1010;8712345000017;Skyr natural 450 g;YOG;120;10;rack',
+      locations: 'code;category;blocked\n38-02-0-10;CHE;0\nAA01A1;YOG;0',
+      stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
+    };
+    const box = (k, title, note) => `<section><h2>${title}</h2><p class="hint">${note}</p><textarea id="im-${k}">${esc(ex[k])}</textarea>
+      <div class="form" style="margin-top:8px"><button class="primary" data-import="${k}">Import</button></div><div class="out" id="imOut-${k}" style="display:none"></div></section>`;
+    return `<div class="grid">
+      ${box('locations', 'Location table', 'Paste from Excel or CSV (comma, semicolon or tab). Codes in either naming. Sets category and blocked per location; mismatched pallets get relocation jobs.')}
+      ${box('items', 'Item master', 'Items already known are skipped. storage: rack or block.')}
+      ${box('stock', 'Opening stock', 'One row per pallet. Leave sscc empty to have one made up. Rows with errors are skipped and listed.')}
+    </div>`;
+  }
+
+  // ---- Audit -----------------------------------------------------------------------
+
+  async function renderAudit() {
+    const q = new URLSearchParams({ limit: 200 });
+    if (ls.get('auBy')) q.set('by', ls.get('auBy'));
+    if (ls.get('auOp')) q.set('op', ls.get('auOp'));
+    const [rows, events] = await Promise.all([api('GET', `/api/journal?${q}`), api('GET', '/api/events')]);
+    return `<div class="grid">
+      <section style="grid-column:1/-1"><h2>Audit trail: every change, who and when</h2>
+        <div class="form"><label>Operator / device <input id="auBy" value="${esc(ls.get('auBy') || '')}" size="10"></label><label>Action <input id="auOp" value="${esc(ls.get('auOp') || '')}" size="12" placeholder="e.g. scan"></label><button id="auGo">Filter</button></div>
+        ${table(['#', 'When', 'Who', 'Action', 'Details'], rows.map((r) => `<tr><td>${r.id}</td><td>${when(r.t)}</td><td>${esc(r.by)}</td><td>${esc(r.op)}</td><td class="wrap mono">${esc(JSON.stringify(r.args)).slice(0, 220)}</td></tr>`))}</section>
+      <section style="grid-column:1/-1"><h2>Warehouse log</h2>${table(['Time', 'Event'], events.slice(0, 100).map((e) => `<tr><td>${hhmm(e.t)}</td><td class="wrap">${esc(e.text)}</td></tr>`))}</section>
+    </div>`;
+  }
+
+  // ---- Settings -----------------------------------------------------------------------
+
+  async function renderSettings() {
+    const c = S.config;
+    const print = await api('GET', '/api/print-queue');
+    return `<div class="grid">
+      <section><h2>Dispatch</h2>
+        <div class="form"><label>Job order (first = highest) <input id="cPrio" size="40" value="${esc(c.priority.join(', '))}"></label></div>
+        <div class="form"><label>Trucks per aisle <input id="cCap" size="3" value="${c.aisleCap}"></label><label>Jump the queue after (min) <input id="cEsc" size="3" value="${c.escalateAfterMin}"></label>
+          <label>Next-out pallets at ground per item <input id="cGround" size="3" value="${c.groundNextPerItem}"></label></div>
+        <div class="form"><label><span><input type="checkbox" id="cNear" ${c.travelOptimise ? 'checked' : ''}> Nearest job first</span></label>
+          <label><span><input type="checkbox" id="cOne" ${c.oneWay ? 'checked' : ''}> One-way aisles</span></label>
+          <label><span><input type="checkbox" id="cCheck" ${c.checkAfterPick ? 'checked' : ''}> Check & label after picking</span></label></div>
+        <div class="form"><label>Batches per block lane <input id="cLaneB" size="3" value="${c.blockLaneBatches}"></label>
+          <label>Buried stock <select id="cBuried">${['both', 'digout', 'pickfirst', 'off'].map((v) => `<option ${v === c.buriedStock ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <button class="primary" id="cSave">Save</button></div><div class="out" id="cOut" style="display:none"></div></section>
+      <section><h2>Naming on screens</h2><p class="hint">Both barcodes always scan.</p>
+        <div class="form"><select id="nShow"><option value="row" ${S.naming === 'row' ? 'selected' : ''}>AA03C2 (cell, rack, bay, level, position)</option><option value="current" ${S.naming !== 'row' ? 'selected' : ''}>38-02-0-10 (current labels)</option></select><button id="nSave">Save</button></div>
+        <h2 style="margin-top:16px">Auto-Shift now</h2><div class="form"><button id="pGroup">Group batches</button><button id="pDig">Dig out buried stock</button></div><div class="out" id="pOut" style="display:none"></div>
+        <h2 style="margin-top:16px">This browser</h2><div class="form"><label>Your name (for the audit trail) <input id="uName" value="${esc(user)}"></label><label>Token <input id="uTok" type="password" value="${esc(token)}"></label><button id="uSave">Save</button></div></section>
+      <section style="grid-column:1/-1"><h2>Label printers</h2>${table(['Job', 'Printer', 'Printed at', 'Label', 'Sent'], print.jobs.map((j) => { const r = print.results.find((x) => x.id === j.id); return `<tr><td>${j.id}</td><td>${esc(j.printer)}</td><td>${hhmm(j.at)}</td><td>${esc(j.label.kind || 'shipping')} ${short(j.label.labelCode || j.label.sscc)}</td><td>${r ? (r.ok ? '<span class="tag">sent</span>' : `<span class="tag bad">${esc(r.error)}</span>`) : '<span class="hint">not sent (from before the restart)</span>'}</td></tr>`; }))}</section>
+    </div>`;
+  }
+
+  // ---- Wiring ------------------------------------------------------------------------
+
+  function bind() {
+    const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; };
+    document.querySelectorAll('[data-dev-mode]').forEach((s) => (s.onchange = () => act(null, () => api('POST', `/api/devices/${s.dataset.devMode}/mode`, { mode: s.value }))));
+    document.querySelectorAll('[data-task]').forEach((b) => (b.onclick = () => {
+      const id = b.dataset.id;
+      if (b.dataset.task === 'cancel' && !confirm(`Cancel job #${id}?`)) return;
+      $('#taskOut').style.display = '';
+      act('#taskOut', () => api('POST', `/api/tasks/${id}/${b.dataset.task}`, b.dataset.task === 'urgent' ? { urgent: b.dataset.on === 'true' } : {}));
+    }));
+    // Template
+    on('#tPrev', async () => {
+      ls.set('tFrom', val('#tFrom')); ls.set('tTo', val('#tTo')); ls.set('tCat', $('#tCat').value);
+      try {
+        const p = await api('GET', `/api/template/preview?${new URLSearchParams({ from: val('#tFrom'), to: val('#tTo'), category: $('#tCat').value })}`);
+        const from = Object.entries(p.from).map(([k, n]) => `${n} from ${S.categories[k] || k}`).join(', ');
+        $('#tOut').className = 'out';
+        $('#tOut').textContent = `${p.locations} locations: ${p.first.join(', ')} … ${p.last.join(', ')}\n${p.changed} change category${from ? ` (${from})` : ''}. ${p.palletsHere} hold a pallet, ${p.palletsToMove} of them will need relocating.`;
+        $('#tApply').disabled = !p.locations;
+      } catch (e) { $('#tOut').className = 'out bad'; $('#tOut').textContent = e.message; }
+    });
+    on('#tApply', () => {
+      const cat = $('#tCat').value;
+      if (!confirm(`Set ${val('#tFrom')} to ${val('#tTo')} to ${cat ? S.categories[cat] : 'no category'}?`)) return;
+      act('#tOut', async () => { const r = await api('POST', '/api/template/apply', { from: val('#tFrom'), to: val('#tTo'), category: cat || null }); return `Done: ${r.changed} of ${r.locations} locations changed. ${r.moves || 0} relocation job(s) created for Auto-Shift.`; });
+    });
+    on('#lkGo', () => { $('#lkOut').style.display = ''; act('#lkOut', async () => { const r = await api('GET', `/api/lookup/${encodeURIComponent(val('#lkIn'))}`); return r.text; }); });
+    on('#trGo', () => { $('#trOut').style.display = ''; act('#trOut', async () => { const r = await api('POST', '/api/transfer', { sscc: val('#trS').replace(/^00/, ''), to: val('#trTo') }); if (!r.ok) throw new Error(r.text); return r.text; }); });
+    // Stock
+    document.querySelectorAll('[data-minship-save]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/items/${b.dataset.minshipSave}/min-ship-days`, { days: Number($(`[data-minship="${b.dataset.minshipSave}"]`).value) }))));
+    on('#trcGo', async () => {
+      try {
+        const r = await api('GET', `/api/trace/${encodeURIComponent(val('#trcIn'))}`);
+        $('#trcOut').innerHTML = `<p><b>${esc(r.batch)}</b>: ${r.inStock.length} pallet(s) in stock, received in ${r.received.map((d) => `${esc(d.id)} (${esc(d.supplier)})`).join(', ') || 'opening stock'}.
+          Shipped to: <b>${esc(r.customers.join(', ') || 'nobody yet')}</b></p>
+          ${table(['Pallet', 'Item', 'Where', 'Status'], r.inStock.map((p) => `<tr><td class="mono">${short(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.locName || '')}</td><td>${esc(p.status)}</td></tr>`))}
+          ${r.shipped.length ? table(['Shipped', 'Pallet', 'Order', 'Customer'], r.shipped.map((s) => `<tr><td>${when(s.t)}</td><td class="mono">${short(s.sscc)}</td><td>${esc(s.orderId)}</td><td>${esc(s.customer)}</td></tr>`)) : ''}`;
+      } catch (e) { $('#trcOut').innerHTML = `<div class="out bad">${esc(e.message)}</div>`; }
+    });
+    // Orders
+    on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
+      const line = { itemNo: $('#oItem').value, pallets: Number(val('#oPal')) || 1 };
+      if ($('#oProc').value) line.process = $('#oProc').value;
+      await api('POST', '/api/orders', { id: val('#oId'), customer: val('#oCust'), lane: $('#oLane').value, lines: [line] });
+      return `Order ${val('#oId')} added`;
+    }); });
+    on('#dGo', () => { $('#dOut').style.display = ''; act('#dOut', async () => {
+      await api('POST', '/api/deliveries', { id: val('#dId'), supplier: val('#dSup'), category: $('#dCat').value, pallets: Number(val('#dPal')) || 1, at: $('#dAt').value });
+      return `Delivery ${val('#dId')} announced`;
+    }); });
+    document.querySelectorAll('[data-ship]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/orders/${b.dataset.ship}/ship`))));
+    // Imports
+    document.querySelectorAll('[data-import]').forEach((b) => (b.onclick = () => {
+      const k = b.dataset.import;
+      $(`#imOut-${k}`).style.display = '';
+      act(`#imOut-${k}`, () => api('POST', `/api/import/${k}`, { rows: csv($(`#im-${k}`).value) }));
+    }));
+    // Audit
+    on('#auGo', () => { ls.set('auBy', val('#auBy')); ls.set('auOp', val('#auOp')); draw(); });
+    // Settings
+    on('#cSave', () => { $('#cOut').style.display = ''; act('#cOut', async () => {
+      await api('POST', '/api/config', {
+        priority: val('#cPrio').split(/[,\s]+/).filter(Boolean).map((s) => s.toUpperCase()), aisleCap: Number(val('#cCap')), escalateAfterMin: Number(val('#cEsc')),
+        groundNextPerItem: Number(val('#cGround')), travelOptimise: $('#cNear').checked, oneWay: $('#cOne').checked, checkAfterPick: $('#cCheck').checked,
+        blockLaneBatches: Number(val('#cLaneB')), buriedStock: $('#cBuried').value,
+      });
+      return 'Saved';
+    }); });
+    on('#nSave', () => act(null, () => api('POST', '/api/naming', { show: $('#nShow').value })));
+    on('#pGroup', () => { $('#pOut').style.display = ''; act('#pOut', async () => `${JSON.stringify(await api('POST', '/api/plan/grouping'))} job(s) planned`); });
+    on('#pDig', () => { $('#pOut').style.display = ''; act('#pOut', async () => `${JSON.stringify(await api('POST', '/api/plan/dig-out'))} job(s) planned`); });
+    on('#uSave', () => { user = val('#uName'); token = val('#uTok'); ls.set('user', user); ls.set('token', token); refresh(); });
+  }
+
+  // Redraw the current tab. Inputs being typed in are kept: the floor tab refreshes on its own, the others on demand.
+  async function draw() {
+    try {
+      S = await api('GET', '/api/summary');
+      $('#status').textContent = `${S.openJobs} open · ${S.activeJobs} active · ${hhmm(Date.now())}`;
+      $('#main').innerHTML = await TABS[tab].render();
+      bind();
+    } catch (e) {
+      $('#status').textContent = e.message;
+      if (/Token/.test(e.message)) { $('#main').innerHTML = `<section><h2>Token required</h2><div class="form"><input id="uTok" type="password"><button id="uSave">Save</button></div></section>`; $('#uSave').onclick = () => { token = val('#uTok'); ls.set('token', token); draw(); }; }
+    }
+  }
+  async function refresh() {
+    if (tab === 'floor') return draw();
+    try { S = await api('GET', '/api/summary'); $('#status').textContent = `${S.openJobs} open · ${S.activeJobs} active · ${hhmm(Date.now())}`; } catch (e) { $('#status').textContent = e.message; }
+  }
+
+  renderNav();
+  draw();
+  setInterval(() => { if (tab === 'floor' && !document.activeElement.matches('select,input')) draw(); else refresh(); }, 5000);
+})();
+</script>
+</body>
+</html>

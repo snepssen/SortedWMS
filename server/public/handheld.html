@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101418">
+<title>SortedWMS handheld</title>
+<style>
+  :root { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; cursor: pointer; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #04121f; font-weight: 700; }
+  button.bad { border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: .4; }
+  input, select { font: inherit; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  header .id { font-weight: 800; font-size: 20px; }
+  header .who { color: var(--dim); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header button { min-height: 40px; padding: 6px 10px; }
+  .modes { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none; }
+  .modes button { flex: 0 0 auto; min-height: 42px; padding: 8px 12px; font-size: 15px; }
+  .modes button.on { background: var(--ink); color: var(--bg); font-weight: 700; }
+  main { flex: 1; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .kicker { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .kicker.urgent { color: var(--warn); }
+  .big { font: 800 52px/1.05 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .02em; margin: 6px 0 2px; word-break: break-all; }
+  .big b { color: var(--acc); }
+  .mid { font-size: 22px; font-weight: 700; margin: 6px 0 2px; }
+  .sub { color: var(--dim); font-size: 15px; }
+  .pallet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 15px; }
+  .pallet dt { color: var(--dim); }
+  .pallet dd { margin: 0; font-weight: 600; }
+  .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 18px; }
+  .msg.ok { background: rgba(60, 207, 122, .14); color: var(--ok); }
+  .msg.bad { background: rgba(255, 90, 82, .16); color: var(--bad); }
+  .scan { display: flex; gap: 8px; }
+  .scan input { font-size: 20px; }
+  .scan button { flex: 0 0 auto; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 0; }
+  .fields { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin-top: 10px; font-size: 15px; }
+  .fields .next { color: var(--acc); font-weight: 800; }
+  .fields .done { color: var(--ok); }
+  .list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .list button { text-align: left; display: flex; justify-content: space-between; gap: 8px; }
+  .hint { color: var(--dim); font-size: 14px; }
+  .setup { max-width: 440px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 10px; padding: 16px 12px; }
+  .setup label { font-size: 14px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
+  .cats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cats label { flex-direction: row; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink); font-size: 16px; }
+  .cats input { width: auto; }
+  .offline { background: var(--bad); color: #fff; text-align: center; font-weight: 700; padding: 6px; display: none; }
+  .offline.on { display: block; }
+  @media (max-width: 360px) { .big { font-size: 42px; } }
+</style>
+</head>
+<body>
+<div class="offline" id="offline">No connection to the server</div>
+<div id="app"></div>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = {
+    get(k) { try { return localStorage.getItem('hh.' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('hh.' + k, v); } catch (e) { /* private mode */ } },
+  };
+  let deviceId = store.get('device'), operator = store.get('operator') || '', token = store.get('token') || '';
+  let view = null, localError = null, busy = false, keyboard = false, typedQty = '', summary = null;
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: operator || deviceId || 'handheld' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
+    const res = await fetch(path, {
+      method, headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': operator || deviceId || 'handheld' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    $('#offline').classList.remove('on');
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  // A location in big type: cell + rack letters highlighted (AA03C2), or the name as is.
+  function locBig(name) {
+    if (/^[A-Z]{2}\d{2}[A-Z]\d$/.test(name)) return `<b>${esc(name.slice(0, 2))}</b>${esc(name.slice(2))}`;
+    return esc(name);
+  }
+
+  function palletHtml(p) {
+    if (!p) return '';
+    const exp = p.expiry ? p.expiry.split('-').reverse().join('-') : '';
+    return `<dl class="pallet">
+      <dt>Pallet</dt><dd>…${esc(p.sscc.slice(-6))}</dd>
+      <dt>Item</dt><dd>${esc(p.itemNo)} ${esc(p.name || '')}</dd>
+      <dt>Batch</dt><dd>${esc(p.batch)} · best before ${esc(exp)}</dd>
+      ${p.locName ? `<dt>System has it</dt><dd>${esc(p.locName)}</dd>` : ''}
+      ${p.status !== 'available' ? `<dt>Status</dt><dd style="color:var(--warn)">${esc(p.status)}${p.blockReason ? ': ' + esc(p.blockReason) : ''}</dd>` : ''}
+    </dl>`;
+  }
+
+  // ---- Setup ------------------------------------------------------------------------
+
+  async function renderSetup(error) {
+    try { summary = await api('GET', '/api/summary'); } catch (e) { summary = null; error = error || e.message; }
+    const cats = summary ? summary.categories : {};
+    $('#app').innerHTML = `<div class="setup">
+      <h2 style="margin:0">Set up this handheld</h2>
+      <label>Truck / handheld ID <input id="sDev" value="${esc(deviceId || '')}" placeholder="e.g. RT07" autocapitalize="characters"></label>
+      <label>Operator <input id="sOp" value="${esc(operator)}" placeholder="Your name or number"></label>
+      <div class="hint">Categories this operator works (a new handheld only):</div>
+      <div class="cats">${Object.entries(cats).map(([k, v]) => `<label><input type="checkbox" value="${esc(k)}"> ${esc(v)}</label>`).join('')}</div>
+      <label>Server token (if the office set one) <input id="sTok" value="${esc(token)}" type="password"></label>
+      ${error ? `<div class="msg bad">${esc(error)}</div>` : ''}
+      <button class="primary" id="sGo">Start</button>
+    </div>`;
+    $('#sGo').onclick = async () => {
+      deviceId = $('#sDev').value.trim().toUpperCase();
+      operator = $('#sOp').value.trim();
+      token = $('#sTok').value.trim();
+      store.set('token', token);
+      if (!deviceId) return renderSetup('Enter the handheld ID');
+      try {
+        const devices = await api('GET', '/api/devices');
+        if (!devices.some((d) => d.id === deviceId)) {
+          const categories = [...document.querySelectorAll('.cats input:checked')].map((i) => i.value);
+          await api('POST', '/api/devices', { id: deviceId, categories: categories.length ? categories : null });
+        }
+        store.set('device', deviceId);
+        store.set('operator', operator);
+        refresh();
+      } catch (e) { renderSetup(e.message); }
+    };
+  }
+
+  // ---- Main screen ------------------------------------------------------------------------
+
+  function instructionHtml(I) {
+    const t = I.task;
+    const urgent = t && t.urgent ? ' urgent' : '';
+    const job = t ? `${esc(t.typeLabel)} · #${t.id}${t.orderId ? ' · order ' + esc(t.orderId) : ''}${t.urgent ? ' · URGENT' : ''}` : '';
+    const spoken = I.spoken ? `<div class="sub">Say <b>${esc(I.spoken.short)}</b> · cell ${esc(I.spoken.cell)}</div>` : '';
+    const enter = I.enterFrom ? `<div class="sub">Enter the aisle from the ${esc(I.enterFrom)}</div>` : '';
+    switch (I.kind) {
+      case 'paused': return `<div class="card"><div class="kicker">Paused</div><div class="mid">No jobs until you pick a mode</div></div>`;
+      case 'idle': return `<div class="card"><div class="kicker">Auto</div><div class="mid">No job for you right now</div><div class="sub">The next one appears here by itself. To move a pallet yourself, scan it.</div></div>`;
+      case 'pickup': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Pick up at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">${esc(t.why || '')}</div>${palletHtml(I.pallet)}</div>`;
+      case 'drop': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Drop at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${palletHtml(I.pallet)}</div>`;
+      case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}</div>`;
+      case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${palletHtml(I.pallet)}</div>`;
+      case 'check-label': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Put the shipping label on, then scan it</div>${palletHtml(I.pallet)}</div>`;
+      case 'receive': {
+        const d = I.delivery;
+        return `<div class="card"><div class="kicker">Receiving · ${esc(d.id)} · ${esc(d.supplier)}</div>
+          <div class="mid">${I.field ? `Scan: ${esc((I.fields.find((f) => f.id === I.field) || {}).label || I.field)}` : 'Pallet complete'}</div>
+          <div class="sub">${d.received} of ${d.expected} pallets in${d.hasList ? ' · on the delivery list, the bottom barcode is enough' : ''}</div>
+          <div class="fields">${I.fields.map((f) => `<span class="${f.id === I.field ? 'next' : f.value ? 'done' : 'hint'}">${esc(f.label)}</span><span>${f.value ? esc(f.value) : f.id === I.field ? '◀' : ''}</span>`).join('')}</div>
+          ${I.field === 'qty' ? `<div class="row" style="margin-top:10px">
+              ${I.defaultQty ? `<button class="primary" data-qty="${I.defaultQty}">${I.defaultQty} (full pallet)</button>` : ''}
+              <input id="qtyIn" inputmode="numeric" placeholder="Other qty" value="${esc(typedQty)}"><button data-qty="typed">OK</button></div>` : ''}
+          <div class="row" style="margin-top:10px"><button id="finishRcv">Delivery done</button></div></div>`;
+      }
+      case 'transfer': return `<div class="card"><div class="kicker">Transfer</div>
+          ${I.pallet ? `<div class="mid">Scan the location it goes to</div>${palletHtml(I.pallet)}` : `<div class="mid">Scan the pallet</div><div class="sub">Then scan the location where it now stands. For fixing locations that are wrong in the system.</div>`}</div>`;
+      case 'putaway-scan': return `<div class="card"><div class="kicker">Put-away</div><div class="mid">Scan a pallet at the dock or a station</div><div class="sub">The system picks the slot.</div></div>`;
+      case 'find': return `<div class="card"><div class="kicker">Find</div><div class="mid">Scan a pallet or a location</div>${I.result ? `<div class="msg ${I.result.kind ? 'ok' : 'bad'}" style="margin-top:10px;white-space:pre-line">${esc(I.result.text)}</div>` : ''}</div>`;
+      case 'pick-order': return `<div class="card"><div class="kicker">Pick</div><div class="mid">${I.order ? `Order ${esc(I.order.id)} · ${esc(I.order.customer)}` : 'Scan or choose an order'}</div>
+          <div class="list">${(view.openOrders || []).map((o) => `<button data-order="${esc(o.id)}"><span>${esc(o.id)} · ${esc(o.customer)}</span><span class="hint">${o.pallets} pal · ${esc(o.lane)}</span></button>`).join('') || '<div class="hint">No orders with picks for your categories</div>'}</div></div>`;
+      default: return `<div class="card"><div class="mid">${esc(I.kind)}</div></div>`;
+    }
+  }
+
+  function render() {
+    const v = view;
+    const I = v.instruction;
+    const canProblem = I.kind === 'pickup' || I.kind === 'drop' || I.kind === 'wait';
+    $('#app').innerHTML = `
+      <header><span class="id">${esc(v.id)}</span><span class="who">${esc(operator)}${v.categories ? ' · ' + esc(v.categories.join(', ')) : ''}</span>
+        <button id="kb" title="Show the keyboard">⌨</button><button id="setup" title="Set up">⚙</button></header>
+      <div class="modes">${v.modes.filter((m) => m.id !== 'shift').map((m) => `<button data-mode="${m.id}" class="${m.id === v.mode ? 'on' : ''}">${esc(m.label.replace(' (manual)', ''))}</button>`).join('')}</div>
+      <main>
+        ${instructionHtml(I)}
+        ${localError ? `<div class="msg bad">${esc(localError)}</div>` : v.message ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
+        <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button>Enter</button></form>
+        ${canProblem ? `<div class="row">${I.kind === 'pickup' ? '<button class="bad" data-problem="missing">Pallet missing</button><button class="bad" data-problem="damaged">Damaged</button>' : ''}
+          <button class="bad" data-problem="blocked">Location blocked</button></div>` : ''}
+      </main>`;
+    bind();
+  }
+
+  function bind() {
+    const input = $('#scanIn');
+    const focus = () => { if (document.activeElement !== $('#qtyIn')) input.focus({ preventScroll: true }); };
+    focus();
+    $('#scanForm').onsubmit = (e) => { e.preventDefault(); const code = input.value.trim(); input.value = ''; if (code) act('POST', `/api/devices/${deviceId}/scan`, { code }); };
+    $('#kb').onclick = () => { keyboard = !keyboard; render(); };
+    $('#setup').onclick = () => renderSetup();
+    document.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/mode`, { mode: b.dataset.mode })));
+    document.querySelectorAll('[data-order]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/mode`, { mode: 'pick', orderId: b.dataset.order })));
+    document.querySelectorAll('[data-problem]').forEach((b) => (b.onclick = () => { if (confirm(`Report: ${b.textContent}?`)) act('POST', `/api/devices/${deviceId}/problem`, { reason: b.dataset.problem }); }));
+    document.querySelectorAll('[data-qty]').forEach((b) => (b.onclick = () => {
+      const qty = b.dataset.qty === 'typed' ? Number($('#qtyIn').value) : Number(b.dataset.qty);
+      if (!qty) return;
+      typedQty = '';
+      act('POST', `/api/devices/${deviceId}/qty`, { qty });
+    }));
+    const q = $('#qtyIn');
+    if (q) q.oninput = () => { typedQty = q.value; };
+    const fin = $('#finishRcv');
+    if (fin) fin.onclick = () => { if (confirm('Close this delivery?')) act('POST', `/api/devices/${deviceId}/finish-receiving`); };
+    // Keep the scan field focused so the scanner's keystrokes always land in it.
+    document.body.onclick = (e) => { if (!e.target.closest('input,button,select')) focus(); };
+  }
+
+  async function act(method, path, body) {
+    if (busy) return;
+    busy = true;
+    localError = null;
+    // Refusals the server answers with an error (e.g. a mode change with a pallet on the forks) show until the next action.
+    try { await api(method, path, body); } catch (e) { localError = e.message; if (navigator.vibrate) navigator.vibrate([80, 60, 80]); }
+    busy = false;
+    await refresh(true);
+  }
+
+  async function refresh(force) {
+    if (!deviceId) return renderSetup();
+    if (busy && !force) return;
+    const typing = document.activeElement && document.activeElement.id === 'qtyIn';
+    const pending = $('#scanIn') && $('#scanIn').value;
+    if (!force && (typing || pending)) return; // don't redraw under a half-finished scan
+    try {
+      const v = await api('GET', `/api/devices/${encodeURIComponent(deviceId)}`);
+      const before = view && JSON.stringify(view);
+      const msgChanged = view && v.message && (!view.message || view.message.text !== v.message.text);
+      view = v;
+      if (msgChanged && !v.message.ok && navigator.vibrate) navigator.vibrate([80, 60, 80]);
+      if (force || before !== JSON.stringify(v)) render();
+    } catch (e) {
+      if (/No device/.test(e.message)) { deviceId = null; return renderSetup(e.message); }
+      if (/Token/.test(e.message)) return renderSetup(e.message);
+      $('#offline').classList.add('on');
+    }
+  }
+
+  window.hhRefresh = () => refresh(true);
+  refresh(true);
+  setInterval(refresh, 2000);
+})();
+</script>
+</body>
+</html>

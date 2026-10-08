@@ -1,0 +1,305 @@
+{
+  "name": "Example chilled warehouse",
+  "_comment": "Example site. Replace with the real location table, items and printers. Read once, when the database is first created.",
+  "layout": {
+    "aisles": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38
+    ],
+    "bays": 20,
+    "levels": 5,
+    "positions": [
+      10,
+      40,
+      70
+    ],
+    "outLanes": 4
+  },
+  "categories": {
+    "YOG": "Yoghurt",
+    "CHE": "Cheese",
+    "PRO": "Protein drinks"
+  },
+  "cells": {
+    "31": "A",
+    "32": "A",
+    "33": "A",
+    "34": "A",
+    "35": "A",
+    "36": "A",
+    "37": "A",
+    "38": "A"
+  },
+  "aisleEntry": {},
+  "config": {
+    "oneWay": true,
+    "aisleCap": 2
+  },
+  "naming": "row",
+  "templates": [
+    {
+      "from": "AA01A1",
+      "to": "AH10E3",
+      "category": "YOG"
+    },
+    {
+      "from": "AI01A1",
+      "to": "AP10E3",
+      "category": "CHE"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "BL01",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    },
+    {
+      "id": "BL02",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    },
+    {
+      "id": "BL03",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    },
+    {
+      "id": "BL04",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    },
+    {
+      "id": "BL05",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    },
+    {
+      "id": "BL06",
+      "stacks": 8,
+      "height": 6,
+      "category": "CHE"
+    }
+  ],
+  "stations": [
+    {
+      "id": "PRESS",
+      "name": "Pallet change",
+      "machine": "Hydraulic flip press",
+      "minutes": 5,
+      "operators": 2,
+      "sop": [
+        "New pallet on the press",
+        "Clamp and flip the load onto it",
+        "Pull out the old pallet",
+        "Flip back upright",
+        "Seal with foil"
+      ]
+    },
+    {
+      "id": "FOIL",
+      "name": "Crates off + foil",
+      "machine": "Stretch wrapper",
+      "minutes": 4,
+      "operators": 1,
+      "sop": [
+        "Lift off the crates",
+        "Stack crates for return",
+        "Wrap the load in foil"
+      ]
+    },
+    {
+      "id": "PLATE",
+      "name": "Plate press",
+      "machine": "Plate press",
+      "minutes": 3,
+      "operators": 1,
+      "sop": [
+        "Centre the crate stack",
+        "Apply / remove the metal plate",
+        "Check the plate is seated"
+      ]
+    },
+    {
+      "id": "WARM",
+      "name": "Warm room",
+      "dwell": true,
+      "capacity": 24
+    }
+  ],
+  "routes": [
+    {
+      "id": "CHANGE",
+      "name": "Pallet change",
+      "steps": [
+        {
+          "station": "PRESS",
+          "op": "Change pallet",
+          "reprint": true
+        }
+      ]
+    },
+    {
+      "id": "FOIL",
+      "name": "Crates off + foil",
+      "steps": [
+        {
+          "station": "FOIL",
+          "op": "Crates off, foil"
+        }
+      ]
+    },
+    {
+      "id": "HOLES",
+      "name": "Hole forming",
+      "steps": [
+        {
+          "station": "PLATE",
+          "op": "Apply plate"
+        },
+        {
+          "station": "WARM",
+          "dwellMin": 180
+        },
+        {
+          "station": "PLATE",
+          "op": "Remove plate"
+        }
+      ]
+    }
+  ],
+  "desks": [
+    {
+      "id": "DESK1",
+      "name": "Receiving desk"
+    }
+  ],
+  "items": [
+    {
+      "itemNo": "Y1001",
+      "gtin": "2001200030000",
+      "name": "Greek yoghurt 1 kg",
+      "category": "YOG",
+      "palletQty": 96,
+      "minShipDays": 10,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "Y1002",
+      "gtin": "2001200030017",
+      "name": "Strawberry yoghurt 500 g",
+      "category": "YOG",
+      "palletQty": 120,
+      "minShipDays": 10,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "Y1003",
+      "gtin": "2001200030024",
+      "name": "Vanilla quark 500 g",
+      "category": "YOG",
+      "palletQty": 120,
+      "minShipDays": 10,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "Y1004",
+      "gtin": "2001200030031",
+      "name": "Drinking yoghurt 1 l",
+      "category": "YOG",
+      "palletQty": 84,
+      "minShipDays": 8,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "C2001",
+      "gtin": "2001200030048",
+      "name": "Young gouda slices 150 g",
+      "category": "CHE",
+      "palletQty": 160,
+      "minShipDays": 30,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "C2002",
+      "gtin": "2001200030055",
+      "name": "Mature cheddar block 400 g",
+      "category": "CHE",
+      "palletQty": 120,
+      "minShipDays": 30,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "C2003",
+      "gtin": "2001200030062",
+      "name": "Grated mozzarella 200 g",
+      "category": "CHE",
+      "palletQty": 150,
+      "minShipDays": 25,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "C2004",
+      "gtin": "2001200030079",
+      "name": "Brie wedge 200 g",
+      "category": "CHE",
+      "palletQty": 140,
+      "minShipDays": 14,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "C2005",
+      "gtin": "2001200030086",
+      "name": "Gouda wheels 12 kg, crate pallet",
+      "category": "CHE",
+      "palletQty": 24,
+      "minShipDays": 30,
+      "storage": "block"
+    },
+    {
+      "itemNo": "C2006",
+      "gtin": "2001200030093",
+      "name": "Emmental wheels, crate pallet",
+      "category": "CHE",
+      "palletQty": 20,
+      "minShipDays": 30,
+      "storage": "block"
+    },
+    {
+      "itemNo": "P3001",
+      "gtin": "2001200030109",
+      "name": "Protein shake chocolate 330 ml",
+      "category": "PRO",
+      "palletQty": 72,
+      "minShipDays": 60,
+      "storage": "rack"
+    },
+    {
+      "itemNo": "P3002",
+      "gtin": "2001200030116",
+      "name": "Protein shake vanilla 330 ml",
+      "category": "PRO",
+      "palletQty": 72,
+      "minShipDays": 60,
+      "storage": "rack"
+    }
+  ],
+  "printers": {
+    "LP-OUT-01": "",
+    "LP-OUT-02": "",
+    "LP-OUT-03": "",
+    "LP-OUT-04": "",
+    "LP-ST-PRESS": ""
+  }
+}

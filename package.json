@@ -2,9 +2,15 @@
   "name": "sortedwms",
   "version": "0.1.0",
   "private": true,
-  "description": "Auto dispatch, Auto-Shift and aisle limits for reach trucks",
+  "description": "A reach-truck WMS for a chilled warehouse: Auto dispatch, Auto-Shift, aisle limits, FEFO, receiving, process stations",
   "scripts": {
-    "test": "node --test"
+    "start": "node --no-warnings server/index.js",
+    "start:demo": "node --no-warnings server/index.js --seed-demo",
+    "test": "node --no-warnings --test",
+    "build:pages": "node scripts/build-pages.js"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  }
 }
