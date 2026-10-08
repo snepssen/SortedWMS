@@ -135,13 +135,17 @@ test('picking another pallet of the same batch is accepted and swapped', () => {
   assert.equal(wh.scan('RT1', 'OUT-01').ok, true);
 });
 
-test('a pallet of a different batch is refused at pick-up', () => {
+test('a pallet of a different batch is not swapped in at pick-up', () => {
   const { wh } = setup();
-  stock(wh, '01-01-0-10', 'Y1', 'B1', '2026-10-25');
+  const first = stock(wh, '01-01-0-10', 'Y1', 'B1', '2026-10-25');
   const other = stock(wh, '01-01-0-40', 'Y1', 'B2', '2026-10-26');
   wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
   wh.addTruck('RT1');
-  assert.equal(wh.scan('RT1', other.sscc).ok, false);
+  wh.scan('RT1', other.sscc);
+  const task = wh.tasks[wh.trucks.RT1.taskId];
+  assert.equal(task.sscc, first.sscc, 'the pick stays on the earlier batch');
+  assert.equal(task.step, 0);
+  assert.equal(wh.trucks.RT1.load, null);
 });
 
 test('missing pallet at pick-up: next pallet by FEFO is allocated straight away', () => {
@@ -272,7 +276,9 @@ test('a driver can start an Auto-Shift, but only in their own categories', () =>
   const cheese = stock(wh, '03-02-1-10', 'C1', 'K1', '2027-01-01');
   const yog = stock(wh, '01-02-1-10', 'Y1', 'B1', '2026-11-01');
   wh.addTruck('RT1', { categories: ['YOG'] });
+  wh.scan('RT1', cheese.sscc); // held: a yoghurt driver may still correct where it stands
   assert.match(wh.scan('RT1', cheese.sscc).text, /not one of your categories/);
+  wh.scan('RT1', yog.sscc); // first scan holds it; the same pallet again moves it
   const r = wh.scan('RT1', yog.sscc);
   assert.ok(r.ok, r.text);
   const task = wh.tasks[wh.trucks.RT1.taskId];
@@ -391,6 +397,7 @@ test('a driver can type the spoken short form; the cell is the one the truck is 
   const { wh } = setup({ checkAfterPick: false });
   const p = stock(wh, '01-05-2-40', 'Y1', 'B1', '2026-10-25');
   wh.addTruck('RT1', { position: '01-01-0-10' });
+  assert.match(wh.scan('RT1', 'A3C2').text, /Scan it again to move it/);
   const r = wh.scan('RT1', 'A3C2');
   assert.ok(r.ok, r.text);
   assert.equal(wh.tasks[wh.trucks.RT1.taskId].sscc, p.sscc, 'started an Auto-Shift of that pallet');

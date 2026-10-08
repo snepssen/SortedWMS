@@ -141,8 +141,9 @@
           <label>Category <select id="tCat">${catOptions(ls.get('tCat') ?? Object.keys(S.categories)[0], true)}</select></label>
           <button id="tPrev">Preview</button><button class="primary" id="tApply" disabled>Apply</button></div>
         <div class="out" id="tOut">Preview first, then apply.</div></section>
-      <section><h2>Find a pallet or location</h2>
-        <div class="form"><input id="lkIn" placeholder="SSCC, AA03C2, 38-02-0-10 or A3C2" style="flex:1"><button id="lkGo">Find</button></div>
+      <section><h2>Stock check</h2>
+        <p class="hint">A pallet: where it is and where it belongs. A location: what's in it. An item number or EAN: every pallet with its location and SSCC, next to ship first.</p>
+        <div class="form"><input id="lkIn" placeholder="SSCC, AA03C2, 38-02-0-10, item no. or EAN" style="flex:1"><button id="lkGo">Check</button></div>
         <div class="out" id="lkOut" style="display:none"></div></section>
       <section><h2>Office transfer</h2>
         <p class="hint">Record where a pallet really stands. A pallet the system had in that spot goes on the unknown-location list. Drivers do the same on the handheld in Transfer mode: scan pallet, scan location.</p>

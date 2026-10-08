@@ -23,6 +23,7 @@
     confirmQty: (wh, a) => wh.confirmQty(req(a.id, 'id'), a.qty == null ? null : a.qty),
     finishReceiving: (wh, a) => wh.finishReceiving(req(a.id, 'id')),
     reportProblem: (wh, a) => wh.reportProblem(req(a.id, 'id'), req(a.reason, 'reason')),
+    pendingAction: (wh, a) => wh.pendingAction(req(a.id, 'id'), req(a.action, 'action')),
     deskStart: (wh, a) => wh.deskStart(req(a.id, 'id'), a.deliveryId || null),
     deskEnter: (wh, a) => wh.deskEnter(req(a.id, 'id'), req(a.field, 'field'), req(a.value, 'value')),
     stationScan: (wh, a) => wh.stationScan(req(a.id, 'id'), req(a.code, 'code')),
