@@ -188,3 +188,29 @@ test('Auto: a pallet on another truck is only reported', () => {
   assert.equal(r.ok, false);
   assert.match(r.text, /job #\d+ on RT1/);
 });
+
+test('check & label: no label came out? scanning the pallet again prints it again', () => {
+  const { wh, put } = setup({ checkAfterPick: true });
+  const p = put('31-02-1-10', 'Y1', 'B1', '2026-11-01');
+  wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
+  wh.addTruck('RT1');
+  wh.scan('RT1', p.sscc);
+  wh.scan('RT1', 'OUT-01');
+  assert.match(wh.scan('RT1', p.sscc).text, /Scan the pallet again to reprint/);
+  const code = wh.tasks[wh.trucks.RT1.taskId].labelCode;
+  assert.equal(wh.printQueue.length, 1);
+  assert.match(wh.scan('RT1', p.sscc).text, new RegExp(`Label ${code} printing again`));
+  assert.equal(wh.printQueue.length, 2);
+  assert.equal(wh.printQueue[0].label.labelCode, code, 'the same label code: the old one, if found, still works');
+  assert.match(wh.scan('RT1', code).text, /Labelled/);
+});
+
+test('blocking a pallet drops its planned move to ground level', () => {
+  const { wh, put } = setup({ groundNextPerItem: 1 });
+  const high = put('31-02-2-10', 'Y1', 'B1', '2026-11-01');
+  wh.planGround();
+  const job = Object.values(wh.tasks).find((t) => t.sscc === high.sscc && t.reason === 'ground');
+  assert.ok(job, 'the next-out pallet is planned down');
+  wh.setPalletStatus(high.sscc, 'blocked', 'Damaged');
+  assert.equal(job.status, 'cancelled');
+});

@@ -602,6 +602,9 @@
       pallet.status = status;
       pallet.blockReason = status === 'blocked' ? reason || 'Blocked' : null;
       this.log(`Pallet …${sscc.slice(-6)} ${status === 'blocked' ? `blocked: ${pallet.blockReason}` : 'released for use'}`);
+      // A blocked pallet won't ship next: a planned move to ground level for it is dropped.
+      const live = status === 'blocked' && this._liveTaskFor(sscc);
+      if (live && live.type === 'SHIFT' && live.reason === 'ground' && live.status === 'open') this._cancelQuiet(live);
       this.planGround();
       this.dispatch();
     }
@@ -1299,6 +1302,7 @@
       if (truck.mode === 'paused') return this._fail(truck, 'Truck is paused — scan AUTO to take jobs');
 
       const task = truck.taskId && this.tasks[truck.taskId];
+      if (!task && truck.kind === 'desk') return this._fail(truck, 'No delivery open. Start one on the desk screen');
       if (!task && TRUCK_MODES[truck.mode].manual) return this._manualScan(truck, input);
       if (truck.pendingSscc) {
         const r = this._pendingScan(truck, input, task);
@@ -1369,6 +1373,7 @@
       truck.armed = null;
       try {
         if (key === 'CANCEL') return this._cancel(truck, armed);
+        if (c.mode && truck.kind === 'desk') return this._fail(truck, 'Modes are for the trucks, not the desk');
         if (c.mode) {
           this.setTruckMode(truck.id, c.mode);
           return this._say(truck, true, c.mode === 'paused' ? 'Paused. Scan AUTO to take jobs again' : `${c.label} mode`);
@@ -1695,8 +1700,16 @@
       this._quarantinePlacement(pallet, by);
       if (pallet.status === 'missing') { pallet.status = pallet.blockReason ? 'blocked' : 'available'; notes.push('found again'); }
       pallet.missingFrom = null;
-      // Jobs follow the pallet: a planned pick picks it from where it really is; planned shifts are re-planned.
-      if (live && (live.status !== 'active' || quarantineMove)) {
+      // Set down at the station its process was going to, without the drop scan: it has arrived.
+      const pr = pallet.proc;
+      const nextStep = pr && this.routes[pr.route].steps[pr.step];
+      const arrived = to.kind === 'station' && pr && pr.state === 'moving' && nextStep && nextStep.station === to.station;
+      if (arrived) {
+        if (live && live.type === 'MOVE') this._cancelQuiet(live);
+        this._arrive(pallet, to);
+        notes.push(`arrived at ${this.stations[to.station].name}`);
+      } else if (live && (live.status !== 'active' || quarantineMove)) {
+        // Jobs follow the pallet: a planned pick picks it from where it really is; planned shifts are re-planned.
         if (live.type === 'SHIFT' || live.type === 'PUTAWAY') this._cancelQuiet(live);
         else live.from = code;
       }
@@ -2040,7 +2053,7 @@
       const pallet = this.pallets[sscc];
       if (!pallet || pallet.loc !== st.code) return say(false, 'That pallet is not at this station');
       const pr = pallet.proc;
-      if (!pr) return say(false, 'That pallet has no process');
+      if (!pr) return this._liveTaskFor(sscc) ? say(false, 'Done here. Waiting for a truck') : say(false, 'That pallet has no process');
       const step = this.routes[pr.route].steps[pr.step];
       if (st.dwell) {
         const left = Math.max(0, Math.ceil((pr.dueAt - this.now()) / MINUTE));
@@ -2063,6 +2076,9 @@
         this.dispatch();
         return say(true, `Done in ${mins} min${step.reprint ? '. New pallet label printed' : ''}. A truck will collect it`);
       }
+      const next = this.routes[pr.route].steps[pr.step];
+      if (pr.state === 'moving' && (!next || next.station !== stationId)) return say(false, 'Done here. Waiting for a truck');
+      if (pr.state === 'moving') return say(false, 'The system has it on a truck job to here. The driver scans the station to drop it, or record it here with a transfer');
       return say(false, 'Already done. Waiting for a truck');
     }
 
@@ -2422,12 +2438,21 @@
           itemNo: item.itemNo, itemName: item.name, batch: scanned.batch, expiry: scanned.expiry, qty: scanned.qty,
           lane: lane.code, printedAt: new Date(this.now()).toISOString().slice(0, 16).replace('T', ' '),
         };
+        task.label = label;
         this.printQueue.unshift({ id: ++this._seq.label, printer: lane.printer, at: this.now(), label, zpl: Labels.shippingLabel(label) });
         if (this.printQueue.length > 50) this.printQueue.length = 50;
         task.step = 1;
-        return this._say(truck, true, `Checked. Label printing on ${lane.printer} — stick it on and scan it`);
+        return this._say(truck, true, `Checked. Label printing on ${lane.printer} — stick it on and scan it. No label? Scan the pallet again to reprint`);
       }
-      if (code !== task.labelCode) return this._fail(truck, `Scan the new shipping label ${task.labelCode}`);
+      // Label jammed, torn or lost: scanning the pallet again prints the same label again.
+      if (task.label && (GS1.parse(code)?.sscc || code) === task.sscc) {
+        const lane = this.locations[task.from];
+        this.printQueue.unshift({ id: ++this._seq.label, printer: lane.printer, at: this.now(), label: { ...task.label, reprint: true }, zpl: Labels.shippingLabel(task.label) });
+        if (this.printQueue.length > 50) this.printQueue.length = 50;
+        this.log(`${truck.id} reprinted label ${task.labelCode} for …${task.sscc.slice(-6)}`, { truckId: truck.id, taskId: task.id });
+        return this._say(truck, true, `Label ${task.labelCode} printing again on ${lane.printer}`);
+      }
+      if (code !== task.labelCode) return this._fail(truck, `Scan the new shipping label ${task.labelCode}. No label? Scan the pallet again to reprint`);
       const pallet = this.pallets[task.sscc];
       const problem = this._checkProblem(pallet, order);
       if (problem) {

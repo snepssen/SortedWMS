@@ -161,6 +161,11 @@
       if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
       return { ...lookupView(wh(), r), pallet: palletView(wh(), r.pallet), pallets: (r.pallets || []).map((p) => palletView(wh(), p)), location: r.location && { code: r.location.code, name: wh().label(r.location.code), kind: r.location.kind, category: r.location.category, blocked: r.location.blocked } };
     });
+    // Blocked pallets (damaged, expired on arrival, blocked by the office) and blocked locations: what the coordinator can release.
+    on('GET', '/api/blocked', () => ({
+      pallets: Object.values(wh().pallets).filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
+      locations: Object.values(wh().locations).filter((l) => l.blocked).map((l) => ({ code: l.code, name: placeName(wh(), l.code), kind: l.kind, sscc: l.sscc || null })),
+    }));
     on('GET', '/api/lost', () => wh().lostPallets().map((p) => ({ ...palletView(wh(), p), missingFrom: p.missingFrom, missingFromName: placeName(wh(), p.missingFrom) })));
     on('GET', '/api/transfers', () => (wh().transfers || []).slice(0, 200).map((t) => ({ ...t, fromName: placeName(wh(), t.from), toName: placeName(wh(), t.to) })));
     on('GET', '/api/trace/:batch', ({ batch }) => {
@@ -171,6 +176,8 @@
       const codes = wh().selectLocations(q.from, q.to);
       return { ...wh().previewTemplate(codes, q.category || null), first: codes.slice(0, 3).map((c) => wh().label(c)), last: codes.slice(-3).map((c) => wh().label(c)) };
     });
+    on('GET', '/api/stations', () => Object.values(wh().stations).map((st) => ({ id: st.id, name: st.name, machine: st.machine, minutes: st.minutes, dwell: st.dwell, capacity: st.capacity })));
+    on('GET', '/api/routes', () => Object.values(wh().routes).map((r) => ({ id: r.id, name: r.name, steps: r.steps })));
     on('GET', '/api/stations/:id', ({ id }) => {
       const v = wh().stationView(id);
       const pv = (p) => palletView(wh(), p);
@@ -232,6 +239,7 @@
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => run('importItems', { rows: b.rows || b }, by));
     on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: b.rows || b }, by));
+    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b }, by));
     on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
 
     function handle(method, rawUrl, body = {}, by = 'office') {

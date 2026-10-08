@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101418">
+<title>SortedWMS station</title>
+<style>
+  :root { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 22px; }
+  header .machine { color: var(--dim); }
+  header .spacer { flex: 1; }
+  select, input, button { font: inherit; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  button { background: var(--card); cursor: pointer; }
+  main { padding: 12px 16px 20px; display: grid; gap: 14px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .wide { grid-column: 1 / -1; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .kicker { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: 6px; }
+  .scan { display: flex; gap: 8px; }
+  .scan input { flex: 1; font-size: 22px; }
+  .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 20px; }
+  .msg.ok { background: rgba(60, 207, 122, .14); color: var(--ok); }
+  .msg.bad { background: rgba(255, 90, 82, .16); color: var(--bad); }
+  .job { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .job:first-of-type { border-top: 0; }
+  .job .what { font-size: 18px; font-weight: 700; }
+  .job .sub { color: var(--dim); font-size: 14px; }
+  .timer { font: 800 44px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .timer.over { color: var(--warn); }
+  .timer.small { font-size: 28px; }
+  .bar { height: 8px; background: #0b0f12; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .bar > div { height: 100%; background: var(--acc); }
+  .bar.over > div { background: var(--warn); }
+  ol.sop { margin: 0; padding-left: 22px; font-size: 18px; }
+  ol.sop li { padding: 4px 0; }
+  .empty { color: var(--dim); }
+  .count { font-size: 34px; font-weight: 800; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="name">Station</h1><span class="machine" id="machine"></span><span class="spacer"></span>
+  <select id="pick" title="Which station this screen is"></select>
+</header>
+<main id="main"></main>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ls = { get: (k) => { try { return localStorage.getItem('st.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('st.' + k, v); } catch (e) { /* ignore */ } } };
+  let stationId = new URLSearchParams(location.search).get('id') || ls.get('id') || '';
+  let view = null, fetchedAt = 0, busy = false, lastHtml = '';
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) {
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: stationId || 'station' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': stationId || 'station' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+
+  const clock = (mins) => {
+    const s = Math.max(0, Math.round(mins * 60));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+  };
+  const palletLine = (p) => `…${esc(p.sscc.slice(-6))} · ${esc(p.itemNo)} ${esc(p.name || '')}`;
+
+  function render() {
+    if (!view) return;
+    const st = view.station;
+    const since = (Date.now() - fetchedAt) / 60000; // timers keep running between refreshes
+    $('#name').textContent = st.name;
+    $('#machine').textContent = st.machine || (st.dwell ? `Holds ${st.capacity}` : '');
+    const msg = st.message ? `<div class="msg ${st.message.ok ? 'ok' : 'bad'} wide">${esc(st.message.text)}</div>` : '';
+    const scan = `<form class="scan wide" id="scanForm" autocomplete="off"><input id="scanIn" placeholder="Scan the pallet label…" autocomplete="off" spellcheck="false"><button>Enter</button></form>`;
+    let left = '';
+    let right = '';
+    if (st.dwell) {
+      left = `<div class="card"><div class="kicker">In the room (${view.dwelling.length})</div>${view.dwelling.map((d) => {
+        const remaining = d.left - since;
+        const pct = Math.min(100, Math.max(0, 100 * (1 - remaining / d.total)));
+        return `<div class="job"><div><div class="what">${palletLine(d.pallet)}</div><div class="sub">${esc(d.pallet.batch)} · out by itself when time is up</div><div class="bar"><div style="width:${pct}%"></div></div></div>
+          <div class="timer small">${remaining > 0 ? clock(remaining) : 'time up'}</div></div>`;
+      }).join('') || '<div class="empty">Empty</div>'}</div>`;
+      right = `<div class="card"><div class="kicker">Time up, truck on its way</div>${view.waiting.map((p) => `<div class="job"><div class="what">${palletLine(p)}</div></div>`).join('') || '<div class="empty">None</div>'}</div>
+        <div class="card"><div class="kicker">Coming in</div><div class="count">${view.coming}</div></div>
+        <div class="card"><div class="kicker">How it works</div><div class="sub">No timers to set. The system starts the clock when a pallet is dropped here and sends a truck, flagged urgent, when its time is up. Scan a pallet to see how long it has left.</div></div>`;
+    } else {
+      left = `<div class="card"><div class="kicker">On the ${esc(st.machine || 'station')}</div>${view.working.map((w) => {
+        const mins = w.mins + since;
+        const over = st.minutes && mins > st.minutes;
+        const pct = st.minutes ? Math.min(100, (100 * mins) / st.minutes) : 0;
+        return `<div class="job"><div><div class="what">${esc(w.step.op || '')}: ${palletLine(w.pallet)}</div><div class="sub">Standard ${st.minutes} min · scan the pallet again when done</div>
+          ${st.minutes ? `<div class="bar ${over ? 'over' : ''}"><div style="width:${pct}%"></div></div>` : ''}</div><div class="timer ${over ? 'over' : ''}">${clock(mins)}</div></div>`;
+      }).join('') || '<div class="empty">Nothing on it. Scan the next pallet to start.</div>'}</div>
+        <div class="card"><div class="kicker">Next (${view.queue.length})</div>${view.queue.map((p, i) => `<div class="job"><div><div class="what">${i + 1}. ${palletLine(p)}</div><div class="sub">${esc(p.batch)}${p.orderId ? ` · order ${esc(p.orderId)}` : ''}</div></div></div>`).join('') || '<div class="empty">No pallets waiting</div>'}</div>`;
+      right = `<div class="card"><div class="kicker">SOP</div>${st.sop && st.sop.length ? `<ol class="sop">${st.sop.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '<div class="empty">No steps set</div>'}</div>
+        <div class="card"><div class="kicker">Done, waiting for a truck</div>${view.waiting.map((p) => `<div class="job"><div class="what">${palletLine(p)}</div></div>`).join('') || '<div class="empty">None</div>'}</div>
+        <div class="card"><div class="kicker">Coming in · done today</div><div class="count">${view.coming} · ${st.done || 0}</div></div>`;
+    }
+    const html = `${scan}${msg}<div>${left}</div><div>${right}</div>`;
+    if (html === lastHtml) return;
+    const typed = $('#scanIn') ? $('#scanIn').value : '';
+    lastHtml = html;
+    $('#main').innerHTML = html;
+    const input = $('#scanIn');
+    input.value = typed;
+    input.focus({ preventScroll: true });
+    $('#scanForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const code = input.value.trim();
+      input.value = '';
+      if (!code || busy) return;
+      busy = true;
+      try { await api('POST', `/api/stations/${encodeURIComponent(stationId)}/scan`, { code }); } catch (err) { view.station.message = { ok: false, text: err.message }; }
+      busy = false;
+      refresh();
+    };
+  }
+
+  async function refresh() {
+    if (!stationId) return;
+    try {
+      view = await api('GET', `/api/stations/${encodeURIComponent(stationId)}`);
+      fetchedAt = Date.now();
+      render();
+    } catch (e) { $('#main').innerHTML = `<div class="msg bad wide">${esc(e.message)}</div>`; lastHtml = ''; }
+  }
+
+  async function start() {
+    const stations = await api('GET', '/api/stations');
+    if (!stations.some((s) => s.id === stationId)) stationId = stations[0] ? stations[0].id : '';
+    $('#pick').innerHTML = stations.map((s) => `<option value="${esc(s.id)}" ${s.id === stationId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+    $('#pick').onchange = () => { stationId = $('#pick').value; ls.set('id', stationId); lastHtml = ''; refresh(); };
+    if (!stationId) { $('#main').innerHTML = '<div class="empty wide">No stations in the site set-up.</div>'; return; }
+    ls.set('id', stationId);
+    await refresh();
+    setInterval(refresh, 2000);
+    setInterval(render, 1000);
+    document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+  }
+
+  if (window.SortedLocal) window.SortedLocal.ready.then(start); else start();
+})();
+</script>
+</body>
+</html>

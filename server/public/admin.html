@@ -50,6 +50,7 @@
 <header>
   <h1>SortedWMS office</h1>
   <nav id="nav"></nav>
+  <span class="hint">Screens: <a href="station.html">Station</a> · <a href="desk.html">Receiving desk</a> · <a href="card.html">Command card</a> · <a href="kit.html">Demo kit</a></span>
   <span class="hint" id="status"></span>
 </header>
 <main id="main"></main>
@@ -63,6 +64,7 @@
   let user = ls.get('user') || '';
   let tab = ls.get('tab') || 'floor';
   let S = null; // summary
+  let orderLine = () => ''; // one order line's inputs, set when the Orders tab is drawn
   const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const when = (t) => new Date(t).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dmy = (iso) => (iso ? iso.split('-').reverse().join('-') : '');
@@ -92,7 +94,27 @@
     const lines = text.trim().split(/\r?\n/).filter(Boolean);
     const split = (l) => l.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''));
     const head = split(lines.shift());
-    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|codes|gtin|unitGtin|itemNo)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
+    return lines.map((l) => { const c = split(l); const o = {}; head.forEach((h, i) => { if (c[i] !== undefined && c[i] !== '') o[h] = /^-?\d+(\.\d+)?$/.test(c[i]) && !/^(sscc|batch|code|codes|gtin|unitGtin|itemNo|orderId|lane)$/i.test(h) ? Number(c[i]) : c[i]; }); return o; });
+  }
+
+  // A pasted delivery list: sscc, item (number or EAN), batch, best-before, quantity. A header row is skipped.
+  function isoDate(v) {
+    const t = String(v || '').trim();
+    let m;
+    if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t))) return t;
+    if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(t))) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    if ((m = /^(\d{2})(\d{2})(\d{4})$/.exec(t))) return `${m[3]}-${m[2]}-${m[1]}`;
+    throw new Error(`Best-before "${t}" is not a date (use 09-11-2026)`);
+  }
+  function deliveryList(text) {
+    const rows = text.trim().split(/\r?\n/).map((l) => l.split(/[;,\t]/).map((c) => c.trim())).filter((r) => r.join(''));
+    if (rows.length && !/^\(?0?0?\)?\d{18}$/.test(rows[0][0].replace(/^\(00\)/, ''))) rows.shift();
+    if (!rows.length) return null;
+    return rows.map(([sscc, item, batch, bb, qty], i) => {
+      const s = sscc.replace(/^\(00\)/, '').replace(/^00(?=\d{18}$)/, '');
+      if (!/^\d{18}$/.test(s)) throw new Error(`Row ${i + 1}: "${sscc}" is not an SSCC`);
+      return { sscc: s, itemNo: item, batch, expiry: isoDate(bb), qty: Number(qty) || undefined };
+    });
   }
 
   const TABS = {
@@ -121,7 +143,7 @@
       <section><h2>Handhelds</h2>${table(['ID', 'Mode', 'Categories', 'Now', 'Last message'], devices.map((d) => `<tr>
         <td><b>${esc(d.id)}</b> <span class="hint">${d.kind}</span></td>
         <td>${d.kind === 'truck' ? `<select data-dev-mode="${esc(d.id)}">${d.modes.map((m) => `<option value="${m.id}" ${m.id === d.mode ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select>` : ''}</td>
-        <td>${esc((d.categories || ['all']).join(', '))}</td>
+        <td>${d.kind === 'truck' ? Object.entries(S.categories).map(([k, v]) => `<label class="hint" style="white-space:nowrap"><input type="checkbox" data-cat-dev="${esc(d.id)}" value="${esc(k)}" ${!d.categories || d.categories.includes(k) ? 'checked' : ''}> ${esc(v)}</label>`).join(' ') : 'all'}</td>
         <td class="wrap">${d.instruction.task ? `${esc(d.instruction.task.typeLabel)} #${d.instruction.task.id} ${esc(d.instruction.targetName || '')}` : esc(d.instruction.kind)}</td>
         <td class="wrap">${d.message ? `<span style="color:var(--${d.message.ok ? 'ok' : 'bad'})">${esc(d.message.text)}</span>` : ''}</td></tr>`))}</section>
       <section><h2>Jobs</h2><div class="out" id="taskOut" style="display:none"></div>${table(['#', 'Job', 'Pallet', 'From', 'To', 'Truck', 'Status', 'Why', ''], tasks.sort((a, b) => b.urgent - a.urgent || a.id - b.id).map((t) => `<tr>
@@ -136,7 +158,7 @@
   // ---- Locations: template ranges, lookup, transfers, lost pallets ---------------------------
 
   async function renderLocations() {
-    const [lost, transfers] = await Promise.all([api('GET', '/api/lost'), api('GET', '/api/transfers')]);
+    const [lost, transfers, blocked] = await Promise.all([api('GET', '/api/lost'), api('GET', '/api/transfers'), api('GET', '/api/blocked')]);
     return `<div class="grid">
       <section><h2>Location template: set a category on a range</h2>
         <p class="hint">Either naming works: <span class="mono">AA01A1</span> → <span class="mono">AH10E3</span>, a partial range like <span class="mono">AA</span> → <span class="mono">AD</span> (whole racks), or <span class="mono">31</span> → <span class="mono">34</span> (whole aisles). Pallets left in the wrong category get Auto-Shift relocation jobs.</p>
@@ -154,6 +176,10 @@
         <div class="out" id="trOut" style="display:none"></div></section>
       <section><h2>Location unknown (${lost.length})</h2><p class="hint">Reported missing, or pushed out by a transfer. Scan one anywhere in Transfer mode to put it back on the map.</p>
         ${table(['Pallet', 'Item', 'Batch', 'Last known'], lost.map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.missingFromName || '')}</td></tr>`))}</section>
+      <section><h2>Blocked (${blocked.pallets.length + blocked.locations.length})</h2><p class="hint">Pallets reported damaged, expired on arrival or blocked here; locations reported blocked by a driver. They don't ship or take pallets until released.</p>
+        ${table(['Pallet / location', 'Why', ''], [
+          ...blocked.pallets.map((p) => `<tr><td class="mono">${short(p.sscc)} ${esc(p.itemNo)} · ${esc(p.locName || '')}</td><td>${esc(p.blockReason || 'Blocked')}</td><td><button class="small" data-pact="release" data-s="${esc(p.sscc)}">Release</button></td></tr>`),
+          ...blocked.locations.map((l) => `<tr><td>${esc(l.name)}</td><td>Location blocked</td><td><button class="small" data-lact="${esc(l.code)}">Unblock</button></td></tr>`)])}</section>
       <section style="grid-column:1/-1"><h2>Recent transfers</h2>${table(['When', 'Pallet', 'From', 'To', 'By'], transfers.slice(0, 50).map((t) => `<tr><td>${when(t.t)}</td><td class="mono">${short(t.sscc)}</td><td>${esc(t.fromName)}</td><td>${esc(t.toName)}</td><td>${esc(t.by)}</td></tr>`))}</section>
     </div>`;
   }
@@ -163,12 +189,17 @@
   async function renderStock() {
     const stock = await api('GET', '/api/stock');
     const quality = await api('GET', '/api/quality');
+    const routes = await api('GET', '/api/routes');
     return `<div class="grid">
       <section style="grid-column:1/-1"><h2>Stock per item</h2>${table(['Item', 'Name', 'Category', 'Can ship', 'Cases', 'Batches', 'Short-dated', 'Blocked', 'Next out', 'Min. days', ''], stock.map((r) => `<tr>
         <td>${esc(r.item.itemNo)}</td><td>${esc(r.item.name)}</td><td>${esc(S.categories[r.item.category] || r.item.category)}</td>
         <td>${r.available}</td><td>${r.qty}</td><td>${r.batches}</td><td>${r.short ? `<span class="tag held">${r.short}</span>` : 0}</td><td>${r.blocked ? `<span class="tag bad">${r.blocked}</span>` : 0}</td>
         <td>${r.next ? `${esc(r.next.batch)} · ${dmy(r.next.expiry)} · ${esc(r.next.locName || '')}` : ''}</td>
         <td><input data-minship="${esc(r.item.itemNo)}" value="${r.item.minShipDays}" size="3"></td><td><button class="small" data-minship-save="${esc(r.item.itemNo)}">Save</button></td></tr>`))}</section>
+      <section><h2>Send a pallet to a process</h2>
+        <p class="hint">For work that isn't on an order, e.g. hole forming. The trucks move it from station to station as Auto jobs; the station screens run the steps. (On an order line, choose the process there instead.)</p>
+        <div class="form"><label>Pallet SSCC <input id="prS" size="20"></label><label>Process <select id="prR">${routes.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}</select></label>
+          <button class="primary" id="prGo">Start</button></div><div class="out" id="prOut" style="display:none"></div></section>
       <section style="grid-column:1/-1"><h2>Temperature inspection</h2>
         <form id="qualityForm" class="form">
           <label>Pallet SSCC <input id="qSscc" required></label>
@@ -230,21 +261,27 @@
   }
 
   async function renderOrders() {
-    const [orders, deliveries, items] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items')]);
+    const [orders, deliveries, items, routes] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items'), api('GET', '/api/routes')]);
     const itemOpts = items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('');
+    const procOpts = `<option value="">no process</option>${routes.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}`;
+    orderLine = () => `<div class="form oline"><label>Item <select class="oItem">${itemOpts}</select></label><label>Pallets <input class="oPal" size="3" value="1"></label>
+      <label>Process <select class="oProc">${procOpts}</select></label><button class="small oDel" title="Remove this line">✕</button></div>`;
     return `<div class="grid">
       <section><h2>New order</h2><div class="form">
         <label>Order no. <input id="oId" size="7"></label><label>Customer <input id="oCust" size="14"></label>
         <label>Shipping lane <select id="oLane">${[1, 2, 3, 4].map((n) => `<option>OUT-0${n}</option>`).join('')}</select></label></div>
-        <div class="form"><label>Item <select id="oItem">${itemOpts}</select></label><label>Pallets <input id="oPal" size="3" value="1"></label>
-        <label>Process <select id="oProc"><option value="">none</option><option value="CHANGE">Pallet change</option><option value="FOIL">Crates off + foil</option></select></label>
+        <div id="oLines">${orderLine()}</div>
+        <div class="form"><button id="oAdd">+ Line</button>
         <label><span><input id="oVerify" type="checkbox" checked> Verify trailer loading</span></label>
-        <button class="primary" id="oGo">Add order</button></div><div class="out" id="oOut" style="display:none"></div></section>
+        <button class="primary" id="oGo">Add order</button></div>
+        <p class="hint">Many orders at once: Import → Orders.</p><div class="out" id="oOut" style="display:none"></div></section>
       <section><h2>Announce a delivery</h2><div class="form">
         <label>Delivery no. <input id="dId" size="8"></label><label>Supplier <input id="dSup" size="14"></label>
         <label>Category <select id="dCat">${catOptions()}</select></label><label>Pallets <input id="dPal" size="3" value="1"></label>
-        <label>Received at <select id="dAt"><option value="dock">Dock (truck handheld)</option><option value="desk">Receiving desk</option></select></label>
-        <button class="primary" id="dGo">Announce</button></div><div class="out" id="dOut" style="display:none"></div></section>
+        <label>Received at <select id="dAt"><option value="dock">Dock (truck handheld)</option><option value="desk">Receiving desk</option></select></label></div>
+        <label class="hint" style="display:block">Delivery list from the supplier (optional, paste from Excel or the ASN): one row per pallet, <span class="mono">sscc;item;batch;bestBefore;qty</span>. With it, each pallet is received with <b>one scan</b> of its SSCC, and the pallet count follows the list.
+          <textarea id="dList" placeholder="354111938100402747;05459;810040274;09-11-2026;80"></textarea></label>
+        <div class="form" style="margin-top:6px"><button class="primary" id="dGo">Announce</button></div><div class="out" id="dOut" style="display:none"></div></section>
       <section style="grid-column:1/-1"><h2>Orders</h2>${table(['Order', 'Customer', 'Lane', 'Lines', 'Status', ''], orders.slice().reverse().map((o) => `<tr>
         <td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.lane)}</td>
         <td class="wrap">${o.lines.map((l) => `${esc(l.itemNo)} × ${l.pallets}${l.allocated && l.allocated.length < l.pallets ? ` <span class="tag held">${l.allocated.length} allocated</span>` : ''}${l.process ? ` · ${esc(l.process)}` : ''}`).join('<br>')}</td>
@@ -260,6 +297,7 @@
     const ex = {
       items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nY1010;8712345000017;Skyr natural 450 g;YOG;120;10;rack',
       locations: 'code;category;blocked\n38-02-0-10;CHE;0\nAA01A1;YOG;0',
+      orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;1\n4601;Fresh Market;OUT-01;C2001;1;CHANGE;1',
       stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
     };
     const box = (k, title, note) => `<section><h2>${title}</h2><p class="hint">${note}</p><textarea id="im-${k}">${esc(ex[k])}</textarea>
@@ -267,6 +305,7 @@
     return `<div class="grid">
       ${box('locations', 'Location table', 'Paste from Excel or CSV (comma, semicolon or tab). Codes in either naming. Sets category and blocked per location; mismatched pallets get relocation jobs.')}
       ${box('items', 'Item master', 'Items already known are skipped. storage: rack or block.')}
+      ${box('orders', 'Orders', 'One row per order line; rows with the same order number make one order. process: a route such as CHANGE, or empty. verifyLoading: 1 to load with the trailer scanner.')}
       ${box('stock', 'Opening stock', 'One row per pallet. Leave sscc empty to have one made up. Rows with errors are skipped and listed.')}
     </div>`;
   }
@@ -321,6 +360,12 @@
 
   function bind() {
     const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; };
+    document.querySelectorAll('[data-cat-dev]').forEach((c) => (c.onchange = () => {
+      const id = c.dataset.catDev;
+      const boxes = [...document.querySelectorAll(`[data-cat-dev="${id}"]`)];
+      const on = boxes.filter((b) => b.checked).map((b) => b.value);
+      act(null, () => api('POST', `/api/devices/${id}/categories`, { categories: on.length && on.length < boxes.length ? on : null }));
+    }));
     document.querySelectorAll('[data-dev-mode]').forEach((s) => (s.onchange = () => act(null, () => api('POST', `/api/devices/${s.dataset.devMode}/mode`, { mode: s.value }))));
     document.querySelectorAll('[data-task]').forEach((b) => (b.onclick = () => {
       const id = b.dataset.id;
@@ -344,7 +389,47 @@
       if (!confirm(`Set ${val('#tFrom')} to ${val('#tTo')} to ${cat ? S.categories[cat] : 'no category'}?`)) return;
       act('#tOut', async () => { const r = await api('POST', '/api/template/apply', { from: val('#tFrom'), to: val('#tTo'), category: cat || null }); return `Done: ${r.changed} of ${r.locations} locations changed. ${r.moves || 0} relocation job(s) created for Auto-Shift.`; });
     });
-    on('#lkGo', () => { $('#lkOut').style.display = ''; act('#lkOut', async () => { const r = await api('GET', `/api/lookup/${encodeURIComponent(val('#lkIn'))}`); return r.text; }); });
+    // Stock check, with what the coordinator can do about the answer: block or release a pallet, let a short-dated one ship, unblock a location.
+    const runCheck = async () => {
+      const out = $('#lkOut');
+      out.style.display = '';
+      try {
+        const r = await api('GET', `/api/lookup/${encodeURIComponent(val('#lkIn'))}`);
+        const acts = [];
+        if (r.kind === 'pallet' && r.pallet) {
+          const p = r.pallet;
+          if (p.status === 'blocked') acts.push(`<button class="small" data-pact="release" data-s="${esc(p.sscc)}">Release (unblock)</button>`);
+          else if (p.status === 'available') acts.push(`<button class="small" data-pact="block" data-s="${esc(p.sscc)}">Block</button>`);
+          if (p.shipState === 'short') acts.push(`<button class="small" data-pact="short" data-s="${esc(p.sscc)}">Let this one ship short-dated</button>`);
+        }
+        if (r.kind === 'location' && r.location && r.location.blocked) acts.push(`<button class="small" data-lact="${esc(r.location.code)}">Unblock location</button>`);
+        out.className = 'out';
+        out.innerHTML = `<div>${esc(r.text)}</div>${acts.length ? `<div class="form" style="margin-top:8px">${acts.join(' ')}</div>` : ''}`;
+        bindStockActions();
+      } catch (e) { out.className = 'out bad'; out.textContent = e.message; }
+    };
+    on('#lkGo', runCheck);
+    if ($('#lkIn')) $('#lkIn').onkeydown = (e) => { if (e.key === 'Enter') runCheck(); };
+    function bindStockActions() {
+      const after = async () => {
+        const q = $('#lkIn') ? val('#lkIn') : '';
+        await draw(); // the tab redraws with the new state; the last check is asked again
+        if (q && $('#lkIn')) { $('#lkIn').value = q; runCheck(); }
+      };
+      document.querySelectorAll('[data-pact]').forEach((b) => (b.onclick = async () => {
+        const s = b.dataset.s;
+        try {
+          if (b.dataset.pact === 'short') await api('POST', `/api/pallets/${s}/allow-short`);
+          else await api('POST', `/api/pallets/${s}/status`, b.dataset.pact === 'block' ? { status: 'blocked', reason: `Blocked in the office${user ? ` by ${user}` : ''}` } : { status: 'available' });
+        } catch (e) { alert(e.message); }
+        after();
+      }));
+      document.querySelectorAll('[data-lact]').forEach((b) => (b.onclick = async () => {
+        try { await api('POST', `/api/locations/${encodeURIComponent(b.dataset.lact)}/unblock`); } catch (e) { alert(e.message); }
+        after();
+      }));
+    }
+    bindStockActions();
     on('#trGo', () => { $('#trOut').style.display = ''; act('#trOut', async () => { const r = await api('POST', '/api/transfer', { sscc: val('#trS').replace(/^00/, ''), to: val('#trTo') }); if (!r.ok) throw new Error(r.text); return r.text; }); });
     // Stock
     const qualityAction = async (fn) => {
@@ -414,15 +499,27 @@
     };
     document.querySelectorAll('[data-quarantine-release]').forEach((b) => (b.onclick = () => quarantineAction('/api/quarantine/release', { sscc: b.dataset.quarantineRelease, reason: $(`#zRelease-${b.dataset.index}`).value })));
     // Orders
-    on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
-      const line = { itemNo: $('#oItem').value, pallets: Number(val('#oPal')) || 1 };
-      if ($('#oProc').value) line.process = $('#oProc').value;
-      await api('POST', '/api/orders', { id: val('#oId'), customer: val('#oCust'), lane: $('#oLane').value, lines: [line], verifyLoading: $('#oVerify').checked });
-      return `Order ${val('#oId')} added`;
+    on('#prGo', () => { $('#prOut').style.display = ''; act('#prOut', async () => {
+      const sscc = val('#prS').replace(/^\(00\)/, '').replace(/^00(?=\d{18}$)/, '');
+      await api('POST', `/api/pallets/${encodeURIComponent(sscc)}/process`, { route: $('#prR').value });
+      return `…${sscc.slice(-6)} sent to ${$('#prR').selectedOptions[0].textContent}: a truck takes it to the first station`;
     }); });
+    on('#oGo', () => { $('#oOut').style.display = ''; act('#oOut', async () => {
+      const lines = [...document.querySelectorAll('#oLines .oline')].map((row) => {
+        const line = { itemNo: row.querySelector('.oItem').value, pallets: Number(row.querySelector('.oPal').value) || 1 };
+        if (row.querySelector('.oProc').value) line.process = row.querySelector('.oProc').value;
+        return line;
+      });
+      await api('POST', '/api/orders', { id: val('#oId'), customer: val('#oCust'), lane: $('#oLane').value, lines, verifyLoading: $('#oVerify').checked });
+      return `Order ${val('#oId')} added: ${lines.length} line(s)`;
+    }); });
+    const bindLines = () => document.querySelectorAll('#oLines .oDel').forEach((b) => (b.onclick = () => { if (document.querySelectorAll('#oLines .oline').length > 1) b.closest('.oline').remove(); }));
+    on('#oAdd', () => { $('#oLines').insertAdjacentHTML('beforeend', orderLine()); bindLines(); });
+    bindLines();
     on('#dGo', () => { $('#dOut').style.display = ''; act('#dOut', async () => {
-      await api('POST', '/api/deliveries', { id: val('#dId'), supplier: val('#dSup'), category: $('#dCat').value, pallets: Number(val('#dPal')) || 1, at: $('#dAt').value });
-      return `Delivery ${val('#dId')} announced`;
+      const list = deliveryList($('#dList').value);
+      await api('POST', '/api/deliveries', { id: val('#dId'), supplier: val('#dSup'), category: $('#dCat').value, pallets: list ? list.length : Number(val('#dPal')) || 1, at: $('#dAt').value, list });
+      return `Delivery ${val('#dId')} announced${list ? ` with its list: ${list.length} pallets, one scan each` : ''}`;
     }); });
     document.querySelectorAll('[data-ship]').forEach((b) => (b.onclick = () => act(null, () => api('POST', `/api/orders/${encodeURIComponent(b.dataset.ship)}/ship`))));
     // Imports
