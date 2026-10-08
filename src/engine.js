@@ -1339,10 +1339,11 @@
       else task.inputs++;
       if (task.type === 'RECEIVE') return this._receiveScan(truck, task, input);
       if (task.type === 'CHECK') return this._checkScan(truck, task, input);
-      // A location label that won't scan (frost, damage, top level): type the check digit printed on it.
-      // The handheld never shows it, so typing it means the driver is at the location.
-      if (/^\d{2}$/.test(input)) {
-        const want = this.locations[task.type === 'COUNT' || task.step === 0 ? task.from : task.to];
+      // Dropping at a rack location whose label won't scan (frost, damage): type the check digit printed on it.
+      // The handheld never shows it, so typing it means the driver is at the location. Only for drops:
+      // a pickup is confirmed by the pallet's own label, and docks and gates are scanned.
+      if (/^\d{2}$/.test(input) && task.step === 1 && task.type !== 'COUNT') {
+        const want = this.locations[task.to];
         if (want && want.kind === 'rack') {
           if (input !== this.checkDigit(want.code)) return this._fail(truck, `${input} is not the check digit of ${want.code}. Read it off the location label`);
           input = want.code;
@@ -1960,6 +1961,30 @@
       let h = 2166136261;
       for (const ch of code) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
       return String(10 + ((h >>> 0) % 90));
+    }
+
+    // ---- Customer requirements ----------------------------------------------------
+
+    /**
+     * What a customer wants done to their pallets (no double stacking, the label
+     * on the long side): a few short lines, shown on the handheld for every job on
+     * that customer's orders. The order number brings them up; nobody types anything.
+     */
+    setCustomerNotes(customer, notes) {
+      const name = String(customer || '').trim();
+      if (!name) throw new Error('Customer is required');
+      const list = (Array.isArray(notes) ? notes : String(notes || '').split(/\r?\n/)).map((n) => String(n).trim()).filter(Boolean);
+      if (list.length > 5) throw new Error('At most 5 requirements per customer');
+      if (list.some((n) => n.length > 80)) throw new Error('Keep each requirement under 80 characters: it has to fit the handheld');
+      this.customers = this.customers || {};
+      if (list.length) this.customers[name] = { notes: list }; else delete this.customers[name];
+      this.log(list.length ? `Requirements for ${name}: ${list.join('; ')}` : `Requirements for ${name} removed`);
+      return list;
+    }
+
+    customerNotes(customer) {
+      const c = this.customers && this.customers[customer];
+      return c ? c.notes.slice() : [];
     }
 
     importLocations(rows) {

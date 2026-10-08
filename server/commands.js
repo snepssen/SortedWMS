@@ -50,6 +50,7 @@
     setAisleCell: (wh, a) => wh.setAisleCell(req(a.aisle, 'aisle'), req(a.cell, 'cell')),
     setNaming: (wh, a) => wh.setNaming(req(a.show, 'show')),
     planGrouping: (wh) => wh.planGrouping(),
+    setCustomerNotes: (wh, a) => wh.setCustomerNotes(req(a.customer, 'customer'), a.notes || []),
     planDigOut: (wh) => wh.planDigOut(),
     // Free play: hundreds of random picks and inbound pallets at once. The seed is journaled, so replay gives the same work.
     dropWorkload: (wh, a) => Workload.drop(wh, { seed: req(a.seed, 'seed'), picks: a.picks, inbound: a.inbound }),

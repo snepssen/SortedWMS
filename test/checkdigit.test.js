@@ -39,18 +39,18 @@ test('check digits: typed instead of a location label that will not scan', () =>
   assert.equal(wh.pallets[p.sscc].loc, task.to);
 });
 
-test('check digits: also at a rack pickup and a stock count; a quantity while receiving is still a quantity', () => {
+test('check digits: only for a drop; a pickup or a count takes the label, and a quantity while receiving stays a quantity', () => {
   const wh = setup();
   const p = wh.stockPallet('31-02-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-12-01' });
   wh.planCounts({ codes: ['31-02-0-10'] });
   wh.addTruck('RT1');
   assert.equal(wh.instruction('RT1').kind, 'count');
-  assert.ok(wh.scan('RT1', wh.checkDigit('31-02-0-10')).ok);
+  assert.equal(wh.scan('RT1', wh.checkDigit('31-02-0-10')).ok, false, 'a count needs the location label');
+  assert.ok(wh.scan('RT1', '31-02-0-10').ok);
   assert.match(wh.scan('RT1', p.sscc).text, /Count OK/);
   // Receiving: two digits typed for the count stay a count of cases.
   wh.addDelivery({ id: 'D1', supplier: 'S', category: 'YOG', pallets: 1 });
-  const ins = wh.instruction('RT1');
-  assert.equal(ins.kind, 'receive');
+  assert.equal(wh.instruction('RT1').kind, 'receive');
   wh.scan('RT1', `01${GS1.gtin14(wh.items.Y1.gtin)}15261201` + '10B9');
   wh.scan('RT1', `00${GS1.makeSscc(0, '8799990', 77)}`);
   assert.equal(wh.instruction('RT1').field, 'qty');

@@ -317,6 +317,18 @@
       "gtin": "04388860261127"
     }
   ],
+  "customers": {
+    "Fresh Market": [
+      "No double-stacked pallets"
+    ],
+    "City Deli": [
+      "Shipping label on the long side",
+      "Max. 1.8 m pallet height"
+    ],
+    "Hotel Central": [
+      "Deliver before 06:00: load first"
+    ]
+  },
   "printers": {
     "LP-OUT-01": "",
     "LP-OUT-02": "",
