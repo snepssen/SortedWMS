@@ -148,7 +148,8 @@ The system makes a receiving job. With a list, every pallet is received with **o
 
 **If it goes wrong:**
 - *"GTIN … is not in the item list"*: call the coordinator, the item master is missing it.
-- *"Label and delivery list disagree"*: nothing was registered. Show the coordinator.
+- *"Label and delivery list disagree"*: nothing was registered. If a wrong scan or typo caused it, scan `CMD-CANCEL` and the pallet starts again; otherwise show the coordinator.
+- *"That's the label of DOCK-IN, not a batch number"*: a location label was scanned by mistake. Nothing changed: scan the pallet's labels.
 - *"SSCC check digit is wrong"*: rescan, the label is damaged or misread.
 
 ### 2.3 Receive at the desk (two operators)
@@ -389,7 +390,7 @@ Every step is recorded with pallet, station, actual time and standard time, and 
 
 | Reported | Already done by the system | You |
 | --- | --- | --- |
-| Pallet missing | Next pallet allocated; pallet on *location unknown* | Have it looked for. **Release**: a pick's job closes (its replacement carries on); any other job goes back to the queue. |
+| Pallet missing | Next pallet allocated; pallet on *location unknown* | Have it looked for. **Release**: a pick's or check's job closes (its replacement carries on). Any other job waits until the pallet is found (Transfer mode puts it back on the map, and the job follows it). |
 | Damaged | Pallet blocked; replacement allocated | Inspect. Release the pallet (Locations → Blocked) or leave it blocked. Release the job. |
 | Location blocked | Location blocked | Clear the location, then **Release**. That unblocks it too. |
 
@@ -455,7 +456,7 @@ Every on-screen button has a barcode, so drivers keep their gloves on. Marked **
 | `CMD-FULL` | Receiving: full pallet quantity |
 | `CMD-DONE` **2×** | Receiving: close a short delivery |
 | `CMD-MOVE` | Move the held pallet |
-| `CMD-CANCEL` | Undo whatever is half-done |
+| `CMD-CANCEL` | Undo whatever is half-done: a report waiting for its confirm, a held pallet, a transfer, a stock check, or a pallet half-received (it starts again) |
 
 ### MC9401 keys
 
@@ -474,7 +475,7 @@ Auto does everything; the other modes are for working on your own.
 | --- | --- |
 | Auto | Everything: jobs come by priority, and any scan is understood |
 | Pick | Working one order: scan the order number, its picks come one by one |
-| Put-away | Putting away a pallet you choose |
+| Put-away | Putting away a pallet you choose (at the dock or a station). A pallet with a pick or check waiting is Auto's job |
 | Transfer | Corrections: pallet, then location |
 | Stock check | Asking without changing anything |
 | Stock count | Inventory duty: count after count, nearest next |

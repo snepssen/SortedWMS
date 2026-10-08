@@ -130,7 +130,7 @@ The warehouse is chilled, so drivers wear gloves and the handheld's touch screen
 | `CMD-FULL` | Receiving: full pallet quantity |
 | `CMD-DONE` | Receiving: close the delivery. **Scan twice** to confirm |
 | `CMD-MOVE` | Move the held pallet |
-| `CMD-CANCEL` | Undo whatever is half-done: a report waiting for its confirm, a held pallet, a transfer, a stock check |
+| `CMD-CANCEL` | Undo whatever is half-done: a report waiting for its confirm, a held pallet, a transfer, a stock check, a pallet half-received (it starts again) |
 
 Anything that changes stock is confirmed by scanning the same code again within 30 seconds; any other scan cancels it. There are no pop-ups: the screen shows an amber *Confirm* card, and the buttons work the same way (tap twice). A report that isn't possible right now (no job, pallet on the forks) says why straight away. A quantity other than a full pallet is typed on the keypad into the scan field, followed by Enter.
 
