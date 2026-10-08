@@ -169,3 +169,23 @@ test('HTTP API: template range, handheld transfer, lost pallets, audit', async (
     server.close();
   }
 });
+
+test('a request sent again with the same request ID is answered once, not done twice', () => {
+  const { createApi } = require('../server/api');
+  const file = tmpDb();
+  const store = new Store({ file, site, now: stepClock() });
+  seedDemo(store);
+  const api = createApi({ store, printers: { results: [], flush() {}, list: () => [] } });
+  const sscc = store.wh.instruction('HH01').pallet.sscc;
+  const rows = () => store.journal({ limit: 1000 }).length;
+  const before = rows();
+  const first = api.handle('POST', '/api/devices/HH01/scan', { code: sscc }, 'HH01', 'HH01-abc-1');
+  const again = api.handle('POST', '/api/devices/HH01/scan', { code: sscc }, 'HH01', 'HH01-abc-1');
+  assert.deepStrictEqual(again, first);
+  assert.strictEqual(rows(), before + 1, 'journaled once');
+  assert.strictEqual(store.wh.instruction('HH01').kind, 'drop', 'picked up once, not "scan again to move it"');
+  // A new request ID is a new scan.
+  const third = api.handle('POST', '/api/devices/HH01/scan', { code: sscc }, 'HH01', 'HH01-abc-2');
+  assert.strictEqual(rows(), before + 2);
+  assert.match(third.body.text, /carrying it/);
+});

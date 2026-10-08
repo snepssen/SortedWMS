@@ -8,6 +8,11 @@ A rugged Android gun-grip terminal with a 4.3" touch screen and a full keypad (E
 
 **Running SortedWMS on it.** Open the server's `/handheld` page in Chrome (on GitHub Pages: `handheld.html`) and add it to the home screen. For a locked-down device, pin the screen (Android screen pinning) or run it in Zebra's Enterprise Browser. Enter the handheld ID once; it's remembered.
 
+**Starting up and slow spots.** The device's auto-start script opens the `/handheld` page from the intranet server. If the server doesn't answer, the script waits and tries again; that part is the device's. Once the page is open:
+- **Startup:** while the server doesn't answer, it shows *Connecting to SortedWMS…* and keeps trying every 2 seconds. It never sits on a blank screen.
+- **Lag near the docks:** a scan that gets no answer within 6 seconds is sent again with the same request ID, up to five times over about half a minute. The server answers a repeated request ID with the first answer, so a scan is never done twice; this matters because a pallet scanned twice in Auto means *move it*.
+- **Scans during lag:** the same code scanned again while it's on its way is ignored. Anything else waits its turn and is never dropped.
+
 **Screen.** In the browser the screen is about 320×480. The handheld page has a compact layout for this size: the answer to the last scan and the scan field sit above the job, so "wrong pallet" is never below the fold, and the whole job fits without scrolling.
 
 **Scanner (DataWedge).** The scanner types into the page like a keyboard. In DataWedge, the profile for Chrome (or Enterprise Browser) needs:

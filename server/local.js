@@ -121,10 +121,10 @@
 
   root.SortedLocal = {
     ready,
-    async fetch(method, path, body, { operator } = {}) {
+    async fetch(method, path, body, { operator, requestId } = {}) {
       const { store, api } = await ready;
       store.sync();
-      const out = await api.handle(method, path, body || {}, String(operator || 'office').slice(0, 40));
+      const out = await api.handle(method, path, body || {}, String(operator || 'office').slice(0, 40), requestId || null);
       return JSON.parse(JSON.stringify(out)); // a copy, like over the network
     },
     async reset() { const { store } = await ready; store.reset(); root.SortedSeed.seedDemo(store); },

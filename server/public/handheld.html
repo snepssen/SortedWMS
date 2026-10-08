@@ -66,6 +66,9 @@
   .cats input { width: auto; }
   .offline { background: var(--bad); color: #1a0505; text-align: center; font-weight: 700; padding: 6px; display: none; }
   .offline.on { display: block; }
+  .net { display: none; text-align: center; font-weight: 700; padding: 5px; font-size: 14px; background: #26303a; color: var(--ink); }
+  .net.on { display: block; }
+  .net.warn { background: rgba(255, 176, 32, .18); color: var(--warn); }
   @media (max-width: 360px) { .big { font-size: 42px; } }
   /* Small rugged handhelds (Zebra MC9401: 4.3" 480×800, about 320×480 in the browser):
      everything tighter, and the answer to the last scan and the scan field above the job,
@@ -93,7 +96,8 @@
 </style>
 </head>
 <body>
-<div class="offline" id="offline">No connection to the server</div>
+<div class="offline" id="offline">No connection to the server: trying again</div>
+<div class="net" id="net" role="status" aria-live="polite"></div>
 <div id="app"></div>
 <script>
 (function () {
@@ -107,20 +111,41 @@
   let deviceId = store.get('device'), operator = store.get('operator') || '', token = store.get('token') || '';
   let view = null, localError = null, busy = false, keyboard = false, typedQty = '', summary = null;
 
-  async function api(method, path, body) {
+  // No answer within the time limit, or no network at all: worth sending again (err.network).
+  const netError = (text) => Object.assign(new Error(text), { network: true });
+
+  async function api(method, path, body, { requestId = null, timeout = 6000 } = {}) {
     if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
-      const r = await window.SortedLocal.fetch(method, path, body, { operator: operator || deviceId || 'handheld' });
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: operator || deviceId || 'handheld', requestId });
       if (r.status >= 400) throw new Error(r.body.error);
       return r.body;
     }
-    const res = await fetch(path, {
-      method, headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': operator || deviceId || 'handheld' },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctl && setTimeout(() => ctl.abort(), timeout);
+    let res;
+    try {
+      res = await fetch(path, {
+        method, signal: ctl ? ctl.signal : undefined,
+        headers: { 'content-type': 'application/json', 'x-token': token, 'x-operator': operator || deviceId || 'handheld', ...(requestId ? { 'x-request-id': requestId } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      throw netError('No answer from the server');
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw netError('The server is not answering');
     const data = await res.json().catch(() => ({}));
     $('#offline').classList.remove('on');
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
+  }
+
+  function netStatus(text, warn) {
+    const el = $('#net');
+    el.textContent = text || '';
+    el.classList.toggle('on', Boolean(text));
+    el.classList.toggle('warn', Boolean(warn));
   }
 
   // A location in big type: cell + rack letters highlighted (AA03C2), or the name as is.
@@ -293,24 +318,68 @@
     document.body.onclick = (e) => { if (!e.target.closest('input,button,select')) focus(); };
   }
 
-  async function act(method, path, body) {
-    if (busy) return;
-    busy = true;
-    localError = null;
-    // Refusals the server answers with an error (e.g. a mode change with a pallet on the forks) show until the next action.
-    try { await api(method, path, body); } catch (e) { localError = e.message; if (navigator.vibrate) navigator.vibrate([80, 60, 80]); }
-    busy = false;
-    await refresh(true);
+  // Every scan and button goes through a queue: on a slow network (near the docks) nothing is
+  // dropped and nothing happens twice. A late answer is asked for again with the same request ID,
+  // which the server answers once; the same code scanned again while it's on its way is ignored.
+  const queue = [];
+  let sending = null;
+  let seq = 0;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function act(method, path, body) {
+    const same = (q) => q && q.path === path && JSON.stringify(q.body) === JSON.stringify(body);
+    const confirming = body && /^CMD-/i.test(String(body.code || '')); // reports are confirmed by scanning them twice
+    if (!confirming && (same(sending) || queue.some(same))) {
+      netStatus(`Already sending ${body && body.code ? body.code : 'that'}: no need to scan again`, true);
+      return;
+    }
+    queue.push({ method, path, body, id: `${deviceId}-${Date.now().toString(36)}-${++seq}` });
+    pump();
   }
 
+  async function pump() {
+    if (sending || !queue.length) return;
+    sending = queue.shift();
+    busy = true;
+    localError = null;
+    const waiting = () => (queue.length ? ` (${queue.length} more waiting)` : '');
+    const slow = setTimeout(() => netStatus(`Sending…${waiting()}`), 700);
+    for (let tries = 0; ; tries++) {
+      try {
+        await api(sending.method, sending.path, sending.body, { requestId: sending.id });
+        break;
+      } catch (e) {
+        if (e.network && tries < 5) {
+          netStatus(`Slow network: your scan is kept, sending it again${waiting()}`, true);
+          await sleep(Math.min(8000, 1000 * 2 ** tries));
+          continue;
+        }
+        // Refusals the server answers with an error (e.g. a mode change with a pallet on the forks) show until the next action.
+        localError = e.network ? 'Not sent: no answer from the server. Scan it again when the bar is gone' : e.message;
+        if (e.network) $('#offline').classList.add('on');
+        if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+        break;
+      }
+    }
+    clearTimeout(slow);
+    netStatus('');
+    sending = null;
+    busy = queue.length > 0;
+    if (!queue.length) await refresh(true);
+    pump();
+  }
+
+  let refreshing = false, attempts = 0;
   async function refresh(force) {
     if (!deviceId) return renderSetup();
-    if (busy && !force) return;
+    if ((busy && !force) || refreshing) return;
     const typing = document.activeElement && document.activeElement.id === 'qtyIn';
     const pending = $('#scanIn') && $('#scanIn').value;
     if (!force && (typing || pending)) return; // don't redraw under a half-finished scan
+    refreshing = true;
     try {
-      const v = await api('GET', `/api/devices/${encodeURIComponent(deviceId)}`);
+      const v = await api('GET', `/api/devices/${encodeURIComponent(deviceId)}`, null, { timeout: 5000 });
+      attempts = 0;
       const before = view && JSON.stringify(view);
       const msgChanged = view && v.message && (!view.message || view.message.text !== v.message.text);
       view = v;
@@ -320,6 +389,12 @@
       if (/No device/.test(e.message)) { deviceId = null; return renderSetup(e.message); }
       if (/Token/.test(e.message)) return renderSetup(e.message);
       $('#offline').classList.add('on');
+      attempts++;
+      // Starting up without an answer: say so instead of a blank screen, and keep trying (every 2 s).
+      if (!view) $('#app').innerHTML = `<main><div class="card"><div class="kicker">${esc(deviceId)}</div><div class="mid">Connecting to SortedWMS…</div>
+        <div class="sub">No answer from the server yet (try ${attempts}). It keeps trying by itself; nothing to press. If this stays, the server or the Wi-Fi is down: tell the coordinator.</div></div></main>`;
+    } finally {
+      refreshing = false;
     }
   }
 
