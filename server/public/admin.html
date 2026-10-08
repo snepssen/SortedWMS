@@ -269,7 +269,8 @@
   }
 
   async function renderOrders() {
-    const [orders, deliveries, items, routes] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items'), api('GET', '/api/routes')]);
+    const [orders, deliveries, items, routes, customers] = await Promise.all([api('GET', '/api/orders'), api('GET', '/api/deliveries'), api('GET', '/api/items'), api('GET', '/api/routes'), api('GET', '/api/customers')]);
+    const notesOf = Object.fromEntries(customers.map((c) => [c.name, c.notes]));
     const itemOpts = items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('');
     const procOpts = `<option value="">no process</option>${routes.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}`;
     orderLine = () => `<div class="form oline"><label>Item <select class="oItem">${itemOpts}</select></label><label>Pallets <input class="oPal" size="3" value="1"></label>
@@ -290,8 +291,14 @@
         <label class="hint" style="display:block">Delivery list from the supplier (optional, paste from Excel or the ASN): one row per pallet, <span class="mono">sscc;item;batch;bestBefore;qty</span>. With it, each pallet is received with <b>one scan</b> of its SSCC, and the pallet count follows the list.
           <textarea id="dList" placeholder="354111938100402747;05459;810040274;09-11-2026;80"></textarea></label>
         <div class="form" style="margin-top:6px"><button class="primary" id="dGo">Announce</button></div><div class="out" id="dOut" style="display:none"></div></section>
+      <section><h2>Customer requirements</h2>
+        <p class="hint">What a customer wants done with their pallets. The order brings it up on the handheld for every pick, drop and check: nobody looks it up or types it. One per line, short enough for the handheld.</p>
+        ${table(['Customer', 'Requirements', ''], customers.map((c) => `<tr><td>${esc(c.name)}</td><td class="wrap">${c.notes.map(esc).join('<br>')}</td><td><button class="small" data-cedit="${esc(c.name)}">Edit</button></td></tr>`))}
+        <div class="form"><label>Customer <input id="cuName" size="14"></label></div>
+        <label class="hint" style="display:block">Requirements <textarea id="cuNotes" placeholder="No double-stacked pallets"></textarea></label>
+        <div class="form" style="margin-top:6px"><button class="primary" id="cuGo">Save</button><span class="hint">Empty removes them.</span></div><div class="out" id="cuOut" style="display:none"></div></section>
       <section style="grid-column:1/-1"><h2>Orders</h2>${table(['Order', 'Customer', 'Lane', 'Lines', 'Status', ''], orders.slice().reverse().map((o) => `<tr>
-        <td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.lane)}</td>
+        <td>${esc(o.id)}</td><td>${esc(o.customer)}${(notesOf[o.customer] || []).length ? `<div class="hint wrap">${notesOf[o.customer].map(esc).join('; ')}</div>` : ''}</td><td>${esc(o.lane)}</td>
         <td class="wrap">${o.lines.map((l) => `${esc(l.itemNo)} × ${l.pallets}${l.allocated && l.allocated.length < l.pallets ? ` <span class="tag held">${l.allocated.length} allocated</span>` : ''}${l.process ? ` · ${esc(l.process)}` : ''}`).join('<br>')}</td>
         <td><span class="tag">${esc(o.status)}</span>${o.loading ? `<div class="hint">Trailer ${esc(o.loading.trailer)}${o.loading.seal ? ` / seal ${esc(o.loading.seal)}` : ''}</div>` : o.verifyLoading ? '<div class="hint">Trailer verification required</div>' : ''}${o.trailerReadiness.required ? `<span class="tag ${o.trailerReadiness.reason ? 'bad' : ''}">Trailer: ${esc(o.trailerReadiness.status)}</span>${o.trailerReadiness.reason ? `<div class="hint wrap">${esc(o.trailerReadiness.reason)}</div>` : ''}` : ''}${o.shippingHolds.length ? `<span class="tag bad">Shipping held</span><div class="hint wrap">${esc([...new Set(o.shippingHolds.map((h) => h.reason))].join('; '))}</div>` : ''}</td><td>${o.status === 'ready' && !o.shippingHolds.length && !o.verifyLoading ? `<button class="small" data-ship="${esc(o.id)}">Shipped</button> ` : ''}<a href="${window.SortedLocal ? 'loading.html' : 'loading'}?order=${encodeURIComponent(o.id)}">${o.status === 'shipped' ? 'Manifest' : 'Loading'}</a></td></tr>`))}</section>
       <section style="grid-column:1/-1"><h2>Deliveries</h2>${table(['Delivery', 'Supplier', 'Category', 'Pallets', 'Received', 'At', 'Status'], deliveries.slice().reverse().map((d) => `<tr>
@@ -527,6 +534,13 @@
     const bindLines = () => document.querySelectorAll('#oLines .oDel').forEach((b) => (b.onclick = () => { if (document.querySelectorAll('#oLines .oline').length > 1) b.closest('.oline').remove(); }));
     on('#oAdd', () => { $('#oLines').insertAdjacentHTML('beforeend', orderLine()); bindLines(); });
     bindLines();
+    on('#cuGo', () => { $('#cuOut').style.display = ''; act('#cuOut', async () => { const r = await api('POST', '/api/customers', { customer: val('#cuName'), notes: $('#cuNotes').value }); await draw(); return r.length ? 'Saved' : 'Removed'; }); });
+    document.querySelectorAll('[data-cedit]').forEach((b) => (b.onclick = async () => {
+      const c = (await api('GET', '/api/customers')).find((x) => x.name === b.dataset.cedit);
+      $('#cuName').value = c.name;
+      $('#cuNotes').value = c.notes.join('\n');
+      $('#cuNotes').focus();
+    }));
     on('#dGo', () => { $('#dOut').style.display = ''; act('#dOut', async () => {
       const list = deliveryList($('#dList').value);
       await api('POST', '/api/deliveries', { id: val('#dId'), supplier: val('#dSup'), category: $('#dCat').value, pallets: list ? list.length : Number(val('#dPal')) || 1, at: $('#dAt').value, list });

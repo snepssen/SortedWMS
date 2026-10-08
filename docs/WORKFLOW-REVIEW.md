@@ -17,7 +17,8 @@ Every procedure in [SOP.md](SOP.md) was walked through step by step against the 
 | Stations (5.2) | A pallet set down without the drop scan couldn't be started, and the station said *"Already done"*. A finished pallet got *"has no process"*. | A correction transfer onto the station counts as arrival. The messages say what's actually going on. |
 | Desk (2.3) | A scan at the desk with no delivery open crashed the request. A mode barcode would have switched the desk into a truck mode. | Both answered with a clear message. |
 | Blocking (6.2) | A blocked pallet kept its planned move to ground level: a truck trip for a pallet that won't ship. | That move is dropped when the pallet is blocked. |
-| Put-away and picks (2.4, 4.2) | A location label that won't scan (frost, damage, top level) left two bad options: type the location shown on the screen, which proves nothing, or call someone. | **Check digits**, as on EDEKA's system: type the two digits printed on the label. The screen never shows them. |
+| Drops (2.4, 3.2) | A location label that won't scan (frost, damage) left two bad options: type the location shown on the screen, which proves nothing, or call someone. | **Check digits**, as on EDEKA's system: type the two digits printed on the label. The screen never shows them. |
+| Picking, check & label (4.2, 4.3) | Customer requirements (no double stacking, label position) lived in people's heads, or behind extra screens in older systems. | **Customer requirements** come up on the handheld with every job on that customer's order, in amber. Kept per customer in the office. |
 | Stock counts (3.6) | No inventory control: differences were found when a pick failed. | **Count jobs** for idle trucks: blind, two scans, the system corrected on the spot. The places with corrections and lost pallets go first. **Stock count mode** for a driver on inventory duty. Accuracy in the office. |
 
 ## Recommended: decisions for the floor and management
@@ -54,5 +55,5 @@ In order of what they save on the floor:
    - The handheld could keep it and send it when the connection is back.
 2. **Printer alerts.** Ask every printer for its status every few minutes, and show *paper out* in the office and on the handheld of a driver heading to that lane.
 3. **Job order by time of day.** For example, receiving first while the morning trucks are at the doors, picks first after 10:00.
-4. **Customer rules:** minimum days left and label requirements per customer.
+4. **Customer rules the system enforces:** minimum days left per customer, and checks such as *no double stacking* at the lane. Requirements are already shown to the driver; this would make the system hold to them.
 5. **A driver view for the coordinator.** Scans per move, idle time and wrong scans per shift, to coach rather than to count.

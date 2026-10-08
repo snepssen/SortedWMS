@@ -325,10 +325,11 @@
       next = `<div class="bar"><div style="width:${pct.toFixed(1)}%"></div></div><div class="next">Next scan in ${clock(e.at - Date.now())}: ${esc(e.act.what)}</div>`;
     }
     const msg = v.message ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : '';
+    const cust = I.customer && I.customer.notes.length ? `<div class="sub" style="color:#ffb020">${esc(I.customer.name)}: ${esc(I.customer.notes.join('; '))}</div>` : '';
     const cats = v.categories ? v.categories.map((c) => CATS[c] || c).join(', ') : 'all categories';
     return `<div class="scr"><div class="top"><b>${esc(id)}</b><span>${esc(cats)}</span>
       <label title="Untick to drive this one yourself"><input type="checkbox" data-auto="${esc(id)}" ${manual ? '' : 'checked'}> auto</label><button data-open="${esc(id)}">Open</button></div>
-      ${body}${next}${msg}</div>`;
+      ${body}${cust}${next}${msg}</div>`;
   }
 
   async function renderFloor() {

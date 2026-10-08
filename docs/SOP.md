@@ -170,7 +170,7 @@ The system makes a receiving job. With a list, every pallet is received with **o
 - the next pallet to ship low, later batches higher, blocked or short-dated stock at the top.
 
 **If it goes wrong:**
-- **Location label won't scan** (frost, damage, a top level out of reach): type the **2-digit check digit** printed on the label, then ENT. The handheld never shows it, so it confirms you're at the right spot.
+- **Location label won't scan** (frost, damage): type the **2-digit check digit** printed on the label, then ENT. Drops only: a pickup is confirmed by scanning the pallet, and docks and gates are scanned. The handheld never shows it, so it confirms you're at the right spot.
 - **Location occupied or blocked:** scan `CMD-BLOCKED` twice. A new slot appears.
 - **Want another free slot of the right category:** just scan it. The system accepts it if it's suitable.
 
@@ -293,10 +293,12 @@ In the office, the answer comes with buttons:
 **The system** allocates whole pallets, first expired first. Pick jobs appear straight away.
 
 ### 4.2 Picking
-**Who** Driver · **Screen** Handheld (Auto) · **When** The pick comes up (picks are first by default)
+**Who** Driver · **Screen** Handheld (Auto) · **When** The pick comes up (right after check & label by default)
 
 1. Drive to the location shown. Scan the pallet, or the location label.
 2. Drive to the shipping lane shown (`OUT-02`). Scan the lane label.
+
+**The customer's requirements** (*No double-stacked pallets*, *Label on the long side*) show in amber on every pick, drop and check for that customer's order. The order brings them up: nothing to look up, nothing to type. The coordinator keeps them in Office → Orders & deliveries → *Customer requirements*.
 
 **The system:**
 - **A different pallet with the same item, batch and best-before** is accepted and swapped in.
@@ -458,7 +460,7 @@ Every on-screen button has a barcode, so drivers keep their gloves on. Marked **
 | --- | --- |
 | ENT | Sends what's typed (the scanner sends it after each scan) |
 | Digits / letters | Type a quantity, batch, date (`09112026`) or location (`A3C2`) |
-| Two digits at a location | The check digit from a location label that won't scan |
+| Two digits at a drop | The check digit from a location label that won't scan |
 | Esc | Clear a half-typed entry; with nothing typed, cancel |
 | F1 … F5 | Auto, Pick, Put-away, Transfer, Stock check |
 

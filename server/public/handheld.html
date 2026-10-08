@@ -42,6 +42,8 @@
   .belongs .where b { color: var(--acc); }
   .lines li .loc { font-weight: 800; }
   .card.held { border-color: var(--warn); }
+  .cust { margin-top: 8px; border-left: 4px solid var(--warn); background: rgba(255, 176, 32, .1); border-radius: 6px; padding: 6px 10px; color: var(--warn); font-weight: 700; }
+  .cust div { font-weight: 600; color: var(--ink); }
   .card.armed { border: 2px solid var(--warn); background: rgba(255, 176, 32, .12); }
   .card.armed .mid { color: var(--warn); font-size: 26px; }
   .msg.ok { background: rgba(60, 207, 122, .14); color: var(--ok); }
@@ -127,6 +129,13 @@
     return esc(name);
   }
 
+  // The customer's requirements, brought up by the order: shown on every job for it.
+  function custHtml(I) {
+    const c = I.customer;
+    if (!c || !c.notes.length) return '';
+    return `<div class="cust">${esc(c.name)}${c.notes.map((n) => `<div>${esc(n)}</div>`).join('')}</div>`;
+  }
+
   function palletHtml(p) {
     if (!p) return '';
     const exp = p.expiry ? p.expiry.split('-').reverse().join('-') : '';
@@ -207,14 +216,14 @@
     switch (I.kind) {
       case 'paused': return `<div class="card"><div class="kicker">Paused</div><div class="mid">No jobs until you pick a mode</div></div>`;
       case 'idle': return `<div class="card"><div class="kicker">Auto</div><div class="mid">No job for you right now</div><div class="sub">The next one appears here by itself. Scan any pallet, location or item to check it.</div></div>`;
-      case 'pickup': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Pick up at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">${esc(t.why || '')}</div>${palletHtml(I.pallet)}</div>`;
-      case 'drop': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Drop at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${I.targetCheck ? '<div class="sub">Label won\'t scan? Type its check digit</div>' : ''}${palletHtml(I.pallet)}</div>`;
+      case 'pickup': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Pick up at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">${esc(t.why || '')}</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
+      case 'drop': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Drop at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${I.targetCheck ? '<div class="sub">Label won\'t scan? Type its check digit</div>' : ''}${custHtml(I)}${palletHtml(I.pallet)}</div>`;
       case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}</div>`;
-      case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${palletHtml(I.pallet)}</div>`;
+      case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
       case 'count': return I.step
         ? `<div class="card"><div class="kicker">${job}</div><div class="mid">Scan the pallet in ${esc(I.targetName)}</div><div class="sub">Empty? Scan the location label again.</div></div>`
         : `<div class="card"><div class="kicker">${job}</div><div class="sub">Count at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">Scan the location label, then whatever is in it. The system checks it against what it expects.</div></div>`;
-      case 'check-label': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Put the shipping label on, then scan it</div>${palletHtml(I.pallet)}</div>`;
+      case 'check-label': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Put the shipping label on, then scan it</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
       case 'receive': {
         const d = I.delivery;
         return `<div class="card"><div class="kicker">Receiving · ${esc(d.id)} · ${esc(d.supplier)}</div>

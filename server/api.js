@@ -65,6 +65,9 @@
       I.targetCheck = wh.checkDigit(ins.target);
     }
     if (ins.pallet) I.pallet = palletView(wh, ins.pallet);
+    // The customer's requirements come with every job on their order.
+    const order = task && task.orderId && wh.orders[task.orderId];
+    if (order) I.customer = { name: order.customer, notes: wh.customerNotes(order.customer) };
     if (ins.aisle) I.aisle = ins.aisle;
     if (task && task.type === 'RECEIVE') {
       const del = wh.deliveries[task.deliveryId];
@@ -186,6 +189,7 @@
         results: counts.map((c) => ({ ...c, name: placeName(wh(), c.code) })),
       };
     });
+    on('GET', '/api/customers', () => Object.entries(wh().customers || {}).map(([name, c]) => ({ name, notes: c.notes })));
     on('GET', '/api/transfers', () => (wh().transfers || []).slice(0, 200).map((t) => ({ ...t, fromName: placeName(wh(), t.from), toName: placeName(wh(), t.to) })));
     on('GET', '/api/trace/:batch', ({ batch }) => {
       const r = wh().trace(decodeURIComponent(batch));
@@ -255,6 +259,7 @@
     on('POST', '/api/aisles/:aisle/cell', ({ aisle }, q, b, by) => run('setAisleCell', { aisle, cell: b.cell }, by));
     on('POST', '/api/naming', (_, q, b, by) => run('setNaming', { show: b.show }, by));
     on('POST', '/api/plan/grouping', (_, q, b, by) => run('planGrouping', {}, by));
+    on('POST', '/api/customers', (_, q, b, by) => run('setCustomerNotes', { customer: b.customer, notes: b.notes }, by));
     on('POST', '/api/workload', (_, q, b, by) => run('dropWorkload', { seed: Number(b.seed) || (Date.now() % 1e9) + 1, picks: Number(b.picks) || 0, inbound: Number(b.inbound) || 0 }, by));
     on('POST', '/api/plan/counts', (_, q, b, by) => run('planCounts', { from: b.from || null, to: b.to || null, limit: b.limit }, by));
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
