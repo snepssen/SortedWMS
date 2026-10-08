@@ -36,6 +36,11 @@
     };
   }
 
+  // A stock check answer as the screens show it: a title and lines, codes in the chosen naming.
+  function lookupView(wh, r) {
+    return { kind: r.kind, title: wh.display(r.title), lines: r.lines.map((l) => wh.display(l)), text: wh.display(r.text), belongsAt: r.belongsAt ? placeName(wh, r.belongsAt) : null };
+  }
+
   function deviceView(wh, id) {
     const d = wh.trucks[id] || wh.desks[id];
     if (!d) return null;
@@ -72,7 +77,8 @@
         .map((o) => ({ id: o.id, customer: o.customer, lane: o.lane, pallets: o.lines.reduce((s, l) => s + l.allocated.length, 0) }));
     }
     if (ins.kind === 'transfer') I.pallet = palletView(wh, ins.pallet);
-    if (ins.kind === 'find' && ins.result) I.result = { kind: ins.result.kind, text: wh.display(ins.result.text) };
+    if (ins.kind === 'find' && ins.result) I.result = lookupView(wh, ins.result);
+    if (ins.pending) I.pending = { via: ins.pending.via, pallet: palletView(wh, ins.pending.pallet), ...lookupView(wh, ins.pending.info) };
     return out;
   }
 
@@ -121,8 +127,8 @@
     on('GET', '/api/stock', () => wh().stockSummary().map((r) => ({ ...r, next: palletView(wh(), r.next) })));
     on('GET', '/api/lookup/:code', ({ code }) => {
       const r = wh().lookup(decodeURIComponent(code));
-      if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet or location` };
-      return { kind: r.kind, text: wh().display(r.text), pallet: palletView(wh(), r.pallet), pallets: (r.pallets || []).map((p) => palletView(wh(), p)), location: r.location && { code: r.location.code, name: wh().label(r.location.code), kind: r.location.kind, category: r.location.category, blocked: r.location.blocked } };
+      if (!r) return { status: 404, error: `${decodeURIComponent(code)} is not a pallet, location or item` };
+      return { ...lookupView(wh(), r), pallet: palletView(wh(), r.pallet), pallets: (r.pallets || []).map((p) => palletView(wh(), p)), location: r.location && { code: r.location.code, name: wh().label(r.location.code), kind: r.location.kind, category: r.location.category, blocked: r.location.blocked } };
     });
     on('GET', '/api/lost', () => wh().lostPallets().map((p) => ({ ...palletView(wh(), p), missingFrom: p.missingFrom, missingFromName: placeName(wh(), p.missingFrom) })));
     on('GET', '/api/transfers', () => (wh().transfers || []).slice(0, 200).map((t) => ({ ...t, fromName: placeName(wh(), t.from), toName: placeName(wh(), t.to) })));
@@ -152,6 +158,7 @@
     on('POST', '/api/devices/:id/qty', ({ id }, q, b, by) => run('confirmQty', { id, qty: b.qty }, by));
     on('POST', '/api/devices/:id/finish-receiving', ({ id }, q, b, by) => run('finishReceiving', { id }, by));
     on('POST', '/api/devices/:id/problem', ({ id }, q, b, by) => run('reportProblem', { id, reason: b.reason }, by));
+    on('POST', '/api/devices/:id/pending', ({ id }, q, b, by) => run('pendingAction', { id, action: b.action }, by));
     on('POST', '/api/desks/:id/start', ({ id }, q, b, by) => run('deskStart', { id, deliveryId: b.deliveryId }, by));
     on('POST', '/api/desks/:id/enter', ({ id }, q, b, by) => run('deskEnter', { id, field: b.field, value: b.value }, by));
     on('POST', '/api/stations/:id/scan', ({ id }, q, b, by) => run('stationScan', { id, code: b.code }, by));
@@ -199,5 +206,5 @@
     return { handle };
   }
 
-  return { createApi, deviceView, summary, placeName };
+  return { createApi, deviceView, summary, placeName, lookupView };
 });

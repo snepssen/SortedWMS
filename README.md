@@ -21,6 +21,18 @@ Drivers don't pick work from a menu. The moment they finish a job, the next one 
 2. **Job type,** in the coordinator's order. Default: Pick › Check & label › Receiving › Put-away › Auto-Shift.
 3. **Nearest job** within the same type (can be switched off; then oldest first).
 
+**Auto also handles whatever the driver scans.** Drivers scan pallets the screen didn't ask for all the time: the one in the way, one that looks wrong, one they recognise. Auto decides on the spot:
+
+| The scanned pallet… | Auto says |
+| --- | --- |
+| has a job this truck can do (a pick, a ground move, a relocation) | **Pick it**: the truck takes that job, the pallet counts as picked up, and the job it was showing goes back to the queue |
+| needs moving and has no job yet (wrong category location, or standing at the dock) | **Relocate it** / **Put it away**: a job is made and the truck takes it |
+| has nothing to do | The truck **stays empty and holds it**: the next location scan records where it really stands (a correction transfer, nothing else to tap). Scanning it again moves it (Auto-Shift). *Move it* and *Let it go* buttons do the same by tap. |
+| is lost (on the location-unknown list) | Held: one location scan puts it back on the map |
+| is on another truck's job | Says whose; nothing changes |
+
+While carrying, scanning a pallet or an item only shows stock information; scanning the pallet on the forks says where it goes, for when the driver has forgotten. An item number or EAN scanned in Auto shows the stock check. Auto does everything, so drivers rarely need another mode.
+
 Each truck is set to the **categories its operator works** (yoghurt, cheese, protein drinks), and only gets jobs in those. Trucks can also be set to *Auto-Shift only* or *Paused*.
 
 **No more than 2 reach trucks in one aisle** (adjustable). A third truck gets work elsewhere. A driver carrying a pallet towards a full aisle waits at the entry and is let in when a truck leaves.
@@ -46,7 +58,7 @@ Each handheld has a mode bar. Auto is the default; the others are for when a dri
 | **Pick** | Scan (or tap) an order number. That order's picks then come one by one, still FEFO and still 2 scans each. |
 | **Put-away** | Scan a pallet at the dock or a station. The system picks the slot with the normal slotting rules; scan the slot to drop. |
 | **Transfer** | Scan a pallet, then the location it now stands at. That's it. |
-| **Find** | Scan a pallet or a location: where is it, what's in it, can it ship. |
+| **Stock check** | Scan anything. A **pallet**: where it is and **where it belongs** (on the forks: where it's going; lost: where it was last). A **location**: what's in it. An **item** (item number, EAN or the label's GS1 barcode): every pallet of it with location and SSCC, next to ship first. The same check is in the office page. |
 
 **Transfer is for corrections.** When a pallet stands somewhere other than the system thinks (someone put it in the wrong spot, or the old system lost a move), the driver records where it really is, in two scans:
 - If the system had another pallet in that rack spot, that one goes on the **location unknown** list in the office. Scanning it anywhere in Transfer mode puts it back on the map.

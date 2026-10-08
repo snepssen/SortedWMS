@@ -109,8 +109,8 @@ test('find mode answers what is where, and changes nothing', () => {
   const { wh } = setup();
   const p = wh.stockPallet('31-01-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01' });
   wh.addTruck('RT1', { mode: 'find' });
-  assert.match(wh.scan('RT1', 'AA01A1').text, /…\w{6} Y1 B1/);
-  assert.match(wh.scan('RT1', p.sscc).text, /at 31-01-0-10/);
+  assert.match(wh.scan('RT1', 'AA01A1').text, /…\w{6} Y1 .* B1/);
+  assert.match(wh.scan('RT1', p.sscc).text, /At 31-01-0-10/);
 });
 
 test('trace a batch: received from, in stock, shipped to whom', () => {

@@ -2,7 +2,7 @@ name: Demo on GitHub Pages
 
 on:
   push:
-    branches: [main, claude/auto-dispatch]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
