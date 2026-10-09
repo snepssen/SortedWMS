@@ -355,7 +355,11 @@
           continue;
         }
         // Refusals the server answers with an error (e.g. a mode change with a pallet on the forks) show until the next action.
-        localError = e.network ? 'Not sent: no answer from the server. Scan it again when the bar is gone' : e.message;
+        if (e.network) {
+          const held = queue.length;
+          queue.length = 0; // the first scan may have applied; don't continue a stale sequence
+          localError = `No answer: the scan's outcome is unknown.${held ? ` ${held} following scan(s) cancelled before sending.` : ''} Check the current job and audit with the coordinator before scanning again.`;
+        } else localError = e.message;
         if (e.network) $('#offline').classList.add('on');
         if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
         break;

@@ -17,7 +17,7 @@ To run it locally, open `index.html` in a browser. No install or server needed.
 - **Trailer loading & dispatch (27 steps):** pick and label two pallets, assign a trailer, reject a wrong destination and incomplete departure, stop a newly held load, unload and review it, reload, seal, dispatch and trace the shipment.
 - **Trailer readiness & refrigeration (26 steps):** require an air reading and condition inspection, hold a warm trailer, require a separate release after correction, expire a check between scans, stop a wet trailer after loading, unload, reinspect, release and dispatch with retained evidence.
 
-Switch between Admin, Office, Scanner and Station to inspect the same warehouse state, including jobs, stock, corrections and the audit. These are demonstration views, not access-controlled roles. Browser labels are generated but are not sent to a printer. Trailer refrigeration checks, door/dock interlocks and the broader refrigerated workflows remain future work.
+Switch between Admin, Office, Scanner and Station to inspect the same warehouse state, including jobs, stock, corrections and the audit. These are demonstration views, not access-controlled roles. Browser labels are generated but are not sent to a printer. Recorded trailer refrigeration checks are implemented; continuous monitoring and door/dock interlocks remain future work.
 
 For a local preview of the guided shift, run `npm run build:pages`, then serve `_site/` with a static HTTP server. The guided shift needs HTTP to load the example site configuration.
 
@@ -211,7 +211,7 @@ Settings, through environment variables:
 | `PORT` | 8080 | |
 | `SORTED_DB` | `data/sorted.db` | The database file. Back this file up. |
 | `SORTED_SITE` | `server/site.example.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, printer addresses. Read once, when the database is first created. |
-| `SORTED_TOKEN` | none | If set, every API call needs it (handheld and office ask for it once). |
+| `SORTED_TOKEN` | none | If set, every API call needs it. Handheld and office have token settings; station, desk and loading screens have a Connection form. Station/desk tokens are not saved and must be re-entered after reload. |
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 

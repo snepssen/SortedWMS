@@ -76,15 +76,23 @@
     importOrders: (wh, a) => {
       const out = { added: 0, errors: [] };
       const orders = new Map();
+      const invalid = new Set();
       for (const r of a.rows || []) {
         const id = String(r.orderId || r.order || '').trim();
         if (!id) { out.errors.push('A row without an order number'); continue; }
         if (!orders.has(id)) orders.set(id, { id, customer: r.customer, lane: r.lane, lines: [], verifyLoading: /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || '')) });
-        const line = { itemNo: String(r.itemNo || r.item || '').trim(), pallets: Number(r.pallets) || 1 };
+        const order = orders.get(id);
+        if ((r.customer && r.customer !== order.customer) || (r.lane && r.lane !== order.lane)) {
+          if (!invalid.has(id)) out.errors.push(`${id}: Rows disagree on customer or shipping lane`);
+          invalid.add(id);
+        }
+        order.verifyLoading ||= /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || ''));
+        const line = { itemNo: String(r.itemNo || r.item || '').trim(), pallets: r.pallets == null || String(r.pallets).trim() === '' ? 1 : Number(r.pallets) };
         if (r.process) line.process = String(r.process).trim();
         orders.get(id).lines.push(line);
       }
       for (const o of orders.values()) {
+        if (invalid.has(o.id)) continue;
         try { wh.addOrder(o); out.added++; } catch (e) { out.errors.push(`${o.id}: ${e.message}`); }
       }
       return out;

@@ -95,7 +95,7 @@ Contents
 4. Scan `CMD-AUTO` (or press F1). The first job appears.
 
 **If it goes wrong:**
-- **Slow network** (near the docks): the handheld says *Sending…*, then *Slow network: your scan is kept*. **Don't scan again.** The scan is sent again by itself and done once. Scanning the same thing again while it's on its way is ignored (*Already sending*); anything else you scan waits its turn.
+- **Slow network** (near the docks): the handheld says *Sending…*, then *Slow network: your scan is kept*. **Don't scan again.** It retries with the same request ID, and the running server remembers recent answers. Scanning the same thing again while it's on its way is ignored (*Already sending*); anything else you scan waits its turn. After the last retry fails, the first scan's outcome is uncertain and following queued scans are cancelled before sending. Check the current job and audit with the coordinator before scanning again. After a server restart, recent answers are no longer remembered. This prototype is not an offline or durable exactly-once system.
 - **At startup** the handheld says *Connecting to SortedWMS…* until the server answers. It keeps trying by itself.
 - A red *No connection to the server* bar with *Not sent* means the scan really didn't arrive after half a minute of trying: when the bar is gone, scan it again.
 

@@ -39,12 +39,30 @@
   ol.sop li { padding: 4px 0; }
   .empty { color: var(--dim); }
   .count { font-size: 34px; font-weight: 800; }
+  a { color: var(--acc); }
+  input, select, button { min-height: 44px; max-width: 100%; }
+  input, select, .card, .job > div { min-width: 0; }
+  .what, .sub, .msg { overflow-wrap: anywhere; }
+  .connection { width: 100%; }
+  .connection form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 8px; }
+  .connection label { display: flex; flex-direction: column; gap: 4px; }
+  .connection input { width: 240px; }
+  #connectionStatus { margin: 8px 0 0; color: var(--bad); overflow-wrap: anywhere; }
+  .scan label { flex: 1; min-width: 0; } .scan input { width: 100%; }
+  @media (max-width: 600px) {
+    header h1 { font-size: 19px; } header select { width: 100%; }
+    main { padding: 12px; gap: 12px; }
+    .card { padding: 12px; }
+    .job { flex-wrap: wrap; align-items: start; }
+    .timer { font-size: 32px; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1 id="name">Station</h1><span class="machine" id="machine"></span><span class="spacer"></span>
-  <select id="pick" title="Which station this screen is"></select>
+  <a id="office" href="admin">Office</a><select id="pick" aria-label="Station"></select>
+  <details class="connection" id="connection"><summary>Connection</summary><form id="connectForm"><label>Server token <input id="token" type="password" autocomplete="off"></label><button>Connect</button></form><p id="connectionStatus" role="status" aria-live="polite"></p></details>
 </header>
 <main id="main"></main>
 <script>
@@ -54,7 +72,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ls = { get: (k) => { try { return localStorage.getItem('st.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('st.' + k, v); } catch (e) { /* ignore */ } } };
   let stationId = new URLSearchParams(location.search).get('id') || ls.get('id') || '';
-  let view = null, fetchedAt = 0, busy = false, lastHtml = '';
+  let view = null, fetchedAt = 0, busy = false, lastHtml = '', localError = null, starting = false, started = false;
+  if (window.SortedLocal) $('#office').href = 'admin.html';
 
   async function api(method, path, body) {
     if (window.SortedLocal) {
@@ -62,7 +81,7 @@
       if (r.status >= 400) throw new Error(r.body.error);
       return r.body;
     }
-    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': stationId || 'station' }, body: body ? JSON.stringify(body) : undefined });
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': $('#token').value, 'x-operator': stationId || 'station' }, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
@@ -83,8 +102,8 @@
     const since = (Date.now() - fetchedAt) / 60000; // timers keep running between refreshes
     $('#name').textContent = st.name;
     $('#machine').textContent = st.machine || (st.dwell ? `Holds ${st.capacity}` : '');
-    const msg = st.message ? `<div class="msg ${st.message.ok ? 'ok' : 'bad'} wide">${esc(st.message.text)}</div>` : '';
-    const scan = `<form class="scan wide" id="scanForm" autocomplete="off"><input id="scanIn" placeholder="Scan the pallet label…" autocomplete="off" spellcheck="false"><button>Enter</button></form>`;
+    const msg = localError ? `<div class="msg bad wide" role="alert">${esc(localError)}</div>` : st.message ? `<div class="msg ${st.message.ok ? 'ok' : 'bad'} wide" role="status">${esc(st.message.text)}</div>` : '';
+    const scan = `<form class="scan wide" id="scanForm" autocomplete="off"><label><input id="scanIn" aria-label="Scan pallet" placeholder="Scan the pallet label…" autocomplete="off" spellcheck="false"></label><button>Enter</button></form>`;
     let left = '';
     let right = '';
     if (st.dwell) {
@@ -113,46 +132,60 @@
     const html = `${scan}${msg}<div>${left}</div><div>${right}</div>`;
     if (html === lastHtml) return;
     const typed = $('#scanIn') ? $('#scanIn').value : '';
+    const active = document.activeElement;
+    const keepFocus = !active || active === document.body || $('#main').contains(active);
     lastHtml = html;
     $('#main').innerHTML = html;
     const input = $('#scanIn');
     input.value = typed;
-    input.focus({ preventScroll: true });
+    if (keepFocus) input.focus({ preventScroll: true });
     $('#scanForm').onsubmit = async (e) => {
       e.preventDefault();
+      if (busy) return; // keep a second scan in the field until the first answer arrives
       const code = input.value.trim();
       input.value = '';
-      if (!code || busy) return;
+      if (!code) return;
       busy = true;
-      try { await api('POST', `/api/stations/${encodeURIComponent(stationId)}/scan`, { code }); } catch (err) { view.station.message = { ok: false, text: err.message }; }
+      localError = null;
+      try { await api('POST', `/api/stations/${encodeURIComponent(stationId)}/scan`, { code }); } catch (err) { localError = err.message; }
       busy = false;
       refresh();
     };
   }
 
   async function refresh() {
-    if (!stationId) return;
+    if (!stationId || busy || !started) return;
     try {
       view = await api('GET', `/api/stations/${encodeURIComponent(stationId)}`);
       fetchedAt = Date.now();
+      $('#connectionStatus').textContent = '';
       render();
-    } catch (e) { $('#main').innerHTML = `<div class="msg bad wide">${esc(e.message)}</div>`; lastHtml = ''; }
+    } catch (e) { $('#connectionStatus').textContent = e.message; $('#connection').open = true; $('#main').innerHTML = `<div class="msg bad wide" role="alert">${esc(e.message)}</div>`; lastHtml = ''; view = null; }
   }
 
   async function start() {
-    const stations = await api('GET', '/api/stations');
-    if (!stations.some((s) => s.id === stationId)) stationId = stations[0] ? stations[0].id : '';
-    $('#pick').innerHTML = stations.map((s) => `<option value="${esc(s.id)}" ${s.id === stationId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-    $('#pick').onchange = () => { stationId = $('#pick').value; ls.set('id', stationId); lastHtml = ''; refresh(); };
-    if (!stationId) { $('#main').innerHTML = '<div class="empty wide">No stations in the site set-up.</div>'; return; }
-    ls.set('id', stationId);
-    await refresh();
-    setInterval(refresh, 2000);
-    setInterval(render, 1000);
-    document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+    if (starting || busy) return;
+    starting = true;
+    try {
+      const stations = await api('GET', '/api/stations');
+      if (!stations.some((s) => s.id === stationId)) stationId = stations[0] ? stations[0].id : '';
+      $('#pick').innerHTML = stations.map((s) => `<option value="${esc(s.id)}" ${s.id === stationId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+      $('#pick').onchange = () => { stationId = $('#pick').value; ls.set('id', stationId); lastHtml = ''; localError = null; view = null; refresh(); };
+      if (!stationId) { view = null; $('#main').innerHTML = '<div class="empty wide">No stations in the site set-up.</div>'; return; }
+      ls.set('id', stationId);
+      if (!started) {
+        started = true;
+        setInterval(refresh, 2000);
+        setInterval(render, 1000);
+      }
+      await refresh();
+    } catch (e) { view = null; lastHtml = ''; $('#connectionStatus').textContent = e.message; $('#connection').open = true; $('#main').innerHTML = `<div class="msg bad wide" role="alert">${esc(e.message)}</div>`; }
+    finally { starting = false; }
   }
 
-  if (window.SortedLocal) window.SortedLocal.ready.then(start); else start();
+  document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select,details,a') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+  $('#connectForm').onsubmit = async (e) => { e.preventDefault(); localError = null; await start(); if (view) { $('#connection').open = false; $('#scanIn')?.focus({ preventScroll: true }); } };
+  if (window.SortedLocal) window.SortedLocal.ready.then(start).catch((e) => { $('#connectionStatus').textContent = e.message; $('#connection').open = true; }); else start();
 })();
 </script>
 </body>

@@ -26,6 +26,16 @@ Every procedure in [SOP.md](SOP.md) was walked through step by step against the 
 | Shift end (7.2) | No way to see per handheld how the shift went. | **Drivers this shift** (Floor): jobs, pallet moves, scans per move, wrong scans and idle time per handheld, from a *Start a new shift* button. For coaching, not counting. |
 | Stock counts (3.6) | No inventory control: differences were found when a pick failed. | **Count jobs** for idle trucks: blind, two scans, the system corrected on the spot. The places with corrections and lost pallets go first. **Stock count mode** for a driver on inventory duty. Accuracy in the office. |
 
+## Review and polish: 9 October 2026
+
+- **Order imports:** all lines validate before allocation. An invalid later line no longer leaves a half-created order behind. Explicit zero, fractional or invalid pallet counts are refused rather than silently becoming one pallet. Rows that disagree on customer or lane reject that order; other valid orders still import. A loading-verification requirement on any row applies to the whole order.
+- **Counting:** switching off COUNT prevents automatic count-duty jobs as well as planned counts. An already assigned count can finish without creating a new one.
+- **Schedules:** changing the site time zone takes effect in the current minute. Changing the normal job order also updates the fallback order inside time windows, retaining each window's named priorities.
+- **Station and receiving desk screens:** visible startup failures, a retryable Connection form for token-protected servers, no saved token, labeled selectors/scan fields, and an Office link. A station action error remains visible after refresh. Polling avoids redrawing under desk typing; pending scan text is retained during an action. Connection editing no longer loses focus to periodic rendering. Mobile receiving fields stack and long station jobs wrap instead of colliding with timers.
+- **Final handheld timeout:** no longer claims that an unanswered scan was not applied. It reports an unknown outcome, cancels the following unsent scans instead of continuing a stale sequence, and asks for a current-job/audit check before rescanning.
+
+**Remaining network limitation:** handheld retry deduplication is a bounded in-memory response cache (the last 2,000 request IDs per API instance), not durable exactly-once processing. It does not survive a server restart or browser-page reload. If a request times out after the server applied it, the final outcome is uncertain; check the current task and audit before repeating a state-changing scan. Durable request tracking, offline delivery and request-body conflict detection remain production work.
+
 ## Recommended: decisions for the floor and management
 
 These cost nothing to build. They are settings, supplier requests or site data.

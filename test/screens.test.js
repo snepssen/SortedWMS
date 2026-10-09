@@ -36,7 +36,39 @@ test('orders import from a spreadsheet: rows with one order number make one orde
   assert.equal(r.errors.length, 1);
   assert.match(r.errors[0], /^4603:/);
   assert.deepEqual(store.wh.orders['4601'].lines.map((l) => l.itemNo), ['Y1001', 'Y1002']);
+  assert.equal(store.wh.orders['4601'].verifyLoading, true, 'verification on any line applies to the whole order');
   assert.equal(store.wh.orders['4602'].lines[0].process, 'CHANGE');
+});
+
+test('a rejected imported order leaves no partial order, pick or allocation', async () => {
+  const { store, call } = setup();
+  try {
+    const before = JSON.stringify(store.wh);
+    const r = await call('POST', '/api/import/orders', { rows: [
+      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
+      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'NOPE', pallets: 1 },
+    ] });
+    assert.equal(r.added, 0);
+    assert.match(r.errors[0], /Unknown item/);
+    assert.equal(JSON.stringify(store.wh), before);
+    store.load();
+    assert.equal(JSON.stringify(store.wh), before);
+    for (const pallets of ['0', '-1', '1.5', 'nope', Infinity]) {
+      const out = await call('POST', '/api/import/orders', { rows: [{ orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets }] });
+      assert.equal(out.added, 0);
+      assert.match(out.errors[0], /whole number above 0/);
+      assert.equal(JSON.stringify(store.wh), before);
+    }
+    const conflict = await call('POST', '/api/import/orders', { rows: [
+      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
+      { orderId: 'BAD', customer: 'Other shop', lane: 'OUT-04', itemNo: 'Y1002', pallets: 1 },
+      { orderId: 'GOOD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
+    ] });
+    assert.equal(conflict.added, 1);
+    assert.match(conflict.errors[0], /Rows disagree/);
+    assert.equal(store.wh.orders.BAD, undefined);
+    assert.ok(store.wh.orders.GOOD);
+  } finally { store.close(); }
 });
 
 test('a delivery announced with its list is received with one scan per pallet', async () => {

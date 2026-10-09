@@ -68,3 +68,16 @@ test('drivers this shift: moves, scans per move, wrong scans and idle time, paus
   d = wh.driverStats().find((x) => x.id === 'RT1');
   assert.deepEqual([d.moves, d.wrongScans, d.idleMs, d.since], [0, 0, 0, clock.t]);
 });
+
+test('schedule changes apply within the same minute and retain the current normal fallback order', () => {
+  const { wh } = setup(AT_0730);
+  wh.setConfig({ schedule: [{ from: '06:00', to: '10:00', priority: ['RECEIVE'] }] });
+  assert.equal(wh.activeWindow().from, '06:00');
+  wh.setConfig({ timeZone: 'America/New_York' });
+  assert.equal(wh.localTime(), '01:30');
+  assert.equal(wh.activeWindow(), null);
+  wh.setConfig({ timeZone: 'Europe/Brussels' });
+  wh.setConfig({ priority: ['SHIFT', 'PUTAWAY', 'MOVE', 'CHECK', 'PICK', 'RECEIVE', 'COUNT'] });
+  assert.deepEqual(wh.activePriority(), ['RECEIVE', 'SHIFT', 'PUTAWAY', 'MOVE', 'CHECK', 'PICK', 'COUNT']);
+  assert.deepEqual(wh.config.schedule[0].named, ['RECEIVE']);
+});

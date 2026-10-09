@@ -908,6 +908,7 @@
         if (list.some((t) => !TASK_TYPES[t]) || new Set(list).size !== list.length) throw new Error('Priority must list every job type exactly once');
         // A list saved before a job type existed: the new type goes last.
         patch = { ...patch, priority: [...list, ...Object.keys(TASK_TYPES).filter((t) => !list.includes(t))] };
+        if (patch.schedule === undefined && this.config.schedule?.length) patch.schedule = this.config.schedule.map((r) => ({ from: r.from, to: r.to, priority: r.named || r.priority }));
       }
       if (patch.schedule !== undefined) {
         if (!Array.isArray(patch.schedule)) throw new Error('The schedule is a list of time windows');
@@ -1013,15 +1014,20 @@
       if (typeof verifyLoading !== 'boolean') throw new Error('Loading verification must be true or false');
       const laneLoc = this._loc(lane);
       if (laneLoc.kind !== 'lane' || laneLoc.role !== 'out') throw new Error(`${lane} is not a shipping lane`);
+      // Imports report errors per order, so all lines must validate before any allocation changes.
+      if (!Array.isArray(lines)) throw new Error('Order lines must be a list');
+      for (const line of lines) {
+        if (!line || !this.items[line.itemNo]) throw new Error(`Unknown item ${line?.itemNo}`);
+        if (line.process && !this.routes[line.process]) throw new Error(`Unknown process ${line.process}`);
+        if (!Number.isSafeInteger(Number(line.pallets)) || Number(line.pallets) < 1) throw new Error('Pallets per order line must be a whole number above 0');
+      }
       const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading };
       this.orders[id] = order;
       for (const line of lines) {
         const item = this.items[line.itemNo];
-        if (!item) throw new Error(`Unknown item ${line.itemNo}`);
-        if (line.process && !this.routes[line.process]) throw new Error(`Unknown process ${line.process}`);
-        const l = { itemNo: line.itemNo, pallets: line.pallets, process: line.process || null, allocated: [], short: 0 };
+        const l = { itemNo: line.itemNo, pallets: Number(line.pallets), process: line.process || null, allocated: [], short: 0 };
         order.lines.push(l);
-        for (let i = 0; i < line.pallets; i++) {
+        for (let i = 0; i < l.pallets; i++) {
           const pallet = this._allocate(line.itemNo);
           if (!pallet) { l.short++; continue; }
           this._createPick(order, l, pallet);
@@ -1573,7 +1579,7 @@
       for (const truck of idle) {
         let task = this.nextTaskFor(truck);
         // On inventory duty: when no count is planned, the next location to count is the one that needs it most, nearest first.
-        if (!task && truck.mode === 'count') [task] = this._planCounts({ limit: 1, truck });
+        if (!task && truck.mode === 'count' && this.config.enabled.COUNT !== false) [task] = this._planCounts({ limit: 1, truck });
         if (task) this._assign(truck, task);
       }
     }
@@ -1637,11 +1643,12 @@
       if (!sched.length) return null;
       const minute = Math.floor(this.now() / 60000);
       const memo = this._windowMemo;
-      if (memo && memo.minute === minute && memo.sched === sched) return memo.rule;
+      const tz = this.config.timeZone || 'Europe/Brussels';
+      if (memo && memo.minute === minute && memo.sched === sched && memo.tz === tz) return memo.rule;
       const now = this.localTime();
       // A window may run past midnight (22:00-06:00).
       const rule = sched.find((r) => (r.from < r.to ? now >= r.from && now < r.to : now >= r.from || now < r.to)) || null;
-      this._windowMemo = { minute, sched, rule };
+      this._windowMemo = { minute, sched, tz, rule };
       return rule;
     }
 

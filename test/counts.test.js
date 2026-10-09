@@ -111,6 +111,19 @@ test('count: without a range, locations with corrections and lost pallets are co
   assert.equal(wh.planCounts({ codes: ['32-03-1-40'] }), 0, 'no second count on a location with one open');
 });
 
+test('count duty respects disabled counts, including after finishing an already assigned count', () => {
+  const { wh } = setup({ enabled: { COUNT: false } });
+  wh.addTruck('RT1', { mode: 'count' });
+  assert.equal(wh.instruction('RT1').kind, 'idle');
+  assert.equal(Object.values(wh.tasks).length, 0);
+  wh.setConfig({ enabled: { COUNT: true } });
+  const code = wh.instruction('RT1').target;
+  wh.setConfig({ enabled: { COUNT: false } });
+  wh.scan('RT1', code); wh.scan('RT1', code);
+  assert.equal(wh.instruction('RT1').kind, 'idle');
+  assert.equal(Object.values(wh.tasks).filter((t) => t.type === 'COUNT').length, 1);
+});
+
 test('count: a job order saved before counts existed still works; counts go last', () => {
   const { wh } = setup();
   const old = wh.config.priority.filter((t) => t !== 'COUNT');

@@ -38,10 +38,30 @@
   .empty { color: var(--dim); }
   .list .item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .list .item:first-of-type { border-top: 0; }
+  select, input, button { min-height: 44px; min-width: 0; max-width: 100%; }
+  #pick { max-width: 100%; }
+  .card, .list .item > div { min-width: 0; }
+  .msg, .kicker, .value, .list .item > div { overflow-wrap: anywhere; }
+  .connection { width: 100%; }
+  .connection form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 8px; }
+  .connection label { display: flex; flex-direction: column; gap: 4px; }
+  .connection input { width: 240px; }
+  #connectionStatus { margin: 8px 0 0; color: var(--bad); overflow-wrap: anywhere; }
+  .scan input { width: 100%; }
+  @media (max-width: 600px) {
+    main { padding: 12px; } .card { padding: 12px; }
+    .callout .word { font-size: 48px; letter-spacing: 0; }
+    .list .item { flex-wrap: wrap; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr { padding: 10px 0; border-top: 1px solid var(--line); }
+    td { border: 0; padding: 3px 0; } td.label { width: auto; }
+    td.value:empty, td.type:empty { display: none; }
+  }
 </style>
 </head>
 <body>
-<header><h1 id="title">Receiving desk</h1><span class="spacer"></span><select id="pick"></select></header>
+<header><h1 id="title">Receiving desk</h1><span class="spacer"></span><a id="office" href="admin">Office</a><select id="pick" aria-label="Receiving desk"></select>
+  <details class="connection" id="connection"><summary>Connection</summary><form id="connectForm"><label>Server token <input id="token" type="password" autocomplete="off"></label><button>Connect</button></form><p id="connectionStatus" role="status" aria-live="polite"></p></details></header>
 <main id="main"></main>
 <script>
 (function () {
@@ -50,7 +70,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ls = { get: (k) => { try { return localStorage.getItem('desk.' + k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem('desk.' + k, v); } catch (e) { /* ignore */ } } };
   let deskId = ls.get('id') || '';
-  let view = null, lastHtml = '', busy = false, localError = null, doneArmed = 0;
+  let view = null, lastHtml = '', busy = false, localError = null, doneArmed = 0, starting = false, started = false;
+  if (window.SortedLocal) $('#office').href = 'admin.html';
   const HELP = { BATCH: 'the batch number', PALLET: 'the pallet label (SSCC)', GS1: 'the GS1 label: item, best-before and count' };
 
   async function api(method, path, body) {
@@ -59,7 +80,7 @@
       if (r.status >= 400) throw new Error(r.body.error);
       return r.body;
     }
-    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': deskId || 'desk' }, body: body ? JSON.stringify(body) : undefined });
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': $('#token').value, 'x-operator': deskId || 'desk' }, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
@@ -68,6 +89,7 @@
   async function act(method, path, body) {
     if (busy) return;
     busy = true;
+    doneArmed = 0;
     localError = null;
     try { await api(method, path, body); } catch (e) { localError = e.message; }
     busy = false;
@@ -76,7 +98,7 @@
 
   async function render() {
     const I = view.instruction;
-    const message = localError ? `<div class="msg bad">${esc(localError)}</div>` : view.message ? `<div class="msg ${view.message.ok ? 'ok' : 'bad'}">${esc(view.message.text)}</div>` : '';
+    const message = localError ? `<div class="msg bad" role="alert">${esc(localError)}</div>` : view.message ? `<div class="msg ${view.message.ok ? 'ok' : 'bad'}" role="status">${esc(view.message.text)}</div>` : '';
     if (I.kind !== 'receive') {
       const deliveries = (await api('GET', '/api/deliveries')).filter((d) => d.status === 'open' && d.at === 'desk');
       return `${message}<div class="card"><div class="kicker">Deliveries for the desk</div><div class="list">${deliveries.map((d) => `<div class="item"><div><b>${esc(d.id)}</b> · ${esc(d.supplier)} · ${d.expected} pallets</div>
@@ -87,10 +109,10 @@
     const next = I.callout ? I.callout.fields : [I.field]; // what the call-out word stands for
     const fields = I.fields.map((f) => `<tr><td class="label ${!f.value && next.includes(f.id) ? 'next' : ''}">${esc(f.label)}</td>
       <td class="value">${f.value ? esc(f.id === 'expiry' ? f.value.split('-').reverse().join('-') : f.value) : ''}</td>
-      <td class="type">${f.value ? '' : `<form data-field="${f.id}"><input placeholder="${f.id === 'expiry' ? 'type 09112026' : f.id === 'qty' && I.defaultQty ? `${I.defaultQty} (full pallet)` : 'type it'}" autocomplete="off"></form>`}</td></tr>`).join('');
+      <td class="type">${f.value ? '' : `<form data-field="${f.id}"><input aria-label="Enter ${esc(f.label)}" placeholder="${f.id === 'expiry' ? 'type 09112026' : f.id === 'qty' && I.defaultQty ? `${I.defaultQty} (full pallet)` : 'type it'}" autocomplete="off"></form>`}</td></tr>`).join('');
     return `<div class="card callout"><div class="kicker">Call out</div><div class="word">${esc(word || 'DONE')}</div>
         <div class="hint">${word ? `The scanner operator scans ${esc(HELP[word] || word)}` : 'Pallet complete'}</div></div>
-      <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" placeholder="Scans land here…" autocomplete="off" spellcheck="false"><button>Enter</button></form>
+      <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" aria-label="Scan pallet label" placeholder="Scans land here…" autocomplete="off" spellcheck="false"><button>Enter</button></form>
       ${message}
       <div class="card"><div class="row" style="justify-content:space-between"><div class="kicker">Delivery ${esc(d.id)} · ${esc(d.supplier)} · ${d.received} of ${d.expected} pallets</div>
         <div class="row">${I.defaultQty && !I.fields.find((f) => f.id === 'qty').value ? `<button id="full">Full pallet (${I.defaultQty})</button>` : ''}
@@ -102,15 +124,19 @@
     const html = await render();
     if (!force && html === lastHtml) return;
     const typing = document.activeElement && document.activeElement.closest('form[data-field]');
-    if (typing && !force) return; // don't redraw under the keyboard operator
+    if (!force && (typing || ($('#scanIn') && $('#scanIn').value))) return; // don't redraw under either operator
+    const active = document.activeElement;
+    const keepFocus = !active || active === document.body || $('#main').contains(active);
+    const pendingScan = $('#scanIn') ? $('#scanIn').value : '';
     lastHtml = html;
     $('#main').innerHTML = html;
     document.querySelectorAll('[data-start]').forEach((b) => (b.onclick = () => act('POST', `/api/desks/${deskId}/start`, { deliveryId: b.dataset.start })));
     const scan = $('#scanForm');
     if (scan) {
       const input = $('#scanIn');
-      input.focus({ preventScroll: true });
-      scan.onsubmit = (e) => { e.preventDefault(); const code = input.value.trim(); input.value = ''; if (code) act('POST', `/api/devices/${deskId}/scan`, { code }); };
+      input.value = pendingScan;
+      if (keepFocus) input.focus({ preventScroll: true });
+      scan.onsubmit = (e) => { e.preventDefault(); if (busy) return; const code = input.value.trim(); input.value = ''; if (code) act('POST', `/api/devices/${encodeURIComponent(deskId)}/scan`, { code }); };
     }
     document.querySelectorAll('form[data-field]').forEach((f) => (f.onsubmit = (e) => {
       e.preventDefault();
@@ -124,26 +150,33 @@
   }
 
   async function refresh(force) {
-    if (!deskId) return;
+    if (!deskId || busy || !started) return;
     try {
       view = await api('GET', `/api/devices/${encodeURIComponent(deskId)}`);
+      $('#connectionStatus').textContent = '';
       await draw(force);
-    } catch (e) { $('#main').innerHTML = `<div class="msg bad">${esc(e.message)}</div>`; lastHtml = ''; }
+    } catch (e) { $('#connectionStatus').textContent = e.message; $('#connection').open = true; $('#main').innerHTML = `<div class="msg bad" role="alert">${esc(e.message)}</div>`; lastHtml = ''; view = null; }
   }
 
   async function start() {
-    const desks = (await api('GET', '/api/devices')).filter((d) => d.kind === 'desk');
-    if (!desks.some((d) => d.id === deskId)) deskId = desks[0] ? desks[0].id : '';
-    $('#pick').innerHTML = desks.map((d) => `<option ${d.id === deskId ? 'selected' : ''}>${esc(d.id)}</option>`).join('');
-    $('#pick').onchange = () => { deskId = $('#pick').value; ls.set('id', deskId); refresh(true); };
-    if (!deskId) { $('#main').innerHTML = '<div class="empty">No receiving desk in the site set-up.</div>'; return; }
-    ls.set('id', deskId);
-    await refresh(true);
-    setInterval(() => refresh(false), 2000);
-    document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select,form') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+    if (starting || busy) return;
+    starting = true;
+    try {
+      const desks = (await api('GET', '/api/devices')).filter((d) => d.kind === 'desk');
+      if (!desks.some((d) => d.id === deskId)) deskId = desks[0] ? desks[0].id : '';
+      $('#pick').innerHTML = desks.map((d) => `<option ${d.id === deskId ? 'selected' : ''}>${esc(d.id)}</option>`).join('');
+      $('#pick').onchange = () => { deskId = $('#pick').value; ls.set('id', deskId); doneArmed = 0; localError = null; refresh(true); };
+      if (!deskId) { view = null; $('#main').innerHTML = '<div class="empty">No receiving desk in the site set-up.</div>'; return; }
+      ls.set('id', deskId);
+      if (!started) { started = true; setInterval(() => refresh(false), 2000); }
+      await refresh(true);
+    } catch (e) { view = null; lastHtml = ''; $('#connectionStatus').textContent = e.message; $('#connection').open = true; $('#main').innerHTML = `<div class="msg bad" role="alert">${esc(e.message)}</div>`; }
+    finally { starting = false; }
   }
 
-  if (window.SortedLocal) window.SortedLocal.ready.then(start); else start();
+  document.body.addEventListener('click', (e) => { if (!e.target.closest('input,button,select,form,details,a') && $('#scanIn')) $('#scanIn').focus({ preventScroll: true }); });
+  $('#connectForm').onsubmit = async (e) => { e.preventDefault(); localError = null; await start(); if (view) { $('#connection').open = false; $('#scanIn')?.focus({ preventScroll: true }); } };
+  if (window.SortedLocal) window.SortedLocal.ready.then(start).catch((e) => { $('#connectionStatus').textContent = e.message; $('#connection').open = true; }); else start();
 })();
 </script>
 </body>
