@@ -72,6 +72,7 @@
     group: 'Same batch together',
     driver: 'Started by driver',
     digout: 'Uncover older stock',
+    remnant: 'Few left in a block lane: to the racks, easier to ship',
     quarantine: 'Move to quarantine',
     'quarantine-return': 'Return released stock to storage',
   };
@@ -94,6 +95,7 @@
     oneWay: false, // route trucks with the one-way signs in the aisles
     blockLaneCap: 1, // trucks in one block-stack lane at a time
     blockLaneBatches: 2, // batches of one item allowed to share a block lane
+    blockRemnant: 3, // a block lane down to this many pallets is cleared to the racks rather than buried; 0 = never
     // Older stock buried behind newer in a block lane:
     // 'digout' = move the newer pallets away when trucks are idle,
     // 'pickfirst' = picks take the newer pallets in front first, 'both', or 'off'.
@@ -930,6 +932,9 @@
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
       }
+      if (patch.blockRemnant !== undefined && !(Number.isInteger(patch.blockRemnant) && patch.blockRemnant >= 0 && patch.blockRemnant <= 12)) {
+        throw new Error('Few left in a block lane must be a whole number from 0 to 12');
+      }
       this.config = { ...this.config, ...patch, enabled: { ...this.config.enabled, ...(patch.enabled || {}) } };
       if (patch.groundNextPerItem !== undefined) this.planGround();
       if (patch.buriedStock !== undefined) {
@@ -1563,6 +1568,8 @@
     /** Let waiting trucks into aisles with room, then give idle trucks their next job. */
     dispatch() {
       this._checkDwell();
+      this._rebindBlockPicks();
+      this.planRemnants();
       const waiting = Object.values(this.trucks).filter((t) => t.waiting).sort((a, b) => a.waitingSince - b.waitingSince);
       for (const truck of waiting) {
         const task = this.tasks[truck.taskId];
@@ -1610,6 +1617,11 @@
       candidates.sort((x, y) => {
         const r = rank(x) - rank(y);
         if (r) return r;
+        // Picks go order by order, oldest order first: a newer order nearby doesn't overtake an older one.
+        if (x.type === 'PICK' && y.type === 'PICK' && x.orderId !== y.orderId) {
+          const ox = this.orders[x.orderId], oy = this.orders[y.orderId];
+          return ((ox ? ox.createdAt : 0) - (oy ? oy.createdAt : 0)) || x.id - y.id;
+        }
         if (cfg.travelOptimise && rank(x) >= 0) {
           const d = this.travel(truck.position, x.from) - this.travel(truck.position, y.from);
           if (d) return d;
@@ -1619,6 +1631,33 @@
       // Idle-only work (uncovering buried stock) goes to a truck with nothing else to do.
       return candidates.find((t) => !t.idleOnly && this._slotAvailable(t))
         || candidates.find((t) => t.idleOnly && this._slotAvailable(t)) || null;
+    }
+
+    /**
+     * A pick whose pallet got buried in a block lane (something was set down in
+     * front of it) switches to the pallet that is now in front, when that one is
+     * the same item, free, able to ship and no newer: first expired, first out
+     * still holds, and nobody has to dig.
+     */
+    _rebindBlockPicks() {
+      for (const task of Object.values(this.tasks)) {
+        if (task.type !== 'PICK' || task.status !== 'open') continue;
+        const old = this.pallets[task.sscc];
+        const loc = old && old.loc && this.locations[old.loc];
+        if (!loc || loc.kind !== 'block' || this._reachable(old)) continue;
+        const front = this.pallets[this._blockSeq(loc.lane)[0]];
+        if (!front || front.itemNo !== old.itemNo || front.orderId || front.proc || front.expiry > old.expiry || this.shipState(front) !== 'ok') continue;
+        const live = this._liveTaskFor(front.sscc);
+        if (live && !(live.type === 'SHIFT' && live.status === 'open')) continue;
+        if (live) this._cancelQuiet(live);
+        const order = this.orders[task.orderId];
+        const line = order.lines.find((l) => l.allocated.includes(old.sscc));
+        line.allocated[line.allocated.indexOf(old.sscc)] = front.sscc;
+        old.orderId = null;
+        front.orderId = order.id;
+        task.sscc = front.sscc;
+        this.log(`Order ${order.id}: …${old.sscc.slice(-6)} is buried in ${loc.lane}; picking …${front.sscc.slice(-6)} in front of it instead (job #${task.id})`, { taskId: task.id });
+      }
     }
 
     /** Place of a job type in the coordinator's order (for this time of day); a type the saved order doesn't know yet comes last. */
@@ -2445,6 +2484,7 @@
         ground: Boolean(fields.ground),
         idleOnly: Boolean(fields.idleOnly), // only for a truck with nothing else to do
         noBury: Boolean(fields.noBury), // never put this pallet where it buries older stock
+        rackOnly: Boolean(fields.rackOnly), // to a rack location, also for block-stacked items
         orderId: fields.orderId || null,
         deliveryId: fields.deliveryId || null,
         urgent: Boolean(fields.urgent),
@@ -2797,6 +2837,60 @@
         n++;
       }
       if (n) this.log(`${n} pallet(s) stand in front of older stock in the block stacks — moves planned for idle trucks`);
+      return n;
+    }
+
+    /** A lane that would take this pallet without burying anything, if it weren't in use right now. */
+    _laneWouldFit(pallet, origin, { noBury = false } = {}) {
+      const cat = this.items[pallet.itemNo].category;
+      const fromLane = this.locations[origin] && this.locations[origin].lane;
+      return this.layout.blocks.some((lane) => {
+        const stacks = this._blockStacks(lane);
+        if (stacks[0].category !== cat || lane === fromLane || stacks.some((st) => st.blocked)) return false;
+        const fit = this._laneFit(lane, pallet);
+        return fit.ok && !fit.buries && !(noBury && fit.buries) && stacks.some((st) => st.pallets.length < st.height);
+      });
+    }
+
+    /** A block lane down to a few pallets that can all be moved to the racks right now. */
+    _remnantLane(lane) {
+      const max = this.config.blockRemnant || 0;
+      const seq = this._blockSeq(lane);
+      if (!max || !seq.length || seq.length > max) return false;
+      // Only with room for all of them in the racks of their category.
+      const first = this.pallets[seq[0]];
+      if (this._racks().filter((l) => this._slotFree(l, first)).length < seq.length) return false;
+      return seq.every((s) => {
+        const p = this.pallets[s];
+        const live = this._liveTaskFor(s);
+        return !p.orderId && !p.proc && (!live || (live.type === 'SHIFT' && live.reason === 'remnant'));
+      });
+    }
+
+    /**
+     * A block put-away that would bury a lane's last few pallets: move those few to
+     * rack locations first, where they can be picked any time, and give the lane to
+     * the new batch.
+     */
+    planRemnants() {
+      let n = 0;
+      const lanes = new Set();
+      for (const task of Object.values(this.tasks)) {
+        if (task.status !== 'open' || task.to || !task.sscc || (task.type !== 'PUTAWAY' && task.type !== 'MOVE')) continue;
+        const pallet = this.pallets[task.sscc];
+        if (!pallet || this.items[pallet.itemNo].storage !== 'block') continue;
+        const block = this._findBlockSlot(pallet, task.from, {});
+        if (block && this._laneFit(block.lane, pallet).buries && this._remnantLane(block.lane)) lanes.add(block.lane);
+      }
+      for (const lane of lanes) {
+        for (const sscc of this._blockSeq(lane)) {
+          if (this._liveTaskFor(sscc)) continue;
+          const p = this.pallets[sscc];
+          this._newTask({ type: 'SHIFT', reason: 'remnant', sscc, from: p.loc, to: null, category: this.items[p.itemNo].category, rackOnly: true });
+          n++;
+        }
+        this.log(`${lane}: last ${this._blockSeq(lane).length} pallet(s) to the racks, so the new batch doesn't bury them`);
+      }
       return n;
     }
 
@@ -3229,9 +3323,18 @@
      * in the same bay level, then the right height (ground for what ships
      * next, high for blocked stock and later batches), then travel distance.
      */
-    _findSlot(pallet, origin, { ground = false, noBury = false } = {}) {
+    _findSlot(pallet, origin, { ground = false, noBury = false, rackOnly = false } = {}) {
       if (!pallet) return null;
-      if (this.items[pallet.itemNo].storage === 'block') return this._findBlockSlot(pallet, origin, { noBury });
+      if (this.items[pallet.itemNo].storage === 'block' && !rackOnly) {
+        // Block stacking, without burying older stock: a lane down to a few pallets is cleared to the
+        // racks first (planRemnants; this pallet waits for it), otherwise a rack location rather than bury.
+        const block = this._findBlockSlot(pallet, origin, { noBury });
+        if (block && !this._laneFit(block.lane, pallet).buries) return block;
+        if (block && this._remnantLane(block.lane)) return null;
+        // No lane now, but one would take it once it's free (its batch's put-away under way): wait for it.
+        if (!block && this._laneWouldFit(pallet, origin, { noBury })) return null;
+        return this._findSlot(pallet, origin, { ground, rackOnly: true }) || block;
+      }
       const top = this.layout.levels - 1;
       const nextOut = this.config.groundNextPerItem > 0
         && this._fefo(pallet.itemNo)
@@ -3328,6 +3431,9 @@
     _laneFit(lane, pallet) {
       const batches = this.laneBatches(lane);
       if (!batches.length) return { ok: true, score: 0, buries: false };
+      // The pallet next out of this lane is waiting to be picked: don't set one down in front of it.
+      const next = this._blockSeq(lane)[0];
+      if (next && this.pallets[next].orderId) return { ok: false };
       if (batches.some((b) => b.itemNo !== pallet.itemNo)) return { ok: false };
       const key = this._batchKey(pallet);
       if (batches[0].key === key) return { ok: true, score: -2000, buries: false };
@@ -3382,7 +3488,7 @@
     }
 
     _reserveSlot(task) {
-      const slot = this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground, noBury: task.noBury });
+      const slot = this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground, noBury: task.noBury, rackOnly: task.rackOnly });
       if (!slot) return false;
       slot.reservedBy = task.id;
       task.to = slot.code;

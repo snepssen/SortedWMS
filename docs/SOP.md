@@ -261,6 +261,9 @@ In the office, the answer comes with buttons:
 - Lanes fill from the back and empty from the front. Up to two batches share a lane.
 - Trucks are only sent to the pallet they can actually lift: the top of the front stack.
 - A ⚠ on a lane means a newer batch stands in front of an older one. Idle trucks dig it out.
+- **Nothing is put in front of a pallet that is on an order.** The system sends the new pallet to another lane, or to the racks.
+- **A pick for a pallet that got buried anyway** is moved to the pallet in front of it: same item, best-before the same or earlier. The truck can lift it, and the order goes out.
+- **A lane down to a few pallets** (3 or fewer by default) is not buried by a new batch. Idle trucks take those pallets to the racks first, where they're easy to pick, and the new batch gets the lane.
 
 ### 3.6 Stock counts (inventory control without stopping work)
 **Who** Coordinator plans, any driver counts · **Screen** Office → Locations → *Stock counts*; handheld · **When** Any time; counts fill the gaps between real jobs
@@ -327,6 +330,7 @@ For imports, use `true`, `yes` or `1` in `verifyLoading` to require trailer veri
 **The system:**
 - **A different pallet with the same item, batch and best-before** is accepted and swapped in.
 - **A different batch:** the truck holds it (3.3), and your pick stays as it was.
+- **Picks go order by order:** the oldest order first, and within an order the nearest pallet first. An order is finished before the next one starts, so no order sits half-picked in its lane.
 
 **If it goes wrong** (each is confirmed by scanning the same code twice):
 - `CMD-MISSING`: the next pallet by best-before is allocated straight away. The job is held for the coordinator.
@@ -544,6 +548,7 @@ Auto does everything; the other modes are for working on your own.
 - **One-way aisles:** on or off.
 - **Check & label after picking:** on or off.
 - **Batches per block lane.**
+- **Few left in a block lane:** a lane down to this many pallets is moved to the racks rather than buried. 0 = never.
 - **Buried stock:** dig out, pick the newer first, both, or off.
 - **Naming on screens:** `AA03C2` or `38-02-0-10`.
 - **Label printers:** address, dpi, status.
