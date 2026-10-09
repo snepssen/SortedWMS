@@ -78,10 +78,11 @@
 <body>
 <header>
   <h1>SortedWMS free play</h1>
-  <span class="hint">The real WMS screens, running in your browser with made-up stock. Changes stay in this browser. <a href="./">Simulated shift</a> · <a href="walkthrough.html">guided shift</a> · <a href="sop.html" target="_blank">SOP</a> · <a href="kit.html" target="_blank">demo kit</a>. On their own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="keys.html" target="_blank">key test</a></span>
+  <span class="hint">Prototype screens with made-up stock. Changes stay in this browser. <a href="demo.html">Presenter guide</a> · <a href="./">Simulated shift</a> · <a href="walkthrough.html">guided shift</a> · <a href="sop.html" target="_blank">demo SOP</a> · <a href="kit.html" target="_blank">demo kit</a>. On their own: <a href="handheld.html" target="_blank">handheld</a> · <a href="admin.html" target="_blank">office</a> · <a href="keys.html" target="_blank">key test</a></span>
   <nav class="views" aria-label="View"><button data-view="one">Handheld + office</button><button data-view="floor">Whole floor</button></nav>
   <button id="reset">Reset demo data</button>
 </header>
+<p id="startStatus" role="alert" hidden style="margin:16px;color:#922d28"></p>
 <div class="floor" id="floorView" hidden>
   <div class="floor-top">
     <section class="card">
@@ -158,13 +159,6 @@
   }
 
   $('#cmd').innerHTML = Object.entries(SortedWMS.SCAN_COMMANDS).map(([k, c]) => `<option value="${SortedWMS.COMMAND_PREFIX}${k}">${c.label}${c.confirm ? ' (2×)' : ''}</option>`).join('');
-
-  SortedLocal.ready.then(async () => {
-    if (!ls.get('hh.device')) ls.set('hh.device', 'HH01');
-    await devices();
-    $('#hh').src = 'handheld.html';
-    $('#office').src = 'admin.html';
-  });
 
   $('#dev').onchange = () => { ls.set('hh.device', $('#dev').value); $('#hh').src = 'handheld.html'; };
   $('#scanIt').onclick = async () => {
@@ -389,7 +383,18 @@
     }));
   }
   setInterval(() => { renderFloor().catch((err) => console.warn('floor', err)); }, 1000);
-  SortedLocal.ready.then(() => setView(ls.get('fp.view') === 'floor' ? 'floor' : 'one'));
+  function startupError(err) {
+    $('#startStatus').textContent = `The browser demo could not start. Reload this page to retry. ${err.message || ''}`;
+    $('#startStatus').hidden = false;
+    for (const id of ['scanIt', 'scanCmd', 'reset', 'wDrop', 'dGo']) $('#' + id).disabled = true;
+  }
+  SortedLocal.ready.then(async () => {
+    if (!ls.get('hh.device')) ls.set('hh.device', 'HH01');
+    await devices();
+    $('#hh').src = 'handheld.html';
+    $('#office').src = 'admin.html';
+    setView(ls.get('fp.view') === 'floor' ? 'floor' : 'one');
+  }).catch(startupError);
 
   $('#reset').onclick = async () => {
     if (!confirm('Start again with fresh demo stock?')) return;

@@ -1,10 +1,14 @@
 # SortedWMS: standard operating procedures
 
-How the warehouse runs on SortedWMS, task by task: who does what, on which screen, and what the system does in return.
+How the prototype connects warehouse work, task by task: who does what, on which screen, and what the system does in return.
+
+**Demo procedures, not an approved site SOP.** This manual describes the demonstration, not a replacement for the current WMS or the warehouse's working instructions. Stock, customers, measurements and timing are examples. Site safety, hygiene, temperature limits and quality decisions remain governed by the warehouse's approved procedures. Admin, Office, Scanner and Station in the guided shift are views of the same demonstration, not access-controlled permissions.
+
+For a coordinator presentation, start with the [presenter guide](DEMO.md) and [guided shift](../walkthrough.html). The procedures below are the reference for exploring individual tasks.
 
 **Who this is for**
 - **New to SortedWMS but not to warehouse systems?** Read section 0 once, then follow the procedures; each one stands on its own.
-- **A veteran?** The steps will look familiar. The difference is in what is missing: no pick lists, no confirm screens, no menus. The scan *is* the confirmation, and the next job is already waiting. The "Why it's quicker" notes point out where.
+- **A veteran?** The steps will look familiar. Routine pallet moves use scan confirmations rather than pick-list entry. Setup, exceptions and incomplete supplier labels can still need a screen or keypad. The "Workflow benefit" notes describe the intended improvement, not measured savings.
 
 **How each procedure reads**
 - **Who · Screen · When**
@@ -39,14 +43,16 @@ Contents
 | **Loading** | Whoever loads trailers | `/loading` (opened from an order in the office) |
 | **Command card** | Printed, laminated, one per truck | `/card` |
 
+On the browser-only demo, these are `handheld.html`, `admin.html`, `station.html`, `desk.html`, `loading.html` and `card.html`. No installation is needed. The guided shift starts fresh on restart; free play keeps made-up stock in this browser. Separate devices do not share the Pages warehouse. Browser print jobs are simulated, not sent to a physical printer.
+
 ### The rules the system keeps for you
 
 - **Auto.** Drivers don't choose work. When a job is done, the next one is on the screen, chosen by:
-  1. urgent first: flagged in the office, then anything waiting more than 20 minutes (still in job-type order);
+  1. urgent first: flagged in the office, then eligible jobs waiting at least the configured limit (default 20 minutes). Auto-Shift and stock counts do not age into urgency;
   2. then job type in the coordinator's order (default: Check & label › Pick › Process move › Receiving › Put-away › Auto-Shift › Stock count). Checking first means orders finish as their pallets reach the lane;
-  3. then nearest by the route the truck may drive.
-- **Categories never mix.** Every rack location has a category (yoghurt, cheese, protein drinks). Every driver works only the categories set on their handheld.
-- **First expired, first out.** Picks take the earliest best-before. A pallet below the item's *minimum days left to ship* can't be picked.
+  3. ordinary jobs of the same type go nearest first by the route the truck may drive (if enabled). Urgent and aged jobs go oldest first within their job type.
+- **Category routing.** Normal put-away chooses a slot matching the product category (yoghurt, cheese, protein drinks). Drivers receive jobs for their configured categories. A correction can record stock in the wrong partition; the system then plans its relocation rather than pretending the mismatch does not exist.
+- **First expiry, first out (FEFO).** Picks take the earliest eligible best-before. Expired or held stock cannot ship. A pallet below the item's *minimum days left to ship* is excluded unless the coordinator records a short-date exception; that exception does not override expiry or other holds.
 - **Two trucks per aisle.** A third is given work elsewhere, or waits at the aisle entry while carrying.
 - **One-way aisles,** if switched on: the handheld says which end to enter from.
 - **Every scan is recorded**, with who and when (Office → Audit).
@@ -84,7 +90,7 @@ Contents
 8. If needed, change the job order or the per-aisle limit (Settings → Dispatch). A job order that changes with the time of day (receiving first while the morning trucks are at the doors) is set once there and switches by itself.
 9. **Start a new shift** (Floor → *Drivers this shift*) so each handheld's figures count from now.
 
-> **Why it's quicker:** nothing is handed out. Jobs exist the moment orders, deliveries and rules call for them; trucks take them as they come free.
+> **Workflow benefit:** jobs exist when orders, deliveries and rules call for them; eligible trucks take them as they come free. The coordinator handles the exceptions instead of handing out each move.
 
 ### 1.2 Driver: start on a truck
 **Who** Reach-truck driver · **Screen** Handheld · **When** Shift start, or after changing trucks
@@ -97,11 +103,12 @@ Contents
 **If it goes wrong:**
 - **Slow network** (near the docks): the handheld says *Sending…*, then *Slow network: your scan is kept*. **Don't scan again.** It retries with the same request ID, and the running server remembers recent answers. Scanning the same thing again while it's on its way is ignored (*Already sending*); anything else you scan waits its turn. After the last retry fails, the first scan's outcome is uncertain and following queued scans are cancelled before sending. Check the current job and audit with the coordinator before scanning again. After a server restart, recent answers are no longer remembered. This prototype is not an offline or durable exactly-once system.
 - **At startup** the handheld says *Connecting to SortedWMS…* until the server answers. It keeps trying by itself.
-- A red *No connection to the server* bar with *Not sent* means the scan really didn't arrive after half a minute of trying: when the bar is gone, scan it again.
+- **No answer / outcome unknown:** do not assume a scan failed just because its answer was lost. Following queued scans were cancelled before sending. Have the coordinator check the current job and Audit before continuing.
 
 ### 1.3 Station and desk: open the screen
 1. **Station:** open `/station` on the station's PC and choose the station (top right). It's remembered.
 2. **Receiving desk:** open `/desk` and choose the desk.
+3. On a token-protected server, open **Connection**, enter the server token supplied for the demonstration, and **Connect**. Station and desk tokens are not saved; re-enter them after reloading. A connection failure stays visible instead of leaving a blank screen. The browser-only demo needs no token.
 
 ---
 
@@ -120,7 +127,7 @@ Contents
 
 The system makes a receiving job. With a list, every pallet is received with **one scan**, and a label that disagrees with the list is stopped.
 
-> **Why it's quicker:** with a list, receiving is one scan per pallet and catches wrong deliveries at the door. Ask every supplier for one.
+> **Workflow benefit:** with a complete delivery list, receiving takes one SSCC scan per pallet and can flag disagreements at the door. A supplier list is worth discussing alongside better barcodes.
 
 ### 2.2 Receive at the dock (handheld)
 **Who** Driver · **Screen** Handheld (Auto) · **When** The receiving job comes up
@@ -210,7 +217,7 @@ Out of range creates a **quality hold**: the pallet can't be picked, and uncolle
 ### 3.2 Auto-Shift (nothing to do but drive)
 The system plans rack-to-rack moves on its own:
 - **wrong category** after a template change;
-- **next out to the ground**, so picks never wait on a high reach;
+- **next out to the ground**, to reduce high-reach pickups when replenishment is complete;
 - **same batch together** in a bay;
 - **dig out** newer cheese stacked in front of older stock (only when trucks are otherwise idle).
 
@@ -219,7 +226,7 @@ They come up in Auto like any job: scan the pallet, scan the location.
 A driver can also move a pallet on their own initiative: scan it, then **scan it again** (or `CMD-MOVE`). The system picks the slot.
 
 ### 3.3 Corrections: a pallet isn't where the system says
-**Who** Any driver · **Screen** Handheld, any mode · **When** You find a pallet in the wrong place, or one the system lost
+**Who** Driver · **Screen** Handheld (Auto or Transfer) · **When** You find a pallet in the wrong place, or one the system lost
 
 1. **In Auto:** scan the pallet. The screen says what the system knows about it, and **where it belongs**.
    - If it has a job you can do, you're given it (*"Pick it"*).
@@ -260,13 +267,13 @@ In the office, the answer comes with buttons:
 
 **Coordinator**
 1. Office → Locations → **Stock counts**.
-2. **Plan counts.** Two ways:
+2. Set **How many** (default 10), then **Plan counts**. Two ways:
    - **Leave the range empty:** the system chooses. First the places where corrections happened or a lost pallet was last seen, then the locations longest since a count.
-   - **A range** (`AA01A1` → `AA10E3`, or a whole aisle): every location in it. Use this for a full count of one area.
-3. Read the results in the same section: what the system had, what was found, and who counted. *System right …%* is your stock accuracy.
+   - **A range** (`AA01A1` → `AA10E3`, or a whole aisle): eligible locations in that range, up to **How many**. Plan further counts for a larger area; already queued or active locations are not duplicated.
+3. Read the results in the same section: what the system had, what was found, and who counted. *System right …%* is the match rate of recorded location counts, not an independently measured whole-warehouse accuracy.
 
 **Driver**
-1. A count comes up in Auto when there is **nothing else to do**. It never holds up a pick.
+1. A new count comes up in Auto only when there is **nothing else to do**. Finish a count already assigned before moving to newly arrived work.
 2. Go to the location. **Scan the location label.**
 3. **Scan the pallet** in it. **Empty?** Scan the location label again.
 4. The next job is on the screen.
@@ -279,7 +286,17 @@ In the office, the answer comes with buttons:
 - **Empty where a pallet should be:** that pallet goes on the **location unknown** list. A pick waiting for it is held, so nobody drives there for it.
 - Counts never jump the queue, however long they wait. Switch them off in Settings (*Job types on*) if a day is too busy.
 
-> **Why it's quicker:** no stock-take weekend, no count sheets, no keying in. Two scans per location, in time the truck would otherwise stand still. The count is blind, so the driver checks what is there, not what the screen says should be.
+> **Workflow benefit:** two scans per location, without count-sheet entry. Blind counts let the driver report what is actually there. This demonstrates cycle counting; it does not establish that a site can stop its existing stock-take process.
+
+### 3.7 Manual put-away
+**Who** Driver · **Screen** Handheld (Put-away) · **When** Choosing a dock or station pallet rather than taking Auto work
+
+1. Finish any pallet already on the forks, then scan `CMD-PUTAWAY`.
+2. Scan the pallet to store. The system chooses a suitable slot and records pickup.
+3. Scan the destination location to record the drop. A printed location check digit can confirm a rack drop if the label will not scan (2.4).
+4. Choose another pallet, or scan `CMD-AUTO` to return to dispatched work.
+
+**If it goes wrong:** a pallet with a waiting pick or check belongs to that workflow; use Auto instead. A held pallet remains subject to the same category and storage restrictions. Manual does not mean bypassing those rules.
 
 ---
 
@@ -295,7 +312,9 @@ In the office, the answer comes with buttons:
 2. Leave **Verify trailer loading** ticked to load with the trailer scanner (4.4).
 3. **Many orders:** paste rows into Import → Orders: `orderId;customer;lane;itemNo;pallets;process;verifyLoading`. Rows with the same order number make one order. Failed orders are listed; the rest go in.
 
-**The system** allocates whole pallets, first expired first. Pick jobs appear straight away.
+For imports, use `true`, `yes` or `1` in `verifyLoading` to require trailer verification. A requirement on any row applies to the whole order; a blank field uses the original office-confirmation flow. Customer and lane must agree across an order's rows. Pallet counts are positive whole numbers; an omitted count defaults to one. An invalid line rejects that order before any stock is allocated.
+
+**The system** allocates whole pallets by earliest eligible expiry. Pick jobs appear straight away.
 
 ### 4.2 Picking
 **Who** Driver · **Screen** Handheld (Auto) · **When** The pick comes up (right after check & label by default)
@@ -314,7 +333,7 @@ In the office, the answer comes with buttons:
 - `CMD-DAMAGED`: the pallet is blocked, a replacement is allocated, and the job is held.
 - `CMD-BLOCKED`: the location is blocked, and the job is held.
 
-> **Why it's quicker:** no pick list, no confirm screen, no quantity entry. Two scans per pallet.
+> **Workflow benefit:** routine picking uses two scans per pallet, without pick-list or quantity entry. Check & label and verified trailer loading have their own scan pairs.
 
 ### 4.3 Check & label
 **Who** Driver · **Screen** Handheld (Auto) · **When** Picked pallets at the lane
@@ -329,6 +348,8 @@ In the office, the answer comes with buttons:
 ### 4.4 Trailer loading
 **Who** Loader · **Screen** Office → Orders → *Loading* (opens the loading screen)
 
+Open **Connection** and choose the order, operator and scanner ID. On a protected server, use the demonstration token. The example air limits and check validity are not approved product requirements; trailer air is recorded separately from product temperature.
+
 1. When the order is checked and staged, **assign the trailer**:
    - trailer ID;
    - air temperature limits and how long an inspection stays valid.
@@ -342,9 +363,22 @@ In the office, the answer comes with buttons:
 4. **Unload** (if needed): scan the pallet, then the order's shipping lane.
 5. When every pallet is loaded: enter the **seal ID**, then **Seal & dispatch**.
 
+**If it goes wrong:** a missing or expired inspection requires a fresh check. After a failed inspection, a passing check alone is insufficient: release the trailer hold separately with a reason. Unloading remains available during a trailer hold or expired check. Goods aboard a failed trailer need their own quality review; the trailer check does not automatically hold each pallet. No physical refrigeration or door interlock is controlled by the demo.
+
 The trailer, seal, readings, loaders and times stay in the shipment and in batch trace.
 
 **Orders without trailer verification:** **Shipped** in the order list once the order is *ready*.
+
+### 4.5 Manual pick
+**Who** Driver · **Screen** Handheld (Pick) · **When** Working a chosen order without Auto selecting another order
+
+1. Finish any pallet on the forks, then scan `CMD-PICK`.
+2. Scan the order number, for example `O4602`, or choose the order on screen.
+3. Follow that order's pickup and drop instructions (4.2). FEFO, category restrictions and aisle limits still apply.
+4. If check & label is enabled, complete the pallet and shipping-label scans at the lane (4.3).
+5. When that order has no more work for you, choose another order or scan `CMD-AUTO`.
+
+Only the chosen order's work comes to this truck. This is not a way to select an arbitrary batch or override a hold. Trailer loading and dispatch remain separate when verification is required.
 
 ---
 
@@ -375,7 +409,7 @@ The trailer, seal, readings, loaders and times stay in the shipment and in batch
 **Who** Nobody, mostly · **Screen** Station (warm room)
 
 1. A truck drops the pallet in. The clock starts by itself.
-2. When time is up, the system creates the move out, **flagged urgent**. It comes up first on the next free truck.
+2. When time is up, the system creates the move out, **flagged urgent**. The next eligible truck takes it according to urgent job order and oldest-first tie-breaking; a busy truck is not interrupted.
 
 The screen shows every pallet's countdown. There are no timers on phones and no lists on paper.
 
@@ -442,14 +476,14 @@ See 2.5.
 2. Locations: the location unknown and Blocked lists, for the handover. Stock counts: any differences found today.
 3. Orders: anything not *ready* or not shipped, and why.
 4. Audit: who did what, if a question came up during the shift.
-5. Floor → **Drivers this shift**: jobs, scans per move, wrong scans and idle time per handheld. Use it to coach: many scans per move or wrong scans usually point at a label, a habit or a screen. A lot of idle time across all trucks means work was missing, not people.
+5. Floor → **Drivers this shift**: jobs, scans per move, wrong scans and time without an assigned job per handheld. Use these as prompts to investigate labels, screens and work availability, not as a productivity score or proof of the cause of idle time. Paused breaks do not count as idle.
 
 ---
 
 ## 8. Reference
 
 ### Command card
-Every on-screen button has a barcode, so drivers keep their gloves on. Marked **2×** = scan twice within 30 s to confirm; any other scan cancels.
+The routine handheld mode and work commands below have barcodes. Setup, typed supplier fields, office decisions and loading controls may still use the screen. Marked **2×** = scan twice within 30 s to confirm; any other scan cancels.
 
 | Scan | Does |
 | --- | --- |
@@ -461,6 +495,8 @@ Every on-screen button has a barcode, so drivers keep their gloves on. Marked **
 | `CMD-CANCEL` | Undo whatever is half-done: a report waiting for its confirm, a held pallet, a transfer, a stock check, or a pallet half-received (it starts again) |
 
 ### MC9401 keys
+
+These are the browser key mappings implemented by the demo, not verified physical keypad behavior. Check the actual scanner with `keys.html` (Pages) or `/keys` (server), with the capture field focused. DataWedge and keypad configuration can change what reaches the browser; the command card avoids reliance on function keys.
 
 | Key | Does |
 | --- | --- |

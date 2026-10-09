@@ -149,7 +149,7 @@
         <td class="wrap">${d.instruction.task ? `${esc(d.instruction.task.typeLabel)} #${d.instruction.task.id} ${esc(d.instruction.targetName || '')}` : esc(d.instruction.kind)}</td>
         <td class="wrap">${d.message ? `<span style="color:var(--${d.message.ok ? 'ok' : 'bad'})">${esc(d.message.text)}</span>` : ''}</td></tr>`))}</section>
       <section><h2>Drivers this shift</h2>
-        <p class="hint">For coaching, not for counting. Many inputs per move or many wrong scans point at a label, a habit or a screen worth a look. Idle time is time without a job (breaks on Pause don't count): a lot of it across trucks means work is missing, not people.${drivers[0] && drivers[0].since ? ` Since ${hhmm(drivers[0].since)}.` : ''} <button class="small" id="shiftGo">Start a new shift</button></p>
+        <p class="hint">For coaching, not performance scoring. Inputs and wrong scans are prompts to investigate labels, screens and workflow. Idle time is time without an assigned job; breaks on Pause don't count. These figures alone do not explain the cause.${drivers[0] && drivers[0].since ? ` Since ${hhmm(drivers[0].since)}.` : ''} <button class="small" id="shiftGo">Start a new shift</button></p>
         ${table(['Handheld', 'Jobs', 'Pallet moves', 'Scans per move', 'Received', 'Inputs per pallet', 'Wrong scans', 'Idle'], drivers.map((d) => `<tr>
           <td><b>${esc(d.id)}</b></td><td>${d.jobs}</td><td>${d.moves}</td><td>${d.scansPerMove == null ? '–' : d.scansPerMove > 2.5 ? `<span class="tag held">${d.scansPerMove}</span>` : d.scansPerMove}</td>
           <td>${d.received}</td><td>${d.inputsPerReceived == null ? '–' : d.inputsPerReceived}</td>
@@ -323,8 +323,8 @@
       orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;1\n4601;Fresh Market;OUT-01;C2001;1;CHANGE;1',
       stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
     };
-    const box = (k, title, note) => `<section><h2>${title}</h2><p class="hint">${note}</p><textarea id="im-${k}">${esc(ex[k])}</textarea>
-      <div class="form" style="margin-top:8px"><button class="primary" data-import="${k}">Import</button></div><div class="out" id="imOut-${k}" style="display:none"></div></section>`;
+    const box = (k, title, note) => `<section><h2 id="im-title-${k}">${title}</h2><p class="hint">${note}</p><textarea id="im-${k}" aria-labelledby="im-title-${k}">${esc(ex[k])}</textarea>
+      <div class="form" style="margin-top:8px"><button class="primary" data-import="${k}" aria-label="Import ${title}">Import</button></div><div class="out" id="imOut-${k}" style="display:none"></div></section>`;
     return `<div class="grid">
       ${box('locations', 'Location table', 'Paste from Excel or CSV (comma, semicolon or tab). Codes in either naming. Sets category and blocked per location; mismatched pallets get relocation jobs.')}
       ${box('items', 'Item master', 'Items already known are skipped. storage: rack or block.')}

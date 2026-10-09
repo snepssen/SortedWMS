@@ -1,7 +1,6 @@
 /*
- * The SOP as a page on GitHub Pages: docs/SOP.md and docs/WORKFLOW-REVIEW.md
- * rendered into scripts/sop-template.html (contents list, procedures as
- * cards, a filter by role). Handles the markdown those two files use:
+ * The SOP and presenter guide on GitHub Pages, with a shared contents
+ * layout and role filtering for procedures. Handles the source markdown:
  * headings, paragraphs, lists (one level of nesting), tables, quotes, code.
  */
 const fs = require('fs');
@@ -15,8 +14,12 @@ function inline(t) {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^\w*])\*([^*\n]+)\*(?![\w*])/g, '$1<em>$2</em>');
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, href) => {
-    if (href.endsWith('.md')) return `<a href="#${/REVIEW/.test(href) ? 'review' : 'top'}">${text}</a>`;
-    return `<a href="${href}">${text}</a>`;
+    const manuals = {
+      'SOP.md': 'sop.html', 'DEMO.md': 'demo.html', 'WORKFLOW-REVIEW.md': 'sop.html#review',
+      'DEMO-CHECK.md': 'https://github.com/snepssen/SortedWMS/blob/main/docs/DEMO-CHECK.md',
+    };
+    const url = manuals[href] || (href.startsWith('../') ? href.slice(3) : href);
+    return `<a href="${url.replace(/"/g, '&quot;')}">${text}</a>`;
   });
   // The review table carries small <ul><li> lists in its cells.
   return s.replace(/&lt;(\/?)(ul|li)&gt;/g, '<$1$2>');
@@ -32,6 +35,7 @@ function blocks(md) {
   while (i < lines.length) {
     const l = lines[i];
     if (!l.trim()) { i++; continue; }
+    if (/^\s*---+\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
     if (l.startsWith('```')) {
       const buf = [];
       for (i++; i < lines.length && !lines[i].startsWith('```'); i++) buf.push(lines[i]);
@@ -55,10 +59,10 @@ function blocks(md) {
       continue;
     }
     if (LIST.test(l)) {
-      const items = []; // [indent, ordered, text]
+      const items = []; // [indent, ordered, text, step number]
       while (i < lines.length) {
         const m = LIST.exec(lines[i]);
-        if (m) { items.push([m[1].length, m[2] !== '-', m[3]]); i++; continue; }
+        if (m) { items.push([m[1].length, m[2] !== '-', m[3], m[2] === '-' ? null : Number(m[2].slice(0, -1))]); i++; continue; }
         if (items.length && lines[i].startsWith('   ') && lines[i].trim()) {
           if (lines[i].trim().startsWith('|')) {
             const buf = [];
@@ -74,13 +78,16 @@ function blocks(md) {
       }
       const html = [];
       const stack = [];
-      for (const [ind, ordered, text] of items) {
+      for (const [ind, ordered, text, number] of items) {
         const level = ind >= 2 ? 1 : 0;
+        const tag = ordered ? 'ol' : 'ul';
         while (stack.length > level + 1) html.push(`</li></${stack.pop()}>`);
-        if (stack.length === level + 1) html.push('</li>');
-        else { const tag = ordered ? 'ol' : 'ul'; stack.push(tag); html.push(`<${tag}>`); }
+        if (stack.length === level + 1) {
+          html.push('</li>');
+          if (stack[stack.length - 1] !== tag) { html.push(`</${stack.pop()}>`); stack.push(tag); html.push(`<${tag}>`); }
+        } else { stack.push(tag); html.push(`<${tag}>`); }
         const [first, ...more] = text.split('\n');
-        html.push(`<li>${inline(first)}${more.length ? blocks(more.join('\n')) : ''}`);
+        html.push(`<li${ordered ? ` value="${number}"` : ''}>${inline(first)}${more.length ? blocks(more.join('\n')) : ''}`);
       }
       while (stack.length) html.push(`</li></${stack.pop()}>`);
       out.push(html.join(''));
@@ -117,6 +124,13 @@ function rolesFor(n, title, who, body = '') {
   if (t.startsWith('settings')) return ['coordinator'];
   const r = who ? rolesOf(who) : rolesOf(`${title} ${body.slice(0, 200)}`);
   return r.length ? r : ALL;
+}
+
+function renderPage({ title, eyebrow, heading, intro, toc, main, filters = '' }) {
+  const tpl = fs.readFileSync(path.join(__dirname, 'sop-template.html'), 'utf8');
+  const values = { TITLE: esc(title), EYEBROW: esc(eyebrow), HEADING: esc(heading), INTRO: intro, TOC: `<ol>${toc.join('')}</ol>`, MAIN: main.join('\n'), FILTERS: filters };
+  const page = tpl.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key]);
+  return `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n${page}\n</html>\n`;
 }
 
 function build(root) {
@@ -172,13 +186,22 @@ function build(root) {
     rvHtml += `<h3 class="sub">${inline(part.trim().slice(3, k))}</h3>${blocks(part.trim().slice(k + 1))}`;
   }
   toc.push('<li><a href="#review">Workflow review</a></li>');
-  main.push(`<section class="part" id="review"><h2>Workflow review</h2>${rvHtml}</section>`);
-  const tpl = fs.readFileSync(path.join(__dirname, 'sop-template.html'), 'utf8');
-  const page = tpl.replace('{{INTRO}}', () => blocks(introMd.trim()))
-    .replace('{{TOC}}', () => `<ol>${toc.join('')}</ol>`)
-    .replace('{{MAIN}}', () => main.join('\n'))
-    .replace('{{CHIPS}}', () => ROLES.map(([k, v]) => `<button class="filter" data-role="${k}" aria-pressed="false">${v}</button>`).join(''));
-  return `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n${page}\n</html>\n`;
+  main.push(`<section class="part" id="review"><details class="review"><summary>Workflow review and implementation notes</summary>${rvHtml}</details></section>`);
+  return renderPage({ title: 'SortedWMS Demo SOP', eyebrow: 'SortedWMS · demo procedures', heading: 'Demo SOP: floor workflows', intro: blocks(introMd.trim()), toc, main,
+    filters: `<div class="filters" role="group" aria-label="Show procedures for"><span class="label">Role</span><button class="filter" id="allRoles" aria-pressed="true">All roles</button>${ROLES.map(([k, v]) => `<button class="filter" data-role="${k}" aria-pressed="false">${v}</button>`).join('')}<span id="filterStatus" role="status" aria-live="polite"></span></div>` });
 }
 
-module.exports = { build, blocks, inline };
+function buildDemo(root) {
+  const md = fs.readFileSync(path.join(root, 'docs', 'DEMO.md'), 'utf8');
+  const [intro, ...parts] = md.split(/\n(?=## )/);
+  const toc = [], main = [];
+  for (const part of parts) {
+    const nl = part.indexOf('\n');
+    const title = part.slice(3, nl).trim(), id = slug(title);
+    toc.push(`<li><a href="#${id}">${inline(title)}</a></li>`);
+    main.push(`<section class="part" id="${id}"><h2>${inline(title)}</h2>${blocks(part.slice(nl + 1))}</section>`);
+  }
+  return renderPage({ title: 'SortedWMS Presenter Guide', eyebrow: 'SortedWMS · workflow demonstration', heading: 'Presenter guide', intro: blocks(intro.split('\n').slice(1).join('\n')), toc, main });
+}
+
+module.exports = { build, buildDemo, blocks, inline };

@@ -2,6 +2,8 @@
 
 A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, cheese and (soon) protein drinks.
 
+**A workflow demonstration, not a replacement proposal.** It uses made-up stock to show how admin setup, office decisions and scanner work could connect. For a coordinator presentation, use the [presenter guide](https://snepssen.github.io/SortedWMS/demo.html), then the guided scenarios. The [demo SOP](https://snepssen.github.io/SortedWMS/sop.html) explains the same workflows; it is not an approved site procedure.
+
 **Try the demo: https://snepssen.github.io/SortedWMS/**. It's a simulated shift that runs in the browser, on a computer or a phone.
 
 To run it locally, open `index.html` in a browser. No install or server needed.
@@ -11,6 +13,7 @@ To run it locally, open `index.html` in a browser. No install or server needed.
 - **Receiving to shipping (22 steps):** protein drinks through partitioning, receiving, Auto put-away, FEFO allocation, damage replacement, pallet change, check & label, shipping and batch trace.
 - **Auto-Shift & partitioning (8 steps):** bring the next-out yoghurt pallet down, change its location's partition, then relocate it into yoghurt storage.
 - **Manual work & corrections (17 steps):** choose one of two orders, pick and label it, put away a dock pallet, correct a misplaced pallet, and recover stock displaced onto the location-unknown list. A pending pick follows the corrected location.
+- **Stock counts & accuracy (9 steps):** three blind location counts in six scans, a correct match and two differences, followed by reconciliation and count results in the office.
 - **Temperature & quality holds (12 steps):** receive a yoghurt pallet, record an out-of-range temperature, store it on hold, allocate eligible replacement stock, record a follow-up, and release it with a review reason. The example limits are demonstration values, not product requirements.
 - **Batch recall & traceability (22 steps):** identify an earlier shipped recipient, hold ready and uncollected stock, replace an uncollected pick from another batch, catch a late receipt, and release the batch without clearing an independent temperature hold.
 - **Physical quarantine & release (13 steps):** designate a chilled rack position, request segregation of a temperature-held pallet, scan it into quarantine, record independent quality and quarantine decisions, and scan it back into normal storage before allocation.
@@ -31,7 +34,7 @@ For a local preview of the guided shift, run `npm run build:pages`, then serve `
 
 **Demo kit: https://snepssen.github.io/SortedWMS/kit.html**. A label wall that shows, big enough to scan off a screen, the barcode a handheld needs next, plus a print sheet of sample pallet labels in the real supplier formats. The demo script is in [docs/DEMO.md](docs/DEMO.md).
 
-**How to work with it: [docs/SOP.md](docs/SOP.md)**, the standard operating procedures, step by step for every role.
+**How to work with it: [docs/SOP.md](docs/SOP.md)**, demonstration procedures step by step for every role. The [demo check record](docs/DEMO-CHECK.md) documents the browser checks and what still needs physical-device verification.
 
 To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
 
@@ -44,7 +47,7 @@ Drivers don't pick work from a menu. The moment they finish a job, the next one 
 
 1. **Urgent jobs:** flagged by the coordinator first, then jobs waiting longer than the "jump the queue" time (default 20 min), still in the coordinator's job order. Auto-Shift and stock counts never jump the queue on their own.
 2. **Job type,** in the coordinator's order. Default: Check & label › Pick › Process move › Receiving › Put-away › Auto-Shift › Stock count. Checking first finishes orders as their pallets arrive at the lane, instead of all at the end.
-3. **Nearest job** within the same type (can be switched off; then oldest first).
+3. **Nearest ordinary job** within the same type (can be switched off; then oldest first). Flagged urgent and aged jobs use oldest-first tie-breaking within their type.
 
 The job order can change with the time of day: windows like `06:00-10:00 RECEIVE, PUTAWAY` put those first while the morning trucks are at the doors, and switch back by themselves. The office's Floor tab also shows **Drivers this shift**: jobs, pallet moves, scans per move, wrong scans and idle time per handheld, for coaching rather than counting.
 
@@ -188,7 +191,7 @@ The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer
 
 ## Running the WMS
 
-The server is the real thing: one source of truth for every handheld, desk and office screen. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node).
+The prototype server shares one source of truth between handheld, desk and office screens. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node). Running it locally does not make it a production WMS.
 
 ```
 npm start              # an empty warehouse from server/site.example.json
@@ -237,7 +240,7 @@ Settings, through environment variables:
 | `server/api.js` | The API routes and screen views; used by the server, and in the browser on Pages. |
 | `server/local.js` | The WMS running in the browser for GitHub Pages: the journal is kept in browser storage. |
 | `index.html` | The demo: floor and block stacks, handhelds, process floor and receiving desk, coordinator tabs, job queue, stock. |
-| `test/` | Tests for every rule above. Run with `npm test` (Node 18+). |
+| `test/` | Regression tests for the demonstrated workflows. Run with `npm test` (Node 22.13+). |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
 | `docs/SOP.md` | Standard operating procedures: every task, step by step, for drivers, the coordinator, station and desk operators. |

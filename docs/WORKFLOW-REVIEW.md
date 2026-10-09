@@ -36,6 +36,12 @@ Every procedure in [SOP.md](SOP.md) was walked through step by step against the 
 
 **Remaining network limitation:** handheld retry deduplication is a bounded in-memory response cache (the last 2,000 request IDs per API instance), not durable exactly-once processing. It does not survive a server restart or browser-page reload. If a request times out after the server applied it, the final outcome is uncertain; check the current task and audit before repeating a state-changing scan. Durable request tracking, offline delivery and request-body conflict detection remain production work.
 
+## Presentation and manual check: 9 October 2026
+
+The demonstration is explicitly framed as workflow exploration, not a replacement proposal or approved site SOP. The [presenter guide](DEMO.md) has a short coordinator route and direct links to the optional scenarios. All nine guided workflows completed through browser controls; manual pick and put-away were also checked on the actual handheld and office screens. The [check record](DEMO-CHECK.md) lists the observations and the hardware/print boundaries.
+
+The SOP now covers manual work explicitly and corrects outdated network, count-planning, dispatch and physical-key claims. Generated manuals preserve step numbers around tables, reveal direct procedure links across saved role filters, and offer an All roles reset. Reference tables scroll independently on narrow screens. Printing styles include all procedures; no physical printout or PDF was inspected.
+
 ## Recommended: decisions for the floor and management
 
 These cost nothing to build. They are settings, supplier requests or site data.

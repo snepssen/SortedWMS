@@ -27,7 +27,8 @@ const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name
 // A way from the simulated shift to the real screens and the SOP, which only exist on Pages.
 const cards = [
   '<a class="start-card" href="wms.html"><b>Handheld + office →</b><span>Try the real screens: handheld and office side by side. A button scans whatever the handheld asks for.</span></a>',
-  '<a class="start-card" href="sop.html"><b>How the floor works →</b><span>The standard operating procedures, by role: driver, coordinator, station, desk.</span></a>',
+  '<a class="start-card" href="sop.html"><b>How the floor works →</b><span>Demonstration procedures by role: driver, coordinator, station, desk and loader.</span></a>',
+  '<a class="start-card" href="demo.html"><b>Presenter guide →</b><span>A short coordinator demonstration, optional scenarios, and the scope of this prototype.</span></a>',
 ].join('\n    ');
 const marker = /<!-- pages-cards:[^>]*-->/;
 if (!marker.test(page)) throw new Error('index.html: expected the pages-cards marker');
@@ -78,6 +79,7 @@ for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'ad
 
 // The SOP manual, rendered from docs/SOP.md and docs/WORKFLOW-REVIEW.md.
 fs.writeFileSync(path.join(out, 'sop.html'), require('./sop-page').build(root));
+fs.writeFileSync(path.join(out, 'demo.html'), require('./sop-page').buildDemo(root));
 
 fs.writeFileSync(path.join(out, '.nojekyll'), ''); // serve files as-is
 console.log(`Built ${path.relative(root, out)}/ (${fs.readdirSync(out).length} entries)`);
