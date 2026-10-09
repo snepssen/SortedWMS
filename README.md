@@ -163,6 +163,8 @@ Crate pallets stand on the floor in block lanes, 6 high. The system knows the st
   - *Pick the newer first:* orders take the pallets standing in front of the older batch, so normal picking uncovers it. The customer gets the fresher pallet.
 - FEFO applies to what can be reached: picks take the earliest best-before among the pallets trucks can actually lift.
 - One truck per lane at a time (a setting).
+- **A pallet on an order is never buried.** A new pallet goes to another lane or to the racks. If a pick's pallet ends up buried anyway, the pick moves to the pallet in front of it (same item, best-before the same or earlier).
+- **A lane down to a few pallets** (a setting, 3 by default) is cleared to the racks by idle trucks before a new batch goes in, so the last pallets of a batch stay easy to ship.
 
 ### Process floor: pallets through stations
 Some pallets go through a process before they ship or go back into storage:

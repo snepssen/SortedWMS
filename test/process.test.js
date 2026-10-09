@@ -190,8 +190,14 @@ test('put-away prefers sharing a lane FEFO-safely, then an empty lane, and burie
   const late = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K5', expiry: '2027-04-01' });
   assert.match(wh._findSlot(late, 'DOCK-IN').code, /^BL02-/, 'an empty lane beats burying K1');
   stockBlock(wh, 'BL02', 1, 'X1', '2027-02-01'); // BL02 no longer empty: another batch of W1
-  const slot = wh._findSlot(late, 'DOCK-IN');
-  assert.ok(slot, 'still placed, in front of later or earlier stock');
+  // Both lanes would bury older stock. BL02 is down to one pallet: that one goes to the racks first,
+  // and the new batch waits for the lane instead of burying it.
+  assert.equal(wh._findSlot(late, 'DOCK-IN'), null);
+  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: late.sscc, from: 'DOCK-IN', to: null });
+  assert.ok(wh.planRemnants() >= 1);
+  const remnant = Object.values(wh.tasks).find((t) => t.reason === 'remnant');
+  assert.ok(remnant.rackOnly);
+  assert.equal(wh.locations[wh._findSlot(wh.pallets[remnant.sscc], remnant.from, { rackOnly: true }).code].kind, 'rack');
 });
 
 test('a lane where newer stock buries an earlier best-before is flagged', () => {
@@ -257,5 +263,31 @@ test('dig-out never moves a pallet where it would bury something else', () => {
   const { wh } = setup({ buriedStock: 'digout' });
   buryK1(wh);
   stockBlock(wh, 'BL02', 1, 'K0', '2026-12-01'); // only other lane holds earlier stock
-  assert.equal(wh.planDigOut(), 0, 'nowhere safe to put them');
+  // No lane is safe, so they go to rack locations: never in front of K0.
+  assert.equal(wh.planDigOut(), 2);
+  for (const t of Object.values(wh.tasks).filter((x) => x.reason === 'digout')) {
+    assert.equal(wh.locations[wh._findSlot(wh.pallets[t.sscc], t.from, { noBury: true }).code].kind, 'rack');
+  }
+});
+
+test('a block lane down to a few pallets is cleared to the racks rather than buried, then the new batch fills it', () => {
+  const { wh } = setup({ checkAfterPick: false, blockRemnant: 3 });
+  stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
+  stockBlock(wh, 'BL02', 4, 'K2', '2027-01-05'); // too many to clear
+  const late = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K9', expiry: '2027-05-01' });
+  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: late.sscc, from: 'DOCK-IN', to: null });
+  wh.addTruck('RT1');
+  // The truck clears BL01's last two pallets to the racks...
+  for (let i = 0; i < 2; i++) {
+    const t = wh.tasks[wh.trucks.RT1.taskId];
+    assert.equal(t.reason, 'remnant', `move ${i + 1} clears the lane`);
+    move(wh, 'RT1');
+  }
+  const k1 = Object.values(wh.pallets).filter((p) => p.batch === 'K1');
+  assert.ok(k1.every((p) => wh.locations[p.loc].kind === 'rack'), 'K1 now in the racks, easy to ship');
+  // ...and the new batch then goes into the empty lane, burying nothing.
+  const put = wh.tasks[wh.trucks.RT1.taskId];
+  assert.equal(put.sscc, late.sscc);
+  assert.equal(wh.locations[put.to].lane, 'BL01');
+  assert.equal(wh.buriedLanes().length, 0);
 });

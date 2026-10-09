@@ -132,3 +132,56 @@ test('fuzz: hundreds of right and wrong scans and office actions keep the wareho
 });
 // Moves a driver starts on their own are where they are; the limit is about where the system sends trucks.
 const TRUCK_STARTED = new Set(['driver']);
+
+// From the simulated shift: two picks from block lane BL01-02 waited six hours while everything else went ahead.
+function blockLane() {
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const t = Date.UTC(2026, 9, 9, 6);
+  const wh = Site.buildWarehouse(site, () => t);
+  const lane = wh.layout.blocks[0];
+  const item = Object.values(wh.items).find((i) => i.storage === 'block');
+  const expiry = '2026-12-08';
+  let n = 1;
+  for (let i = 0; i < 5; i++) wh.stockPallet(wh.nextBlockSpot(lane), { sscc: GS1.makeSscc(1, '8700000', n++), itemNo: item.itemNo, batch: 'BX', expiry });
+  wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: item.itemNo, pallets: 2 }] });
+  return { wh, lane, item, expiry };
+}
+
+test('block lanes: a put-away never sets a pallet down in front of pallets waiting to be picked', () => {
+  const { wh, lane, item, expiry } = blockLane();
+  const p = wh.stockPallet('DOCK-IN', { sscc: GS1.makeSscc(1, '8700000', 99), itemNo: item.itemNo, batch: 'BX', expiry });
+  const slot = wh._findSlot(p, 'DOCK-IN');
+  assert.ok(slot, 'it goes somewhere');
+  assert.notEqual(slot.lane, lane, 'not into the lane being picked');
+});
+
+test('block lanes: a pick whose pallet got buried takes the same-batch pallet in front of it, and goes out straight away', () => {
+  const { wh, lane, item, expiry } = blockLane();
+  const picks = Object.values(wh.tasks).filter((t) => t.type === 'PICK');
+  const p = wh.stockPallet(wh.nextBlockSpot(lane), { sscc: GS1.makeSscc(1, '8700000', 99), itemNo: item.itemNo, batch: 'BX', expiry });
+  wh.addTruck('RT1', { categories: [item.category] });
+  const ins = wh.instruction('RT1');
+  assert.equal(ins.kind, 'pickup');
+  assert.equal(ins.pallet.sscc, p.sscc, 'the pallet in front');
+  assert.ok(picks.some((t) => t.sscc === p.sscc));
+  assert.equal(wh.orders.O1.lines[0].allocated.length, 2);
+  assert.ok(wh.orders.O1.lines[0].allocated.includes(p.sscc));
+  assert.ok(wh.events.some((e) => /is buried in .*picking .* in front of it instead/.test(e.text)));
+  // A newer batch in front is not swapped in: that's a dig-out, not a pick.
+  const { wh: wh2, lane: lane2, item: item2 } = blockLane();
+  const newer = wh2.stockPallet(wh2.nextBlockSpot(lane2), { sscc: GS1.makeSscc(1, '8700000', 98), itemNo: item2.itemNo, batch: 'BY', expiry: '2027-01-30' });
+  wh2.dispatch();
+  assert.equal(newer.orderId, null);
+});
+
+test('picks go order by order: an older order is not overtaken by a newer one nearby', () => {
+  const wh = setup();
+  const far = wh.stockPallet('32-06-0-70', { itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01' });
+  const near = wh.stockPallet('31-01-0-10', { itemNo: 'Y1', batch: 'B2', expiry: '2026-12-01' });
+  wh.addOrder({ id: 'OLD', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
+  wh.addOrder({ id: 'NEW', customer: 'Deli', lane: 'OUT-02', lines: [{ itemNo: 'Y1', pallets: 1 }] });
+  assert.equal(far.orderId, 'OLD');
+  assert.equal(near.orderId, 'NEW');
+  wh.addTruck('RT1', { position: '31-01-0-10' });
+  assert.equal(wh.instruction('RT1').task.orderId, 'OLD', 'the older order first, even though the newer one is right here');
+});
