@@ -271,3 +271,7 @@ Because both names scan, the racks can be relabelled one aisle at a time while e
 **Location template by range.** Categories are set on a whole selection at once, not one location at a time: `AA01A1` → `AZ43F3` is cheese, `BB01A1` → `BZ43F3` is yoghurt. A range can be written in either naming, and partly: `AA` → `AD` means those whole racks, `31` → `34` whole aisles. The office sees a preview first (how many locations change, how many pallets will need to move), then applies it. Pallets left in the wrong category get Auto-Shift relocation jobs straight away.
 
 The demo has aisles 31–38. The real list comes with the location table. The demo's items, customers, suppliers and stock are made up.
+
+## Licence
+
+Copyright 2026 snepssen. This project is released under the [MIT License](LICENSE).
