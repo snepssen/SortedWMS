@@ -9,7 +9,7 @@
     "test": "node --no-warnings --test",
     "build:pages": "node scripts/build-pages.js"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": ">=22.13"
   }
