@@ -9,6 +9,7 @@ const GS = GS1.GS;
 
 function setup() {
   const wh = new Warehouse({ aisles: [31, 32], bays: 6, levels: 3, clock: () => T0, config: { groundNextPerItem: 0 } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   // A-ware Packaging: the label counts pots under the pot's EAN; the article number is in a (91) barcode.
   wh.addItem({ itemNo: '05459', name: 'Netto Gutes Land Skyr 12x500g', category: 'YOG', palletQty: 80, unitGtin: '4316268741606', unitsPerCase: 12, codes: ['40012009'] });
   // A-ware Kruibeke: a full GS1 label, counted in trays.

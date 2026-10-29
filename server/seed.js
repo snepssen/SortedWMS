@@ -69,10 +69,13 @@
     for (const [id, categories] of [['HH01', ['YOG']], ['HH02', ['YOG']], ['HH03', ['CHE']], ['HH04', ['CHE']]]) {
       store.exec('addTruck', { id, categories }, 'seed');
     }
-    store.exec('assignOperator', { id: 'HH01', operator: 'operator' }, 'seed');
-    store.exec('assignOperator', { id: 'HH02', operator: 'operator' }, 'seed');
-    store.exec('assignOperator', { id: 'HH03', operator: 'operator' }, 'seed');
-    store.exec('assignOperator', { id: 'HH04', operator: 'machine' }, 'seed');
+    for (const id of ['HH01', 'HH02', 'HH03', 'HH04']) store.exec('assignOperator', { id, operator: 'machine' }, 'seed');
+    const free = Object.values(store.wh.pallets).filter((p) => p.loc && !p.orderId && store.wh.locations[p.loc] && store.wh.locations[p.loc].kind === 'rack' && !p.holderId);
+    const pair = free.slice(-2);
+    if (pair.length === 2) {
+      for (const p of pair) store.exec('issuePlates', { sscc: p.sscc }, 'seed');
+      store.exec('consolidate', { pals: pair.map((p) => store.wh.pallets[p.sscc].holderId), at: 'CONSO00' }, 'seed');
+    }
 
     // Two orders, and a delivery announced with its pallet list (one scan per pallet at the dock).
     const items = store.wh.stockSummary().filter((r) => r.available >= 2);

@@ -19,6 +19,7 @@ function setup(config = {}) {
       { id: 'WARM', name: 'Warm room', dwell: true, capacity: 10 },
     ],
   });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda slices', category: 'CHE', palletQty: 80 });
   wh.addItem({ itemNo: 'W1', gtin: GS1.makeGtin13('20000', 5), name: 'Gouda wheels (crates)', category: 'CHE', palletQty: 24, storage: 'block' });
   wh.setLocationCategory({ aisle: 1 }, 'CHE');

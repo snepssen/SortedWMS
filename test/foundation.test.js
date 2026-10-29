@@ -7,6 +7,7 @@ const { COMMANDS } = require('../server/commands');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 6) });
+  w.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   w.addClient({ id: 'CL-DAIRY', name: 'Dairy Co', email: 'dairy@example.test' });
   w.addItem({
     itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 10, clientId: 'CL-DAIRY',

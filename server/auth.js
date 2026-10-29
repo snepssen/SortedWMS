@@ -13,7 +13,7 @@ const DEMO_USERS = [
   ['admin', 'sorted-admin', 'administrator', 'Alex Admin'],
   ['manager', 'sorted-manager', 'manager', 'Morgan Supervisor'],
   ['office', 'sorted-office', 'office', 'Olivia Office'],
-  ['tech', 'sorted-tech', 'technician', 'Taylor Technician'],
+  ['tech', 'sorted-tech', 'technician', 'Taylor Technical'],
   ['operator', 'sorted-operator', 'operator', 'Omar Operator'],
   ['machine', 'sorted-machine', 'machine', 'Mina Machine'],
 ];

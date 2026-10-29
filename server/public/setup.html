@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup · SortedWMS</title>
+<style>
+  :root { --bg: #f4f1ea; --card: #fffdf8; --ink: #1c1915; --dim: #5c564c; --line: #e4dccf; --acc: #0f6e56; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
+  header { padding: 16px 20px; background: var(--card); border-bottom: 3px solid var(--acc); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; }
+  header a { color: var(--acc); }
+  main { max-width: 980px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  h2 { margin: 0 0 6px; font-size: 18px; }
+  .hint { color: var(--dim); margin: 0 0 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+  .card.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
+  .card b { display: block; margin-bottom: 4px; }
+  .examples { display: grid; gap: 8px; }
+  .ex { display: grid; grid-template-columns: 180px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .ex code { font: 700 18px ui-monospace, monospace; }
+  button, .btn { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.primary { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+  label { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .level { display: grid; grid-template-columns: 110px 90px 140px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+  input, select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  .preview { font: 15px/1.5 ui-monospace, monospace; background: #f6f3ec; border-radius: 8px; padding: 10px; min-height: 3em; }
+  .msg { padding: 8px 10px; border-radius: 8px; background: #e7f6ef; }
+  .msg.bad { background: #fde8e6; }
+  @media (max-width: 720px) { .ex, .level { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Setup wizard</h1>
+  <span id="who"></span>
+  <span style="flex:1"></span>
+  <a href="/app">Back to the warehouse</a>
+</header>
+<main>
+  <section>
+    <h2>1. Administrator</h2>
+    <p class="hint" id="adminLine">Sign in as the administrator created on first start, then shape the warehouse here. You can run this again later.</p>
+  </section>
+  <section>
+    <h2>2. Warehouse type</h2>
+    <p class="hint">A preset turns features on or off and suggests a location plan. It does not delete stock you already have.</p>
+    <div class="cards" id="presets"></div>
+  </section>
+  <section>
+    <h2>3. Category features</h2>
+    <p class="hint">Temperature, lot and expiry, FEFO, and high-value PAL/MASTER plates are optional.</p>
+    <div id="features"></div>
+    <p><button type="button" id="saveFeatures">Save features</button></p>
+  </section>
+  <section id="numbering">
+    <h2>4. How locations are named</h2>
+    <p class="hint">Cell, then aisle, bay, position and height. Skip a level when the building does not have it. Names are text: a colour is the word Red or Blue, not a picture.</p>
+    <div class="examples" id="examples"></div>
+  </section>
+  <section>
+    <h2>5. Build the locations</h2>
+    <div id="levels"></div>
+    <p class="hint">Live preview</p>
+    <div class="preview" id="preview">Choose an example or edit the ranges.</div>
+    <form class="level" id="dims" style="margin-top:10px">
+      <label>H mm <input name="heightMm" type="number" value="1800"></label>
+      <label>W mm <input name="widthMm" type="number" value="1000"></label>
+      <label>D mm <input name="depthMm" type="number" value="1200"></label>
+      <label>Max kg <input name="maxWeightKg" type="number" value="1000"></label>
+    </form>
+    <p><button type="button" class="primary" id="generate">Generate these locations</button></p>
+    <h3>Virtual locations</h3>
+    <p class="hint">Consolidation and staging are not physical slots. conso00 is the usual consolidation name.</p>
+    <form id="virtual" class="level">
+      <input name="code" value="CONSO00" placeholder="CONSO00">
+      <select name="role"><option value="consolidation">consolidation</option><option value="staging">staging</option><option value="other">other</option></select>
+      <input name="name" value="Consolidation" placeholder="Name">
+      <button type="submit">Add virtual location</button>
+    </form>
+  </section>
+  <section>
+    <h2>6. Finish</h2>
+    <p class="hint">Saving marks the wizard complete. Open it again from the administrator settings whenever the building changes.</p>
+    <p><button type="button" class="primary" id="done">Save setup</button></p>
+    <p id="out"></p>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  const LEVELS = ['cell', 'aisle', 'bay', 'position', 'height'];
+  let state = null;
+  let plan = null;
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  async function api(method, path, body) {
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent('/setup')); throw new Error('Sign in required'); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+  function say(text, ok) {
+    const el = document.getElementById('out');
+    el.className = 'msg' + (ok === false ? ' bad' : '');
+    el.textContent = text;
+  }
+  function readPlan() {
+    const levels = LEVELS.map((key) => {
+      const row = document.querySelector(`[data-level="${key}"]`);
+      const skip = !row.querySelector('[name=on]').checked;
+      const scheme = row.querySelector('[name=scheme]').value;
+      const from = row.querySelector('[name=from]').value;
+      const to = row.querySelector('[name=to]').value;
+      const pad = Number(row.querySelector('[name=pad]').value || 0);
+      const words = row.querySelector('[name=words]').value;
+      const level = { key, skip, scheme };
+      if (scheme === 'letter') { level.from = from || 'A'; level.to = to || 'A'; }
+      else if (scheme === 'alphanumeric') { level.letterFrom = (from || 'A')[0]; level.letterTo = (to || from || 'A')[0]; level.numberFrom = Number(row.querySelector('[name=nfrom]').value || 1); level.numberTo = Number(row.querySelector('[name=nto]').value || 1); level.pad = pad; }
+      else if (scheme === 'word') level.words = words;
+      else { level.from = Number(from || 1); level.to = Number(to || from || 1); level.pad = pad; }
+      return level;
+    });
+    return { separator: '-', levels };
+  }
+  function fillPlan(next) {
+    plan = next;
+    for (const key of LEVELS) {
+      const spec = (next.levels || []).find((l) => l.key === key) || { key, skip: true };
+      const row = document.querySelector(`[data-level="${key}"]`);
+      row.querySelector('[name=on]').checked = !spec.skip;
+      row.querySelector('[name=scheme]').value = spec.scheme || 'number';
+      row.querySelector('[name=from]').value = spec.from != null ? spec.from : (spec.letterFrom || '');
+      row.querySelector('[name=to]').value = spec.to != null ? spec.to : (spec.letterTo || '');
+      row.querySelector('[name=pad]').value = spec.pad || 0;
+      row.querySelector('[name=nfrom]').value = spec.numberFrom || '';
+      row.querySelector('[name=nto]').value = spec.numberTo || '';
+      row.querySelector('[name=words]').value = Array.isArray(spec.words) ? spec.words.join(', ') : (spec.words || '');
+    }
+    refreshPreview();
+  }
+  async function refreshPreview() {
+    const box = document.getElementById('preview');
+    try {
+      const out = await api('POST', '/api/locations/preview', { plan: readPlan() });
+      box.textContent = out.total + ' locations. First: ' + out.sampleCode + (out.sample.length > 1 ? '\n' + out.sample.slice(0, 8).join('\n') : '');
+    } catch (e) { box.textContent = e.message; }
+  }
+  function renderLevels() {
+    document.getElementById('levels').innerHTML = LEVELS.map((key) => `<div class="level" data-level="${key}">
+      <label><input type="checkbox" name="on" checked> ${key}</label>
+      <select name="scheme"><option value="number">numbers</option><option value="letter">letters</option><option value="alphanumeric">letter+number</option><option value="word">words</option></select>
+      <span><input name="from" placeholder="from" size="4"> <input name="to" placeholder="to" size="4"> pad <input name="pad" type="number" value="0" style="width:4em"></span>
+      <span>n <input name="nfrom" placeholder="n from" size="4"> <input name="nto" placeholder="n to" size="4"> words <input name="words" placeholder="Left, Right"></span>
+    </div>`).join('');
+    document.getElementById('levels').addEventListener('input', () => refreshPreview());
+  }
+  function render(data) {
+    state = data;
+    document.getElementById('who').textContent = data.setup && data.setup.preset ? 'Preset ' + data.setup.preset : 'Not finished yet';
+    document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
+    document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
+    document.getElementById('examples').innerHTML = data.examples.map((ex) => `<div class="ex"><div><b>${esc(ex.title)}</b><div class="hint">${esc(ex.blurb)}</div></div><code>${esc(ex.preview.sampleCode)}</code><button type="button" data-example="${esc(ex.id)}">Use this</button></div>`).join('');
+    const chosen = data.examples.find((ex) => ex.id === 'numbers');
+    fillPlan((data.setup && data.setup.locationPlan) || (chosen && chosen.plan));
+  }
+  document.getElementById('presets').onclick = async (e) => {
+    const b = e.target.closest('[data-preset]');
+    if (!b) return;
+    try {
+      const applied = await api('POST', '/api/setup/preset', { id: b.dataset.preset });
+      if (applied.locationPlan) fillPlan(applied.locationPlan);
+      state = await api('GET', '/api/setup');
+      render(state);
+      say('Preset ' + applied.name + ' applied. Generate locations when the preview looks right.', true);
+    } catch (err) { say(err.message, false); }
+  };
+  document.getElementById('examples').onclick = (e) => {
+    const b = e.target.closest('[data-example]');
+    if (!b || !state) return;
+    const ex = state.examples.find((item) => item.id === b.dataset.example);
+    if (ex) fillPlan(ex.plan);
+  };
+  document.getElementById('saveFeatures').onclick = async () => {
+    const features = {};
+    for (const box of document.querySelectorAll('#features input')) features[box.name] = box.checked;
+    try { await api('POST', '/api/setup/features', { features }); say('Features saved.', true); }
+    catch (err) { say(err.message, false); }
+  };
+  document.getElementById('generate').onclick = async () => {
+    const dims = Object.fromEntries(new FormData(document.getElementById('dims')).entries());
+    const capacity = {};
+    for (const k of Object.keys(dims)) capacity[k] = dims[k] === '' ? null : Number(dims[k]);
+    try {
+      const out = await api('POST', '/api/locations/generate', { plan: readPlan(), kind: 'bin', capacity });
+      say('Created ' + out.created + ' locations. First code ' + (out.sample[0] || out.sampleCode || '—') + '.', true);
+    } catch (err) { say(err.message, false); }
+  };
+  document.getElementById('virtual').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      await api('POST', '/api/locations', { code: data.code, kind: 'virtual', role: data.role, name: data.name });
+      say('Virtual location ' + data.code + ' added.', true);
+    } catch (err) { say(err.message, false); }
+  };
+  document.getElementById('done').onclick = async () => {
+    try { await api('POST', '/api/setup/complete', {}); say('Setup saved. You can change it whenever you come back.', true); }
+    catch (err) { say(err.message, false); }
+  };
+  renderLevels();
+  api('GET', '/api/setup').then(render).catch((err) => say(err.message, false));
+})();
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ The server keeps one accept path for scans and one send path for labels, so a re
 | Scanner | Keyboard wedge (fast keystrokes, then Enter), typed manual entry, or the **Simulate scan** button | A DataWedge profile that types into the same field and sends Enter. The page does not need a new API. |
 | Printer | **Simulated** (job kept, nothing sent), **browser** (open the label HTML and print or save PDF), or **network** (ZPL on port 9100 via `Printers.send`) | A printer address in the site file, then set the mode to network. Scaling and `~HS` status stay as they are. |
 
-A technician or administrator sets the mode under Hardware or Settings. The default is wedge + simulated, which is what `npm run start:demo` uses.
+The technical role or an administrator sets the mode under Hardware or Settings. The default is wedge + simulated, which is what `npm run start:demo` uses. The barcode on a new pallet or master label is the license plate (`PAL0000001`, `MASTER0000001`). An SSCC can be printed underneath it.
 
 ## Handheld: Zebra MC9401
 

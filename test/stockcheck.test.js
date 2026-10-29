@@ -7,6 +7,7 @@ const T0 = Date.UTC(2026, 9, 7, 6, 0);
 
 function setup(config = {}) {
   const wh = new Warehouse({ aisles: [31, 32, 33, 34], bays: 6, levels: 3, clock: () => T0, config: { groundNextPerItem: 0, checkAfterPick: false, ...config } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96 });
   wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda', category: 'CHE', palletQty: 80 });
   wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');

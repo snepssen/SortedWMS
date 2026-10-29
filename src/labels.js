@@ -145,5 +145,32 @@
       .replace(/\^BCN,(\d+)/g, (m, h) => `^BCN,${n(h)}`);
   }
 
-  return { shippingLabel, palletLabel, masterLabel, labelHtml, scaleZpl, escapeHtml };
+  /**
+   * License-plate label. The plate id (PAL0000001, MASTER0000001, …) is the
+   * barcode the floor scans. An SSCC is an optional second barcode.
+   */
+  function licenseLabel(d) {
+    const kids = (d.children || []).slice(0, 8).map((c, i) => `^FO40,${820 + i * 32}^A0N,26,26^FD${clean(c.plate || c.sscc || c)}^FS`);
+    const lines = [
+      '^XA',
+      '^CI28',
+      '^PW812^LL1218',
+      `^FO40,30^A0N,32,32^FD${clean(d.series === 'MASTER' || d.kind === 'master' ? 'MASTER LABEL' : 'PALLET LABEL')}^FS`,
+      `^FO40,80^A0N,64,64^FD${clean(d.plate || d.title || '')}^FS`,
+      d.itemName ? `^FO40,160^A0N,36,36^FD${clean(d.itemName)}^FS` : '',
+      d.itemNo ? `^FO40,210^A0N,28,28^FDItem ${clean(d.itemNo)}   Qty ${clean(d.qty == null ? '' : d.qty)}^FS` : '',
+      d.batch || d.expiry ? `^FO40,250^A0N,28,28^FDBatch ${clean(d.batch || '')}   Best before ${clean(d.expiry || '')}^FS` : '',
+      d.location ? `^FO40,290^A0N,28,28^FDLocation ${clean(d.location)}^FS` : '',
+      '^FO40,340^GB732,3,3^FS',
+      `^FO40,370^BY3^BCN,160,Y,N,N^FD${clean(d.plate || d.title || '')}^FS`,
+    ];
+    if (d.sscc) {
+      lines.push('^FO40,580^A0N,24,24^FDSSCC^FS', `^FO40,610^BY2^BCN,80,N,N,N^FD>;>800${clean(d.sscc)}^FS`, `^FO40,700^A0N,28,28^FD(00) ${clean(d.sscc)}^FS`);
+    }
+    if (kids.length) lines.push('^FO40,760^A0N,26,26^FDPAL under this MASTER^FS', ...kids);
+    lines.push('^XZ');
+    return lines.filter(Boolean).join('\n');
+  }
+
+  return { shippingLabel, palletLabel, masterLabel, licenseLabel, labelHtml, scaleZpl, escapeHtml };
 });

@@ -13,7 +13,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const KINDS = ['zone', 'aisle', 'rack', 'level', 'bin', 'block', 'lane'];
+  const KINDS = ['zone', 'aisle', 'rack', 'level', 'bin', 'mezzanine', 'virtual', 'block', 'lane'];
+  const VIRTUAL_ROLES = ['consolidation', 'staging', 'other'];
+  const SERIES = ['PAL', 'MASTER', 'ST', 'INB', 'OUT'];
   const HOLDER_TYPES = ['pallet', 'crate', 'tote'];
   const ADJUST_REASONS = ['damage', 'expiry', 'found', 'recount', 'correction', 'other'];
   const EQUIPMENT_STATUS = ['running', 'idle', 'fault', 'down', 'maintenance'];
@@ -36,13 +38,13 @@
     return Object.values(cap).some((v) => v != null) ? cap : null;
   }
 
-  function barcodeSvg(text) {
+  function barcodeSvg(text, gs1) {
     let Barcode = typeof globalThis !== 'undefined' ? globalThis.SortedBarcode : null;
     if (!Barcode && typeof require === 'function') {
       try { Barcode = require('./barcode'); } catch (e) { Barcode = null; }
     }
     if (!Barcode) return '';
-    return Barcode.svg(String(text), { gs1: true, module: 1.6, height: 70 });
+    return Barcode.svg(String(text), { gs1: Boolean(gs1), module: 1.6, height: 70 });
   }
 
   function install(Warehouse, deps) {
@@ -222,24 +224,28 @@
     };
 
     proto.createLocation = function (spec) {
+      const preserve = Boolean(spec.preserveCase);
       const kindIn = String(spec.kind || 'bin').trim().toLowerCase();
       if (!KINDS.includes(kindIn)) throw new Error(`Kind is one of ${KINDS.join(', ')}`);
       if (kindIn === 'block' || kindIn === 'lane') return this._createBlockLane(spec);
-      const code = String(spec.code || '').trim().toUpperCase();
-      if (!/^[A-Z0-9][A-Z0-9-]{0,24}$/.test(code)) throw new Error('Location code uses letters, digits or hyphen');
+      const code = preserve ? String(spec.code || '').trim() : String(spec.code || '').trim().toUpperCase();
+      if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/.test(code)) throw new Error('Location code uses letters, digits or hyphen');
       if (this.locations[code]) throw new Error(`Location ${code} already exists`);
       if (spec.parent && !this.locations[String(spec.parent).trim().toUpperCase()]) throw new Error(`Unknown parent ${spec.parent}`);
       if (spec.category && !this.categories[spec.category]) throw new Error(`Unknown category ${spec.category}`);
       const structural = kindIn === 'zone' || kindIn === 'aisle' || kindIn === 'rack' || kindIn === 'level';
+      const role = spec.role ? String(spec.role).trim().toLowerCase() : (kindIn === 'virtual' ? 'other' : null);
+      if (kindIn === 'virtual' && role && !VIRTUAL_ROLES.includes(role)) throw new Error(`Virtual role is one of ${VIRTUAL_ROLES.join(', ')}`);
       const loc = {
-        code, kind: kindIn === 'rack' ? 'rack' : kindIn, structural, custom: true,
+        code, kind: kindIn === 'rack' ? 'rack' : kindIn, structural, custom: true, virtual: kindIn === 'virtual',
+        role: kindIn === 'virtual' ? role : (spec.role || null),
         name: spec.name ? String(spec.name).trim() : null,
         zone: spec.zone || null, aisle: spec.aisle || null, rack: spec.rack || null,
         level: spec.level == null || spec.level === '' ? null : spec.level,
         bin: spec.bin || null, parent: spec.parent ? String(spec.parent).trim().toUpperCase() : null,
         category: spec.category || null, blocked: false, reservedBy: null, capacity: capacityOf(spec),
       };
-      if (kindIn === 'bin') loc.pallets = [];
+      if (kindIn === 'bin' || kindIn === 'mezzanine' || kindIn === 'virtual') loc.pallets = [];
       if (kindIn === 'rack') loc.sscc = null;
       this.locations[code] = loc;
       this._forgetPlaces();
@@ -384,7 +390,9 @@
         throw new Error(`${code} already holds a load`);
       }
       this._assertHolderFits(loc, holder);
+      const from = holder.loc;
       holder.loc = code;
+      if (from && from !== code) this.recordMovement({ holder: holder.id, sscc: holder.sscc || null, from, to: code, qty: holder.contents && holder.contents[0] ? holder.contents[0].qty : null, event: 'moved', by: this._actor || 'office' });
       for (const child of Object.values(this.holders)) if (child.parentId === holder.id && child.loc !== code) this.moveHolder(child.id, code);
       this.log(`Holder ${holder.id} at ${code}`);
       return holder;
@@ -440,11 +448,288 @@
 
     proto.removeHolder = function (id) {
       const holder = this._holder(id);
+      if (holder.issued) throw new Error(`License plate ${holder.id} is issued and its number is never reused`);
       if ((holder.contents || []).length) throw new Error(`Holder ${holder.id} is not empty`);
       if (Object.values(this.holders).some((h) => h.parentId === holder.id)) throw new Error(`Holder ${holder.id} still has a carrier on it`);
       delete this.holders[holder.id];
       this.log(`Holder ${holder.id} removed`);
       return { removed: holder.id };
+    };
+
+    proto.formatPlate = function (series, n) {
+      const spec = this._series(series);
+      return `${spec.prefix}${String(n).padStart(spec.pad, '0')}`;
+    };
+
+    proto._series = function (series) {
+      const key = String(series || '').trim().toUpperCase();
+      const spec = this.holderSeries && this.holderSeries[key];
+      if (!spec) throw new Error(`Holder series is one of ${SERIES.join(', ')}`);
+      return spec;
+    };
+
+    /** Next license plate. The counter only ever increases, so a number is never reused. */
+    proto.allocatePlate = function (series) {
+      const key = String(series).trim().toUpperCase();
+      const spec = this._series(key);
+      const seq = spec.next;
+      const id = `${spec.prefix}${String(seq).padStart(spec.pad, '0')}`;
+      if (this.holders[id]) throw new Error(`License plate ${id} already exists`);
+      spec.next = seq + 1;
+      return { id, series: key, seq };
+    };
+
+    proto.setHolderSeries = function (patch) {
+      for (const [series, spec] of Object.entries(patch || {})) {
+        const current = this._series(series);
+        if (spec.prefix != null) {
+          const prefix = String(spec.prefix).trim().toUpperCase();
+          if (!/^[A-Z][A-Z0-9]{0,11}$/.test(prefix)) throw new Error('A holder prefix is letters and digits, starting with a letter');
+          current.prefix = prefix;
+        }
+        if (spec.pad != null) {
+          const pad = Number(spec.pad);
+          if (!Number.isInteger(pad) || pad < 1 || pad > 12) throw new Error('Holder padding is a whole number from 1 to 12');
+          current.pad = pad;
+        }
+        if (spec.next != null) {
+          const next = Number(spec.next);
+          if (!Number.isInteger(next) || next < current.next) throw new Error(`${series} next number cannot go backwards (now ${current.next})`);
+          current.next = next;
+        }
+      }
+      this.log('Holder label series updated');
+      return this.holderSeries;
+    };
+
+    proto._makePlate = function (minted, fields) {
+      const holder = {
+        id: minted.id, series: minted.series, seq: minted.seq, issued: true,
+        type: fields.type || minted.series.toLowerCase(), loc: fields.loc || null,
+        clientId: fields.clientId || null, parentId: fields.parentId || null, children: fields.children || [],
+        sscc: fields.sscc || null, contents: fields.contents || [], history: [], createdAt: this.now(),
+      };
+      this.holders[holder.id] = holder;
+      return holder;
+    };
+
+    /**
+     * A received full pallet gets a PAL and a MASTER. The MASTER starts with that one PAL under it.
+     */
+    proto.issuePlates = function ({ sscc, by } = {}) {
+      if (!this.feature('highValueSecurity')) throw new Error('High-value license plates are not enabled. Turn that on, or use an ST, INB or OUT plate.');
+      const pallet = this._pallet(sscc);
+      if (pallet.holderId) throw new Error(`Pallet …${sscc.slice(-6)} already has license plate ${pallet.holderId}`);
+      const palMint = this.allocatePlate('PAL');
+      const masterMint = this.allocatePlate('MASTER');
+      const item = this.items[pallet.itemNo];
+      const line = { sscc: pallet.sscc, itemNo: pallet.itemNo, batch: pallet.batch, expiry: pallet.expiry, qty: pallet.qty, clientId: pallet.clientId || (item && item.clientId) || null };
+      const master = this._makePlate(masterMint, { type: 'master', loc: pallet.loc, clientId: line.clientId, children: [palMint.id], sscc: pallet.sscc, contents: [line] });
+      const pal = this._makePlate(palMint, { type: 'pallet', loc: pallet.loc, clientId: line.clientId, parentId: master.id, sscc: pallet.sscc, contents: [line] });
+      pallet.holderId = pal.id;
+      pallet.masterId = master.id;
+      const actor = by || this._actor || 'office';
+      this.recordMovement({ holder: pal.id, sscc: pallet.sscc, from: null, to: pallet.loc, qty: pallet.qty, event: 'received', by: actor });
+      this.recordMovement({ holder: pal.id, sscc: pallet.sscc, from: pallet.loc, to: pallet.loc, qty: pallet.qty, event: 'labelled', by: actor, note: master.id });
+      this.recordMovement({ holder: master.id, sscc: pallet.sscc, from: pallet.loc, to: pallet.loc, qty: pallet.qty, event: 'labelled', by: actor, note: pal.id });
+      const palLabel = this._printPlate(pal, { sscc: pallet.sscc, itemNo: line.itemNo, itemName: item && item.name, batch: pallet.batch, expiry: pallet.expiry, qty: pallet.qty, location: pallet.loc });
+      const masterLabel = this._printPlate(master, { sscc: pallet.sscc, itemNo: line.itemNo, itemName: item && item.name, qty: pallet.qty, location: pallet.loc, children: [{ plate: pal.id, sscc: pallet.sscc, itemNo: line.itemNo, qty: pallet.qty }] });
+      this.log(`Labelled …${pallet.sscc.slice(-6)} as ${pal.id} under ${master.id}`);
+      return { pal, master, labels: [palLabel, masterLabel] };
+    };
+
+    /** INB, ST and OUT plates track lower-value stock without a full-pallet SSCC. */
+    proto.issueSeries = function ({ series, itemNo, qty, loc = null, batch = null, expiry = null, by } = {}) {
+      const key = String(series || '').toUpperCase();
+      if (!['ST', 'INB', 'OUT'].includes(key)) throw new Error('This plate is ST, INB or OUT');
+      const item = itemNo ? this.items[itemNo] : null;
+      if (itemNo && !item) throw new Error(`Unknown item ${itemNo}`);
+      const amount = Number(qty);
+      if (!Number.isInteger(amount) || amount < 1) throw new Error('Quantity must be a whole number above 0');
+      const code = loc ? this.resolve(loc) : null;
+      if (code) this._loc(code);
+      const minted = this.allocatePlate(key);
+      const holder = this._makePlate(minted, {
+        type: key.toLowerCase(), loc: code, clientId: item && item.clientId, 
+        contents: [{ sscc: null, itemNo: item ? item.itemNo : null, batch, expiry, qty: amount, clientId: item && item.clientId }],
+      });
+      const actor = by || this._actor || 'office';
+      this.recordMovement({ holder: holder.id, from: null, to: code, qty: amount, event: 'received', by: actor });
+      this.recordMovement({ holder: holder.id, from: code, to: code, qty: amount, event: 'labelled', by: actor });
+      const label = this._printPlate(holder, { itemNo: item && item.itemNo, itemName: item && item.name, batch, expiry, qty: amount, location: code });
+      this.log(`${holder.id} issued for ${item ? item.itemNo : 'stock'} × ${amount}`);
+      return { holder, label };
+    };
+
+    proto._printPlate = function (holder, extra) {
+      const data = {
+        kind: holder.series === 'MASTER' ? 'master' : 'pallet',
+        plate: holder.id, series: holder.series, sscc: extra.sscc || holder.sscc || null,
+        title: holder.id, itemNo: extra.itemNo || null, itemName: extra.itemName || holder.series,
+        batch: extra.batch || '', expiry: extra.expiry || '', qty: extra.qty, location: extra.location || holder.loc,
+        children: extra.children || (holder.children || []).map((id) => ({ plate: id })),
+      };
+      const zpl = Labels.licenseLabel(data);
+      const record = { id: ++this._seq.label, kind: data.kind, plate: holder.id, sscc: data.sscc, at: this.now(), printer: 'SIM', data, zpl };
+      this.labelLog = this.labelLog || [];
+      this.labelLog.unshift(record);
+      if (this.labelLog.length > 100) this.labelLog.length = 100;
+      this.printQueue.unshift({ id: record.id, printer: 'SIM', at: record.at, label: data, zpl });
+      if (this.printQueue.length > 50) this.printQueue.length = 50;
+      return record;
+    };
+
+    /**
+     * Put two or more PAL plates under one MASTER that already exists.
+     * The earliest MASTER (lowest sequence number) survives unless `master` names
+     * another MASTER that already parents one of these PAL plates. Every other
+     * source MASTER is retired. Its number is not reused.
+     */
+    proto.consolidate = function ({ pals, at, master = null, by } = {}) {
+      const code = this.resolve(at);
+      const loc = this._loc(code);
+      if (loc.kind !== 'virtual') throw new Error('Consolidate at a virtual location such as CONSO00');
+      const ids = (pals || []).map((id) => String(id).trim().toUpperCase());
+      if (ids.length < 2) throw new Error('Consolidation needs at least two PAL labels');
+      const plates = ids.map((id) => this._holder(id));
+      if (plates.some((h) => h.series !== 'PAL')) throw new Error('Only PAL labels are consolidated under a MASTER');
+      const actor = by || this._actor || 'office';
+      const parents = [];
+      for (const pal of plates) {
+        const current = pal.parentId && this.holders[pal.parentId];
+        if (!current || current.series !== 'MASTER') throw new Error(`${pal.id} has no MASTER plate to reuse`);
+        if (current.status === 'retired') throw new Error(`${current.id} is retired`);
+        if (!parents.some((p) => p.id === current.id)) parents.push(current);
+      }
+      let parent;
+      if (master) {
+        parent = this._holder(String(master).trim().toUpperCase());
+        if (parent.series !== 'MASTER') throw new Error('The parent label is a MASTER');
+        if (parent.status === 'retired') throw new Error(`${parent.id} is retired`);
+        if (!parents.some((p) => p.id === parent.id)) throw new Error('Choose a MASTER that already parents one of these PAL plates');
+      } else {
+        parent = parents.slice().sort((a, b) => a.seq - b.seq || a.createdAt - b.createdAt)[0];
+      }
+      for (const old of parents) {
+        if (old.id === parent.id) continue;
+        old.children = (old.children || []).filter((id) => !ids.includes(id));
+        old.status = 'retired';
+        old.retiredAt = this.now();
+        old.retiredBy = actor;
+        old.supersededBy = parent.id;
+        this.recordMovement({ holder: old.id, from: old.loc, to: code, qty: null, event: 'retired', by: actor, note: `Closed. Stock continues under ${parent.id}` });
+      }
+      const parentFrom = parent.loc;
+      parent.children = parent.children || [];
+      for (const pal of plates) {
+        const from = pal.loc;
+        pal.parentId = parent.id;
+        if (!parent.children.includes(pal.id)) parent.children.push(pal.id);
+        pal.loc = code;
+        const sscc = pal.sscc || (pal.contents[0] && pal.contents[0].sscc);
+        const qty = pal.contents[0] ? pal.contents[0].qty : null;
+        if (sscc && this.pallets[sscc] && this.pallets[sscc].loc !== code) {
+          this.pallets[sscc].masterId = parent.id;
+          const moved = this.transferPallet(sscc, code, { by: actor });
+          if (!moved.ok) throw new Error(moved.text);
+        } else if (sscc && this.pallets[sscc]) this.pallets[sscc].masterId = parent.id;
+        this.recordMovement({ holder: pal.id, sscc: sscc || null, from, to: code, qty, event: 'consolidated', by: actor, note: parent.id });
+      }
+      parent.loc = code;
+      this.recordMovement({ holder: parent.id, from: parentFrom, to: code, qty: plates.length, event: 'consolidated', by: actor, note: plates.map((p) => p.id).join(', ') });
+      this.log(`Consolidated ${plates.map((p) => p.id).join(', ')} under ${parent.id} at ${code}`);
+      return { master: parent, pals: plates, at: code };
+    };
+
+    proto.pickHolder = function ({ id, by } = {}) {
+      const holder = this._holder(id);
+      const loc = holder.loc && this.locations[holder.loc];
+      if (!loc || loc.kind !== 'mezzanine') throw new Error(`${holder.id} is not standing on a mezzanine location`);
+      const qty = holder.contents[0] ? holder.contents[0].qty : null;
+      this.recordMovement({ holder: holder.id, sscc: holder.sscc || null, from: holder.loc, to: null, qty, event: 'picked', by: by || this._actor || 'operator' });
+      this.log(`Mezzanine pick ${holder.id} from ${holder.loc}`);
+      return holder;
+    };
+
+    proto.movementsFor = function ({ user = null, holder = null } = {}) {
+      return (this.movements || []).filter((m) => (!user || m.by === user) && (!holder || m.holder === String(holder).toUpperCase() || m.sscc === holder)).slice(0, 500);
+    };
+
+    proto.setTechnical = function (patch) {
+      this.technical = this.technical || { autoSort: {}, locationDefaults: {} };
+      if (patch.autoSort) {
+        const strategy = patch.autoSort.strategy || this.technical.autoSort.strategy || 'fefo';
+        if (!['fefo', 'fifo', 'nearest'].includes(strategy)) throw new Error('Auto-sort strategy is fefo, fifo or nearest');
+        const rules = patch.autoSort.rules == null ? this.technical.autoSort.rules : patch.autoSort.rules;
+        if (!Array.isArray(rules)) throw new Error('Auto-sort rules are a list');
+        this.technical.autoSort = {
+          enabled: patch.autoSort.enabled == null ? this.technical.autoSort.enabled !== false : Boolean(patch.autoSort.enabled),
+          strategy,
+          sameBatchTogether: patch.autoSort.sameBatchTogether == null ? this.technical.autoSort.sameBatchTogether !== false : Boolean(patch.autoSort.sameBatchTogether),
+          groundForNextOut: patch.autoSort.groundForNextOut == null ? this.technical.autoSort.groundForNextOut !== false : Boolean(patch.autoSort.groundForNextOut),
+          rules,
+        };
+      }
+      if (patch.locationDefaults) {
+        this.technical.locationDefaults = { ...(this.technical.locationDefaults || {}), ...patch.locationDefaults };
+      }
+      if (patch.holderSeries) this.setHolderSeries(patch.holderSeries);
+      this.log('Technical settings updated');
+      return this.technical;
+    };
+
+    proto.addKit = function ({ id, name, base, components }) {
+      if (!id || !name) throw new Error('A kit needs an id and a name');
+      if (!base || !base.itemNo || !this.items[base.itemNo]) throw new Error('Kit base item is unknown');
+      if (!Array.isArray(components) || !components.length) throw new Error('A kit needs components');
+      for (const c of components) {
+        if (!this.items[c.itemNo]) throw new Error(`Unknown component ${c.itemNo}`);
+        if (!Number.isInteger(Number(c.qty)) || Number(c.qty) < 1) throw new Error('Component quantity must be a whole number above 0');
+      }
+      this.kits[id] = { id, name, base: { itemNo: base.itemNo, qty: Number(base.qty || 1) }, components: components.map((c) => ({ itemNo: c.itemNo, qty: Number(c.qty) })) };
+      this.log(`Kit ${id} ${name}`);
+      return this.kits[id];
+    };
+
+    proto.addValStation = function ({ id, name, kitId }) {
+      if (!this.kits[kitId]) throw new Error(`Unknown kit ${kitId}`);
+      if (this.valStations.some((s) => s.id === id)) throw new Error(`VAL station ${id} already exists`);
+      const station = { id, name: name || id, kitId };
+      this.valStations.push(station);
+      return station;
+    };
+
+    proto.startVal = function ({ stationId, by } = {}) {
+      const station = this.valStations.find((s) => s.id === stationId);
+      if (!station) throw new Error(`Unknown kitting station ${stationId}`);
+      const kit = this.kits[station.kitId];
+      const job = {
+        id: (this.valJobs[0] ? this.valJobs[0].id : 0) + 1, stationId, kitId: kit.id, kitName: kit.name,
+        need: [{ itemNo: kit.base.itemNo, qty: kit.base.qty, role: 'base' }, ...kit.components.map((c) => ({ itemNo: c.itemNo, qty: c.qty, role: 'component' }))],
+        got: [], status: 'open', startedAt: this.now(), by: by || this._actor || 'operator',
+      };
+      this.valJobs.unshift(job);
+      if (this.valJobs.length > 100) this.valJobs.length = 100;
+      this.log(`Kitting ${kit.name} started at ${stationId}`);
+      return job;
+    };
+
+    proto.scanVal = function ({ stationId, code, by } = {}) {
+      const job = this.valJobs.find((j) => j.stationId === stationId && j.status === 'open');
+      if (!job) throw new Error(`No open kitting job at ${stationId}`);
+      const raw = String(code || '').trim();
+      const holder = this.holders && this.holders[raw.toUpperCase()];
+      const item = this.findItem(raw) || (holder && holder.contents[0] && this.items[holder.contents[0].itemNo]);
+      if (!item) throw new Error(`${code} is not a component or a license plate`);
+      const line = job.need.find((n) => job.got.filter((g) => g.itemNo === n.itemNo).length < n.qty);
+      if (!line || line.itemNo !== item.itemNo) throw new Error(`${item.itemNo} is not the next scan for this kit`);
+      const actor = by || this._actor || 'operator';
+      job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role });
+      if (holder) this.recordMovement({ holder: holder.id, from: holder.loc, to: stationId, qty: 1, event: line.role === 'base' ? 'received' : 'moved', by: actor, note: `Kit ${job.kitId}` });
+      const done = job.need.every((n) => job.got.filter((g) => g.itemNo === n.itemNo).length >= n.qty);
+      if (done) job.status = 'done';
+      this.log(`${stationId}: scanned ${item.itemNo}${done ? ', kit complete' : ''}`);
+      return job;
     };
 
     proto.issueLabel = function (spec) {
@@ -509,10 +794,17 @@
       const record = (this.labelLog || []).find((r) => String(r.id) === String(id));
       if (!record) throw new Error(`No label ${id}`);
       const d = record.data;
-      const lines = d.kind === 'master'
-        ? [['SSCC', `(00) ${d.sscc}`], ['Title', d.title || ''], ['Order', d.orderId || ''], ['Units', String((d.children || []).length)]]
-        : [['SSCC', `(00) ${d.sscc}`], ['Item', `${d.itemNo || ''} ${d.itemName || ''}`], ['Batch', d.batch || ''], ['Best before', d.expiry || ''], ['Qty', d.qty == null ? '' : String(d.qty)], ['Client', d.client || ''], ['GTIN', d.gtin || ''], ['Location', d.location || '']];
-      const html = Labels.labelHtml({ ...d, lines: lines.filter(([, v]) => v), barcodeSvg: barcodeSvg(`00${d.sscc}`) });
+      const lines = [
+        d.plate ? ['License plate', d.plate] : null,
+        d.sscc ? ['SSCC', `(00) ${d.sscc}`] : null,
+        ['Item', `${d.itemNo || ''} ${d.itemName || d.title || ''}`],
+        d.batch ? ['Batch', d.batch] : null,
+        d.expiry ? ['Best before', d.expiry] : null,
+        d.qty == null || d.qty === '' ? null : ['Qty', String(d.qty)],
+        d.location ? ['Location', d.location] : null,
+        d.orderId ? ['Order', d.orderId] : null,
+      ].filter(Boolean);
+      const html = Labels.labelHtml({ ...d, lines: lines.filter(([, v]) => v), barcodeSvg: d.plate ? barcodeSvg(d.plate, false) : barcodeSvg(`00${d.sscc}`, true) });
       return { ...record, html };
     };
 
@@ -628,6 +920,69 @@
       truck.operator = operator ? String(operator).trim() : null;
       this.log(`${truckId} assigned to ${truck.operator || 'nobody'}`);
       return truck;
+    };
+
+    function loadLocations() {
+      if (typeof require === 'function') {
+        try { return require('./locations'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedLocations;
+    }
+
+    function loadPresets() {
+      if (typeof require === 'function') {
+        try { return require('./presets'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedPresets;
+    }
+
+    proto.applyPreset = function (id) {
+      const { PRESETS } = loadPresets();
+      const preset = PRESETS.find((p) => p.id === id);
+      if (!preset) throw new Error('Unknown warehouse preset');
+      this.features = { ...preset.features };
+      for (const [code, name] of Object.entries(preset.categories || {})) if (!this.categories[code]) this.categories[code] = name;
+      this.setup = {
+        ...(this.setup || {}), preset: preset.id, features: { ...this.features },
+        locationPlan: preset.locationPlan, virtualSuggested: preset.virtual || [],
+        updatedAt: this.now(), updatedBy: this._actor || 'admin',
+      };
+      this.log(`Warehouse preset ${preset.name}`);
+      return { id: preset.id, name: preset.name, summary: preset.summary, features: this.features, locationPlan: preset.locationPlan, virtual: preset.virtual || [], categories: preset.categories };
+    };
+
+    proto.setFeatures = function (patch) {
+      const allowed = ['temperatureZones', 'lotExpiry', 'fefo', 'highValueSecurity'];
+      this.features = { ...(this.features || {}) };
+      for (const key of allowed) if (key in (patch || {})) this.features[key] = Boolean(patch[key]);
+      if (this.features.fefo && !this.features.lotExpiry) throw new Error('FEFO needs lot and expiry to be on');
+      this.setup = { ...(this.setup || {}), features: { ...this.features }, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
+      this.log('Category features updated');
+      return this.features;
+    };
+
+    proto.generateLocations = function (plan, options = {}) {
+      const { expand } = loadLocations();
+      const built = expand(plan);
+      const kind = options.kind || 'bin';
+      const cap = options.capacity || {};
+      let created = 0;
+      const sample = [];
+      for (const code of built.codes) {
+        if (this.locations[code]) continue;
+        this.createLocation({ code, kind, name: code, preserveCase: true, heightMm: cap.heightMm, widthMm: cap.widthMm, depthMm: cap.depthMm, maxWeightKg: cap.maxWeightKg });
+        created++;
+        if (sample.length < 8) sample.push(code);
+      }
+      this.setup = { ...(this.setup || {}), locationPlan: plan, generated: ((this.setup && this.setup.generated) || 0) + created, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
+      this.log(`Generated ${created} locations`);
+      return { created, skipped: built.total - created, total: built.total, sample, sampleCode: built.sampleCode };
+    };
+
+    proto.completeSetup = function () {
+      this.setup = { ...(this.setup || {}), completed: true, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
+      this.log('Setup wizard saved');
+      return this.setup;
     };
 
     proto.search = function (q) {
