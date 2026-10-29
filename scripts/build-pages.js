@@ -56,7 +56,7 @@ ${body.trim()}
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
-for (const f of ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'foundation.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
+for (const f of ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
 }
 fs.copyFileSync(path.join(root, 'walkthrough.html'), path.join(out, 'walkthrough.html'));
@@ -64,17 +64,18 @@ fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out,
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 
 // The WMS screens with the in-browser backend loaded before their own script.
-const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
+const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
 fs.mkdirSync(path.join(out, 'server'), { recursive: true });
 for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.example.json')) {
   fs.copyFileSync(path.join(root, f), path.join(out, f));
 }
 const tags = LOCAL.map((f) => `<script src="${f}"></script>`).join('\n');
-for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'admin.html'], ['loading.html', 'loading.html'], ['try.html', 'wms.html'], ['kit.html', 'kit.html'], ['station.html', 'station.html'], ['desk.html', 'desk.html']]) {
+for (const [from, to] of [['handheld.html', 'handheld.html'], ['admin.html', 'admin.html'], ['loading.html', 'loading.html'], ['try.html', 'wms.html'], ['kit.html', 'kit.html'], ['station.html', 'station.html'], ['desk.html', 'desk.html'], ['app.html', 'app.html'], ['login.html', 'login.html']]) {
   const src = fs.readFileSync(path.join(root, 'server', 'public', from), 'utf8');
   const i = src.indexOf('<script>');
   if (i === -1) throw new Error(`${from}: expected a <script> block`);
-  fs.writeFileSync(path.join(out, to), `${src.slice(0, i)}${tags}\n${src.slice(i)}`);
+  const boot = to === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${tags}\n` : `${tags}\n`;
+  fs.writeFileSync(path.join(out, to), `${src.slice(0, i)}${boot}${src.slice(i)}`);
 }
 
 // The SOP manual, rendered from docs/SOP.md and docs/WORKFLOW-REVIEW.md.
