@@ -160,7 +160,8 @@
       const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
       return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
         <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button class="primary">Replenish</button></form>
-        <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><button>Consolidate under a new MASTER</button></form></section>`;
+        <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><label>Keep MASTER<input name="master" placeholder="blank = earliest"></label><button>Consolidate</button></form>
+        <p class="hint">The earliest MASTER survives unless you name another MASTER already on these pallets. The other MASTER plates are retired and their numbers are not reused.</p></section>`;
     },
     async sort() {
       const tech = await api('GET', '/api/technical');
@@ -543,7 +544,7 @@
     if (name === 'issue-plates') return api('POST', '/api/holders/issue', { sscc: data.sscc });
     if (name === 'issue-series') return api('POST', '/api/holders/series', { series: data.series, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'replenish') return api('POST', '/api/replenish', data);
-    if (name === 'consolidate') return api('POST', '/api/consolidate', { pals: String(data.pals || '').split(/\s+/).filter(Boolean), at: data.at });
+    if (name === 'consolidate') return api('POST', '/api/consolidate', { pals: String(data.pals || '').split(/\s+/).filter(Boolean), at: data.at, master: data.master || null });
     if (name === 'val-start') return api('POST', '/api/val/start', data);
     if (name === 'val-scan') return api('POST', '/api/val/scan', data);
     if (name === 'tech-sort') {

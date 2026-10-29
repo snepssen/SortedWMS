@@ -162,7 +162,7 @@
     state = data;
     document.getElementById('who').textContent = data.setup && data.setup.preset ? 'Preset ' + data.setup.preset : 'Not finished yet';
     document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
-    document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] !== false ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
+    document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
     document.getElementById('examples').innerHTML = data.examples.map((ex) => `<div class="ex"><div><b>${esc(ex.title)}</b><div class="hint">${esc(ex.blurb)}</div></div><code>${esc(ex.preview.sampleCode)}</code><button type="button" data-example="${esc(ex.id)}">Use this</button></div>`).join('');
     const chosen = data.examples.find((ex) => ex.id === 'numbers');
     fillPlan((data.setup && data.setup.locationPlan) || (chosen && chosen.plan));

@@ -10,6 +10,7 @@ const T0 = Date.UTC(2026, 9, 7, 6, 0); // 7 Oct 2026
 function setup(config = {}) {
   let t = T0;
   const wh = new Warehouse({ aisles: 4, bays: 6, levels: 3, positions: 3, outLanes: 2, clock: () => t, config: { groundNextPerItem: 0, ...config } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Greek yoghurt', category: 'YOG', palletQty: 96, minShipDays: 10 });
   wh.addItem({ itemNo: 'Y2', gtin: GS1.makeGtin13('20000', 2), name: 'Vanilla quark', category: 'YOG', palletQty: 120, minShipDays: 10 });
   wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Young gouda', category: 'CHE', palletQty: 80, minShipDays: 30 });
@@ -288,6 +289,7 @@ test('a driver can start an Auto-Shift, but only in their own categories', () =>
 
 test('real location codes: aisle 38, odd bays one side, even the other, positions 10/40/70', () => {
   const wh = new Warehouse({ aisles: [37, 38], bays: 20, levels: 5, clock: () => T0 });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   const loc = wh.locations['38-02-0-10'];
   assert.deepEqual([loc.aisle, loc.bay, loc.level, loc.pos, loc.side], ['38', 2, 0, 10, 'even']);
   assert.equal(wh.locations['38-01-4-70'].side, 'odd');
@@ -298,6 +300,7 @@ test('real location codes: aisle 38, odd bays one side, even the other, position
 
 test('one-way aisles: a bay behind the truck means driving round', () => {
   const wh = new Warehouse({ aisles: [31, 32, 33], bays: 20, levels: 5, clock: () => T0, config: { oneWay: true } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   // 31 enters from the front, 32 from the back, 33 from the front.
   assert.equal(wh.travel('31-05-0-10', '31-09-0-10'), 2, 'ahead in the same aisle');
   assert.ok(wh.travel('31-09-0-10', '31-05-0-10') > 10, 'behind: out the back and round');
@@ -308,6 +311,7 @@ test('one-way aisles: a bay behind the truck means driving round', () => {
 test('one-way aisles change which job is nearest, and the handheld says where to enter', () => {
   let t = T0;
   const wh = new Warehouse({ aisles: [31, 32], bays: 20, levels: 5, clock: () => t, config: { oneWay: true, groundNextPerItem: 0, checkAfterPick: false } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 96 });
   wh.setLocationCategory({ aisle: 31 }, 'YOG');
   wh.setLocationCategory({ aisle: 32 }, 'YOG');
@@ -374,6 +378,7 @@ test('label and delivery list disagreeing is caught', () => {
 
 test('proposed names: cell + rack letter, bay front to back, level letter, position 1–3', () => {
   const wh = new Warehouse({ aisles: [31, 32, 33, 34, 35, 36, 37, 38], bays: 20, levels: 5, clock: () => T0 });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   assert.equal(wh.rowName('31-05-2-40'), 'AA03C2', 'cell A, rack A, bay 03, level C, position 2');
   assert.equal(wh.rowName('31-13-0-10'), 'AA07A1');
   assert.equal(wh.rowName('31-14-0-10'), 'AB07A1', 'the facing rack has the same bay number');

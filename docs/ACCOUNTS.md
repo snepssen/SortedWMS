@@ -6,6 +6,8 @@ The server signs people in. The guided shift in the browser (`index.html`, GitHu
 
 An administrator opens `/setup` after the first sign-in, and can open it again later. The wizard asks for a warehouse preset, which category features are on, and how locations are named. The hierarchy is Cell, Aisle, Bay, Position, Height. Skip a level the building does not have. Numbers, letters, letters-and-numbers, and words are all text. A colour is a word such as Red.
 
+A new warehouse starts with temperature zones, lot and expiry, FEFO, and high-value plates off. Choosing a preset turns on the set that preset carries. The chilled distribution centre preset turns on temperature, lot, expiry and FEFO, and leaves high-value plates off. The high-value preset turns PAL and MASTER plates on. The example site applies `chilled-dc` and then sets `highValueSecurity`, so the demo seed can still issue plates. Unset flags stay off.
+
 Worked examples the wizard can load:
 
 - `01-03-12-2-04`
@@ -72,9 +74,9 @@ An administrator edits a role under **Roles**. The last active administrator can
 - A **client** is the owner of the goods (Dairy Co, Noord Kaas, Pulse Drinks, and a kitting demo in the example). Archiving blocks new items, receipts and orders for that owner. Stock already in the building stays.
 - An **item** has a unit of measure, pallet quantity, optional GTIN / barcodes, and length, width, height and weight of the stored unit (one pallet). Remove is refused once the item has stock, an order or a holder line; archive it instead.
 - A **location** can be a zone, aisle, rack, level, bin, mezzanine pick face, block lane, or a **virtual** location. Virtual roles are consolidation (`CONSO00`, the `conso00` example) and staging (`STAGE01`). Capacity is height, width, depth (millimetres) and maximum weight (kilograms). Footprint may rotate; height may not. Missing numbers are not treated as zero. Codes are stored in uppercase.
-- A **license plate** is the holder. The series are `PAL` (full pallet), `MASTER` (the parent label), `ST` (stock), `INB` (inbound) and `OUT` (outbound). The id is the prefix plus a zero-padded counter, default `PAL0000001`. The counter never goes backwards, so a number is not reused. ST, INB and OUT track lower-value quantities. A received full pallet is issued both a PAL and a MASTER, with that PAL under the MASTER.
-- **Consolidation** at a virtual location such as `CONSO00` places two or more PAL plates under one MASTER. The previous parent is kept on the history. That parent/child link is the record; the printed master label leads with the MASTER id and can also show the PAL ids.
-- A **movement** stores the person, the plate, from-location, to-location, time, quantity and the event (`received`, `labelled`, `moved`, `consolidated`, `picked`, `shipped`). Managers open this under History.
+- A **license plate** is the holder. The series are `PAL` (full pallet), `MASTER` (the parent label), `ST` (stock), `INB` (inbound) and `OUT` (outbound). The id is the prefix plus a zero-padded counter, default `PAL0000001`. Each warehouse keeps its own counters. A counter only moves forward, so a number stays retired once it has been issued. ST, INB and OUT track lower-value quantities and work with high-value plates off. A received full pallet is issued both a PAL and a MASTER when high-value plates are on, with that PAL under the MASTER.
+- **Consolidation** at a virtual location such as `CONSO00` keeps one MASTER that already parents the PAL plates in the move. The earliest MASTER, by sequence number, survives. The consolidation step can name another of those MASTER plates and that one survives instead. Every other source MASTER is closed: status `retired`, `supersededBy` the survivor, and a `retired` movement. The surviving plate is one of the MASTER numbers already on the pallets. A retired number stays retired. A PAL with no MASTER, or a MASTER that does not already parent one of these PAL plates, is refused. The printed MASTER label lists the child PAL numbers under the MASTER id. An SSCC can still be printed as a second barcode.
+- A **movement** stores the person, the plate, from-location, to-location, time, quantity and the event (`received`, `labelled`, `moved`, `consolidated`, `retired`, `picked`, `shipped`). Managers open this under History.
 - **Labels** barcode the plate id. An SSCC is an optional second barcode. ZPL is the printer payload. `/api/labels/:id/html` is the page you print or save as PDF.
 - **Kitting** is a bill of materials on a VAL station. The demo kit is a laptop plus an EU power plug: scan the base, then the component.
 
@@ -82,7 +84,6 @@ An administrator edits a role under **Roles**. The last active administrator can
 
 - The static Pages demo does not sign in.
 - No password-reset email, no second factor, and no roles beyond these six.
-- Whether a printed MASTER label should hide the child PAL numbers (the relationship stays in the system either way) is still an open choice. The label currently shows them.
 - No ERP or EDI connection. Orders and stock still come in through the API or CSV.
 - Packing is a note plus the existing check-and-label step, not a carton-level pack bench.
 - Replenishment creates one move to a rack or bin. It does not keep a min/max on every pick face.

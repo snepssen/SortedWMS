@@ -281,9 +281,8 @@
       this.kits = {};
       this.valStations = [];
       this.valJobs = [];
-      // Category features default on so the existing food rules keep working.
-      // A preset or the setup wizard turns off the ones a site does not need.
-      this.features = { temperatureZones: true, lotExpiry: true, fefo: true, highValueSecurity: true };
+      // A fresh warehouse has every category feature off. A preset or the setup wizard turns on the ones this site uses.
+      this.features = { temperatureZones: false, lotExpiry: false, fefo: false, highValueSecurity: false };
       this.setup = { completed: false, preset: null };
       this.stations = {};
       this.routes = {};
@@ -576,10 +575,10 @@
      * Can this pallet ship today? 'ok', 'short' (fewer days left than the
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
-    /** Missing feature flags stay on, so a warehouse created before presets still uses FEFO and expiry. */
+    /** A fresh warehouse has every category feature off. A preset or the setup wizard turns them on. */
     feature(name) {
       const flags = this.features;
-      if (!flags || flags[name] == null) return true;
+      if (!flags || flags[name] == null) return false;
       return Boolean(flags[name]);
     }
 
@@ -2339,7 +2338,7 @@
       wh.valJobs = wh.valJobs || [];
       wh.holderSeries = wh.holderSeries || { PAL: { prefix: 'PAL', pad: 7, next: 1 }, MASTER: { prefix: 'MASTER', pad: 7, next: 1 }, ST: { prefix: 'ST', pad: 7, next: 1 }, INB: { prefix: 'INB', pad: 7, next: 1 }, OUT: { prefix: 'OUT', pad: 7, next: 1 } };
       wh.technical = wh.technical || { autoSort: { enabled: true, strategy: 'fefo', sameBatchTogether: true, groundForNextOut: true, rules: [] }, locationDefaults: {} };
-      wh.features = wh.features || { temperatureZones: true, lotExpiry: true, fefo: true, highValueSecurity: true };
+      wh.features = wh.features || { temperatureZones: false, lotExpiry: false, fefo: false, highValueSecurity: false };
       wh.setup = wh.setup || { completed: false, preset: null };
       if (!wh._seq) wh._seq = { task: 0, sscc: 0, label: 0, fault: 0, maint: 0 };
       if (wh._seq.fault == null) wh._seq.fault = 0;

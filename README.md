@@ -1,6 +1,6 @@
 # SortedWMS
 
-A warehouse system for whoever is deploying it: a distribution centre, a high-value store, a home garage, or a small maker. Food rules (temperature zones, lot, expiry, FEFO) and high-value PAL/MASTER plates are switches, not assumptions. The chilled reach-truck warehouse is one sample preset, not the only shape the software can take.
+A warehouse system for whoever is deploying it: a distribution centre, a high-value store, a home garage, or a small maker. A fresh warehouse has temperature zones, lot and expiry, FEFO, and high-value PAL/MASTER plates turned off. A preset turns on the ones that building uses. The chilled reach-truck warehouse is one sample preset.
 
 **Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. An administrator builds the building in the [setup wizard](http://localhost:8080/setup): pick a preset, turn features on or off, and generate location codes. Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
@@ -199,7 +199,7 @@ The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer
 
 Codes run **Cell > Aisle > Bay > Position > Height**. Any of those levels can be left out, so a garage can be only Bay > Height. Each level is numbers (`01-03-12-2-04`), letters and numbers (`A-03-B12-2-D`), or words (`Garage-Left-Shelf3-Box2-Top`). A colour is the word Red or Blue. The wizard shows a live preview, then creates the locations with default height, width, depth and weight capacity. Virtual locations such as `CONSO00` are added beside the physical ones.
 
-Presets: chilled distribution centre (including frozen as a zone), high-value, home garage, small maker.
+Presets: chilled distribution centre (temperature, lot, expiry and FEFO on; frozen is a zone; high-value plates stay off), high-value (PAL and MASTER plates on), home garage, small maker. The demo site applies the chilled preset and then turns high-value plates on, so the sample labels still print.
 
 ## What the WMS adds
 
@@ -210,7 +210,7 @@ On top of the reach-truck rules already in `src/engine.js`:
 - **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
 - **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
 - **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation) and staging. Height, width, depth and weight capacity. A load that does not fit is refused.
-- **License plates.** `PAL`, `MASTER`, `ST`, `INB` and `OUT` plus a number that only increases (`PAL0000001`). A full pallet gets a PAL and a MASTER. Consolidation puts several PAL plates under one MASTER, with the previous link kept in the history. Prefix and padding are set by the technical role.
+- **License plates.** `PAL`, `MASTER`, `ST`, `INB` and `OUT` plus a number that only increases (`PAL0000001`). Each warehouse has its own counters. A full pallet gets a PAL and a MASTER when high-value plates are on. Consolidation keeps one MASTER that already parents those PAL plates: the earliest number, unless the operator names another of those MASTER plates. The other source MASTER plates are retired, the close is written into the history, and those numbers stay retired. The printed MASTER label lists the child PAL numbers. Prefix and padding are set by the technical role.
 - **Labels.** The plate id is the barcode. An SSCC / GS1-128 can be printed as well. ZPL, and HTML for the browser print dialog.
 - **Traceability.** Each movement stores the person, the plate, from, to, time and quantity. A manager can open a person's history or a plate's history.
 - **Floor flows already in the engine, now behind a permission:** ASN receiving, put-away, replenishment moves, FEFO picking, packing notes, shipping, cycle counts, quantity adjustments with a reason, search, and CSV stock export. The journal is still the audit trail.

@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['src/gs1.js', 'src/labels.js', 'src/foundation.js', 'src/engine.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
+const FILES = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/foundation.js', 'src/engine.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
 
 function browser(storage = new Map()) {
   const timers = [];

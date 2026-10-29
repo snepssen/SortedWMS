@@ -867,6 +867,7 @@ td .acts { display: flex; gap: 4px; }
     simNow = SHIFT_START - 30 * MIN;
     eta = {}; manual = {}; problemOpen = {}; incoming = {}; opStd = {}; truckSeq = 0; orderSeq = 4500; delSeq = 2040; labelSel = null;
     wh = new Warehouse({ aisles: AISLES, bays: BAYS, levels: LEVELS, positions: POS, outLanes: 4, blocks: BLOCKS, stations: STATIONS, clock: () => simNow, config: { oneWay: true } });
+    wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
     ITEMS.forEach(([itemNo, name, category, palletQty, minShipDays, , storage], i) => wh.addItem({ itemNo, name, category, palletQty, minShipDays, storage, gtin: GS1.makeGtin13('20012', 3000 + i) }));
     ROUTES.forEach((r) => wh.addRoute(r));
     wh.addDesk('DESK1', { name: 'Receiving desk' });

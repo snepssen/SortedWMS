@@ -1,6 +1,10 @@
 {
   "name": "Example chilled warehouse",
-  "_comment": "Example site. Replace with the real location table, items and printers. Read once, when the database is first created.",
+  "preset": "chilled-dc",
+  "features": {
+    "highValueSecurity": true
+  },
+  "_comment": "Example site. The chilled-dc preset turns temperature, lot, expiry and FEFO on. highValueSecurity is set afterwards so the demo can issue PAL and MASTER plates; the chilled preset itself leaves that off. Replace with the real location table, items and printers. Read once, when the database is first created.",
   "layout": {
     "aisles": [
       31,

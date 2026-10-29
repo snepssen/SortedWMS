@@ -9,6 +9,7 @@ const T0 = Date.UTC(2026, 9, 7, 6, 0);
 function setup() {
   let t = T0;
   const wh = new Warehouse({ aisles: 4, bays: 6, levels: 3, positions: 3, outLanes: 2, clock: () => t, config: { groundNextPerItem: 0 } });
+  wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Greek yoghurt', category: 'YOG', palletQty: 96 });
   wh.setLocationCategory({ aisle: 1 }, 'YOG');
   wh.setLocationCategory({ aisle: 2 }, 'YOG');

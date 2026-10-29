@@ -13,7 +13,7 @@
     ['temperatureZones', 'Temperature zones', 'Chill, frozen and ambient checks. Off for a garage or a dry goods room.'],
     ['lotExpiry', 'Lot and expiry', 'Batch numbers and best-before dates. Off when the goods do not expire.'],
     ['fefo', 'FEFO allocation', 'Ship the earliest expiry first. Needs lot and expiry. Off uses oldest receipt first.'],
-    ['highValueSecurity', 'High-value plates', 'A full pallet gets a PAL and a MASTER. Consolidation hides several PAL plates under one MASTER.'],
+    ['highValueSecurity', 'High-value plates', 'A full pallet gets a PAL and a MASTER. Consolidation keeps one of those MASTER plates and lists the PAL numbers on it.'],
   ];
 
   function plan(levels) {

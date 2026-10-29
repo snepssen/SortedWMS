@@ -37,6 +37,8 @@
     for (const m of site.maintenance || []) wh.recordMaintenance(m, 'setup');
     for (const kit of site.kits || []) wh.addKit(kit);
     for (const station of site.valStations || []) wh.addValStation(station);
+    if (site.preset) wh.applyPreset(site.preset);
+    if (site.features) wh.setFeatures(site.features);
     if (site.technical) wh.setTechnical(site.technical);
     for (const plate of site.licensePlates || []) wh.issueSeries({ ...plate, by: 'setup' });
     for (const [name, notes] of Object.entries(site.customers || {})) wh.setCustomerNotes(name, notes);

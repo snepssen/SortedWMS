@@ -580,8 +580,10 @@
     };
 
     /**
-     * Put two or more PAL plates under one MASTER at a virtual consolidation location.
-     * Previous parent links stay in the history.
+     * Put two or more PAL plates under one MASTER that already exists.
+     * The earliest MASTER (lowest sequence number) survives unless `master` names
+     * another MASTER that already parents one of these PAL plates. Every other
+     * source MASTER is retired. Its number is not reused.
      */
     proto.consolidate = function ({ pals, at, master = null, by } = {}) {
       const code = this.resolve(at);
@@ -592,24 +594,35 @@
       const plates = ids.map((id) => this._holder(id));
       if (plates.some((h) => h.series !== 'PAL')) throw new Error('Only PAL labels are consolidated under a MASTER');
       const actor = by || this._actor || 'office';
+      const parents = [];
+      for (const pal of plates) {
+        const current = pal.parentId && this.holders[pal.parentId];
+        if (!current || current.series !== 'MASTER') throw new Error(`${pal.id} has no MASTER plate to reuse`);
+        if (current.status === 'retired') throw new Error(`${current.id} is retired`);
+        if (!parents.some((p) => p.id === current.id)) parents.push(current);
+      }
       let parent;
       if (master) {
-        parent = this._holder(master);
+        parent = this._holder(String(master).trim().toUpperCase());
         if (parent.series !== 'MASTER') throw new Error('The parent label is a MASTER');
+        if (parent.status === 'retired') throw new Error(`${parent.id} is retired`);
+        if (!parents.some((p) => p.id === parent.id)) throw new Error('Choose a MASTER that already parents one of these PAL plates');
       } else {
-        parent = this._makePlate(this.allocatePlate('MASTER'), { type: 'master', loc: code, children: [] });
-        this.recordMovement({ holder: parent.id, from: null, to: code, qty: plates.length, event: 'labelled', by: actor, note: 'Consolidation master' });
+        parent = parents.slice().sort((a, b) => a.seq - b.seq || a.createdAt - b.createdAt)[0];
       }
+      for (const old of parents) {
+        if (old.id === parent.id) continue;
+        old.children = (old.children || []).filter((id) => !ids.includes(id));
+        old.status = 'retired';
+        old.retiredAt = this.now();
+        old.retiredBy = actor;
+        old.supersededBy = parent.id;
+        this.recordMovement({ holder: old.id, from: old.loc, to: code, qty: null, event: 'retired', by: actor, note: `Closed. Stock continues under ${parent.id}` });
+      }
+      const parentFrom = parent.loc;
       parent.children = parent.children || [];
       for (const pal of plates) {
-        const previous = pal.parentId;
         const from = pal.loc;
-        if (previous && previous !== parent.id && this.holders[previous]) {
-          const old = this.holders[previous];
-          old.children = (old.children || []).filter((id) => id !== pal.id);
-          old.history = old.history || [];
-          old.history.unshift({ t: this.now(), by: actor, holder: old.id, from, to: code, qty: null, event: 'consolidated', note: `${pal.id} moved under ${parent.id}` });
-        }
         pal.parentId = parent.id;
         if (!parent.children.includes(pal.id)) parent.children.push(pal.id);
         pal.loc = code;
@@ -623,7 +636,7 @@
         this.recordMovement({ holder: pal.id, sscc: sscc || null, from, to: code, qty, event: 'consolidated', by: actor, note: parent.id });
       }
       parent.loc = code;
-      this.recordMovement({ holder: parent.id, from: parent.loc, to: code, qty: plates.length, event: 'consolidated', by: actor, note: plates.map((p) => p.id).join(', ') });
+      this.recordMovement({ holder: parent.id, from: parentFrom, to: code, qty: plates.length, event: 'consolidated', by: actor, note: plates.map((p) => p.id).join(', ') });
       this.log(`Consolidated ${plates.map((p) => p.id).join(', ')} under ${parent.id} at ${code}`);
       return { master: parent, pals: plates, at: code };
     };

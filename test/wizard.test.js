@@ -51,6 +51,10 @@ test('feature flags gate expiry, FEFO and high-value plates', () => {
   wh.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10, minShipDays: 10 });
   const old = wh.stockPallet('DOCK-IN', { itemNo: 'Y1', batch: 'A', expiry: '2020-01-01', receivedAt: 1 });
   const fresh = wh.stockPallet('01-01-0-10', { itemNo: 'Y1', batch: 'B', expiry: '2027-06-01', receivedAt: 2 });
+  assert.equal(wh.feature('lotExpiry'), false);
+  assert.equal(wh.feature('highValueSecurity'), false);
+  assert.equal(wh.shipState(old), 'ok', 'a fresh warehouse does not apply expiry');
+  wh.setFeatures({ lotExpiry: true, fefo: true, temperatureZones: true, highValueSecurity: true });
   assert.equal(wh.shipState(old), 'expired');
   assert.equal(wh._fefo('Y1')[0].sscc, fresh.sscc);
   wh.setFeatures({ lotExpiry: false, fefo: false, temperatureZones: false, highValueSecurity: false });
@@ -90,6 +94,11 @@ test('the setup wizard is admin-only and can be run again', async () => {
     assert.match(await page.text(), /Setup wizard/);
     const setup = await call('GET', '/api/setup', null, admin);
     assert.equal(setup.status, 200);
+    assert.equal(setup.body.setup.preset, 'chilled-dc');
+    assert.equal(setup.body.features.temperatureZones, true);
+    assert.equal(setup.body.features.lotExpiry, true);
+    assert.equal(setup.body.features.fefo, true);
+    assert.equal(setup.body.features.highValueSecurity, true);
     assert.equal(setup.body.examples.find((ex) => ex.id === 'words').preview.sampleCode, 'Garage-Left-Shelf3-Box2-Top');
     const applied = await call('POST', '/api/setup/preset', { id: 'home-garage' }, admin);
     assert.equal(applied.body.features.highValueSecurity, false);
