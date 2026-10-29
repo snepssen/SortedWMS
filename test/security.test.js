@@ -96,12 +96,23 @@ test('each warehouse keeps its own plate counter, and site access follows the us
     app.store.wh.addItem({ itemNo: 'MOVE1', name: 'Transfer box', category: 'YOG', palletQty: 4 });
     app.store.wh.stockPallet('DOCK-IN', { itemNo: 'MOVE1', batch: 'T', expiry: '2027-06-01', qty: 4 });
     const before = app.store.wh.holderSeries.ST.next;
+    const pallet = Object.values(app.store.wh.pallets).find((p) => p.itemNo === 'MOVE1');
     app.store.siteId = 'NORTH';
     app.store.exec('addItem', { itemNo: 'MOVE1', name: 'Transfer box', category: 'HOME', palletQty: 4 });
-    const moved = app.store.transferBetween({ from: 'MAIN', to: 'NORTH', itemNo: 'MOVE1', qty: 4, by: 'admin' });
+    const sent = app.store.startTransfer({ from: 'MAIN', to: 'NORTH', itemNo: 'MOVE1', qty: 4, id: 'TR1', by: 'admin' });
+    assert.equal(sent.status, 'in-transit');
+    assert.equal(app.store.wh.pallets[pallet.sscc].loc, 'IN-TRANSIT');
+    assert.equal(app.store.wh.holderSeries.ST.next, before);
+    const refused = app.store.cancelTransfer({ id: 'TR1', from: 'MAIN', by: 'admin' });
+    assert.equal(refused.status, 'cancelled');
+    assert.equal(app.store.wh.pallets[pallet.sscc].loc, 'DOCK-IN');
+    assert.equal(app.store.wh.pallets[pallet.sscc].status, 'available');
+    assert.equal(app.store.wh.holderSeries.ST.next, before);
+    app.store.startTransfer({ from: 'MAIN', to: 'NORTH', itemNo: 'MOVE1', qty: 4, id: 'TR2', by: 'admin' });
+    const moved = app.store.receiveTransfer({ id: 'TR2', from: 'MAIN', to: 'NORTH', by: 'admin' });
     assert.equal(moved.holder, 'ST0000001');
     assert.equal(app.store.warehouse('NORTH').holderSeries.ST.next, 2);
     assert.equal(app.store.wh.holderSeries.ST.next, before);
-    assert.equal(app.store.wh.pallets[Object.keys(app.store.wh.pallets).find((s) => app.store.wh.pallets[s].itemNo === 'MOVE1')].status, 'shipped');
+    assert.equal(app.store.wh.pallets[pallet.sscc].status, 'shipped');
   } finally { await app.close(); }
 });

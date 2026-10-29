@@ -178,8 +178,9 @@
       if (!Number.isInteger(maxN) || maxN < minN) throw new Error('Maximum must be a whole number at or above the minimum');
       const trig = trigger == null || trigger === '' ? minN : Number(trigger);
       if (!Number.isInteger(trig) || trig < minN || trig > maxN) throw new Error('The trigger sits between the minimum and the maximum');
-      loc.replenishment = { itemNo: item.itemNo, min: minN, max: maxN, trigger: trig };
-      this.log(`Pick face ${loc.code}: ${item.itemNo} min ${minN} trigger ${trig} max ${maxN}`);
+      const mode = arguments[0].mode === 'pallet' ? 'pallet' : 'units';
+      loc.replenishment = { itemNo: item.itemNo, min: minN, max: maxN, trigger: trig, mode };
+      this.log(`Pick face ${loc.code}: ${item.itemNo} min ${minN} trigger ${trig} max ${maxN} (${mode})`);
       return loc.replenishment;
     };
 
@@ -204,13 +205,61 @@
       for (const loc of Object.values(this.locations)) {
         const spec = loc.replenishment;
         if (!spec) continue;
-        if (this._faceQty(loc) > spec.trigger) continue;
+        const onHand = this._faceQty(loc);
+        if (onHand > spec.trigger) continue;
         const open = Object.values(this.tasks).some((t) => t.reason === 'replenish' && t.to === loc.code && t.status !== 'done' && t.status !== 'cancelled');
         if (open) continue;
-        try { created.push(this.replenish(spec.itemNo, loc.code, { topUp: true })); } catch (e) { /* no free pallet, or the face cannot take one */ }
+        const need = spec.max - onHand;
+        if (need < 1) continue;
+        try {
+          if (spec.mode === 'pallet') {
+            created.push(this.replenish(spec.itemNo, loc.code, { topUp: true }));
+            continue;
+          }
+          const source = this._fefo(spec.itemNo).find((p) => p.loc !== loc.code);
+          if (!source) continue;
+          if (source.qty <= need) {
+            created.push(this.replenish(spec.itemNo, loc.code, { topUp: true }));
+            continue;
+          }
+          const task = this._newTask({
+            type: 'SHIFT', reason: 'replenish', sscc: source.sscc, from: source.loc, to: loc.code,
+            category: this.items[spec.itemNo].category, splitQty: need,
+          });
+          loc.reservedBy = task.id;
+          this.log(`Replenish ${need} of ${spec.itemNo} → ${loc.code} split from …${source.sscc.slice(-6)}`, { taskId: task.id });
+          this.dispatch();
+          created.push(task);
+        } catch (e) { /* no free pallet, or the face cannot take one */ }
       }
       if (created.length) this.log(`${created.length} replenishment move(s) queued`);
       return created;
+    };
+
+    proto.applySplitDrop = function (truck, task) {
+      const pallet = this.pallets[truck.load];
+      const qty = Number(task.splitQty);
+      if (!pallet || !Number.isInteger(qty) || qty < 1 || pallet.qty <= qty) throw new Error('Split replenishment needs a source plate with more than the top-up');
+      const to = this.locations[task.to];
+      if (to && to.reservedBy === task.id) to.reservedBy = null;
+      const fromLoc = task.from;
+      pallet.qty -= qty;
+      this._place(pallet, fromLoc);
+      const minted = this.allocatePlate('ST');
+      const holder = this._makePlate(minted, {
+        type: 'st', loc: task.to, clientId: pallet.clientId || null,
+        contents: [{ itemNo: pallet.itemNo, qty, batch: pallet.batch, expiry: pallet.expiry, clientId: pallet.clientId || null }],
+      });
+      const actor = this._actor || truck.id;
+      this.recordMovement({ sscc: pallet.sscc, holder: pallet.holderId || null, from: fromLoc, to: fromLoc, qty: pallet.qty, event: 'moved', by: actor, note: `Split ${qty} onto ${holder.id}` });
+      this.recordMovement({ holder: holder.id, from: fromLoc, to: task.to, qty, event: 'moved', by: actor, note: 'replenishment' });
+      truck.load = null;
+      truck.position = task.to;
+      task.alert = null;
+      this._finish(truck, task);
+      this.log(`Top-up ${qty} of ${pallet.itemNo} at ${task.to} on ${holder.id}`);
+      this.dispatch();
+      return { task, holder, source: pallet };
     };
 
     proto.receiveReturn = function ({ id, orderId, itemNo, qty, loc = null, by } = {}) {
@@ -314,6 +363,307 @@
       this.recordMovement({ holder: holder.id, from: fromSite ? `SITE-${fromSite}` : null, to: loc, qty: amount, event: 'received', by: by || this._actor || 'office', note: fromSite || 'transfer' });
       this.log(`Received ${itemNo} × ${amount} from ${fromSite || 'a transfer'} as ${holder.id}`);
       return { holder, itemNo, qty: amount, batch, expiry, clientId, fromSite };
+    };
+
+    function htmlEscape(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    proto.stageShipment = function ({ orderId, truck = null, by } = {}) {
+      const order = this.orders[String(orderId)];
+      if (!order) throw new Error(`No order ${orderId}`);
+      if (order.status === 'shipped') throw new Error(`Order ${order.id} is shipped`);
+      const piece = order.lines.filter((l) => l.kind === 'each');
+      for (const line of piece) if ((line.picked || 0) < line.units) throw new Error(`Order ${order.id} still needs ${line.itemNo} picked`);
+      const holders = [];
+      for (const sscc of order.lines.flatMap((l) => l.allocated || [])) {
+        const pallet = this.pallets[sscc];
+        if (!pallet) throw new Error(`Missing pallet ${sscc}`);
+        holders.push({ kind: 'pallet', id: pallet.holderId || pallet.sscc, sscc: pallet.sscc, itemNo: pallet.itemNo, qty: pallet.qty, loc: pallet.loc, loaded: false });
+      }
+      const boxes = Object.values(this.holders || {}).filter((h) => h.orderId === order.id && h.series === 'OUT' && (h.cartonStatus === 'closed' || h.cartonStatus === 'staged'));
+      for (const line of piece) {
+        const packed = boxes.reduce((s, h) => s + (h.packed || []).filter((p) => p.itemNo === line.itemNo).reduce((n, p) => n + p.qty, 0), 0);
+        if (packed < line.units) throw new Error(`Order ${order.id} still needs ${line.itemNo} packed`);
+      }
+      for (const box of boxes) {
+        const qty = (box.packed || []).reduce((s, p) => s + p.qty, 0);
+        holders.push({ kind: 'carton', id: box.id, sscc: null, itemNo: box.packed[0] ? box.packed[0].itemNo : null, qty, loc: box.loc, loaded: false });
+        box.cartonStatus = 'staged';
+      }
+      if (!holders.length) throw new Error('Nothing to dispatch');
+      const actor = by || this._actor || 'office';
+      order.shipment = {
+        status: 'staged', lane: order.lane, truck: truck ? String(truck).slice(0, 40) : null,
+        holders, scans: [], stagedAt: this.now(), by: actor,
+      };
+      this.log(`Shipment for ${order.id} staged: ${holders.length} holder(s) on ${order.lane}`);
+      return order.shipment;
+    };
+
+    proto.scanShipment = function ({ orderId, code, by } = {}) {
+      const order = this.orders[String(orderId)];
+      if (!order || !order.shipment) throw new Error(`Order ${orderId} has no staged shipment`);
+      const ship = order.shipment;
+      if (ship.status === 'dispatched') throw new Error(`Order ${order.id} is already dispatched`);
+      const key = String(code || '').trim().toUpperCase();
+      if (!key) throw new Error('Scan a pallet or a carton');
+      const line = ship.holders.find((h) => h.id === key || h.sscc === key);
+      if (!line) throw new Error(`${key} is not on this load`);
+      if (line.loaded) throw new Error(`${key} is already confirmed`);
+      if (line.kind === 'pallet') {
+        const pallet = this.pallets[line.sscc];
+        if (!pallet || pallet.loc !== ship.lane) throw new Error(`${key} is not at ${ship.lane}`);
+      }
+      line.loaded = true;
+      line.loadedAt = this.now();
+      line.loadedBy = by || this._actor || 'office';
+      ship.scans.push({ code: key, t: line.loadedAt, by: line.loadedBy });
+      ship.status = ship.holders.every((h) => h.loaded) ? 'loaded' : 'staged';
+      this.recordMovement({ holder: line.kind === 'carton' ? line.id : null, sscc: line.sscc, from: line.loc, to: ship.lane, qty: line.qty, event: 'moved', by: line.loadedBy, note: `Load ${order.id}` });
+      this.log(`Loaded ${key} on ${order.id} (${ship.holders.filter((h) => h.loaded).length}/${ship.holders.length})`);
+      return ship;
+    };
+
+    proto.dispatchShipment = function ({ orderId, by } = {}) {
+      const order = this.orders[String(orderId)];
+      if (!order || !order.shipment) throw new Error(`Order ${orderId} has no staged shipment`);
+      const ship = order.shipment;
+      if (ship.status !== 'loaded') throw new Error('Confirm every pallet and carton before dispatch');
+      const actor = by || this._actor || 'office';
+      const shippedPallets = [];
+      for (const line of ship.holders.filter((h) => h.kind === 'pallet')) {
+        const pallet = this.pallets[line.sscc];
+        const fromLoc = pallet.loc;
+        this._remove(pallet);
+        pallet.status = 'shipped';
+        this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: fromLoc, to: null, qty: pallet.qty, event: 'shipped', by: actor, note: order.id });
+        shippedPallets.push({ sscc: pallet.sscc, itemNo: pallet.itemNo, qty: pallet.qty });
+      }
+      const shippedCartons = [];
+      for (const line of ship.holders.filter((h) => h.kind === 'carton')) {
+        const box = this.holders[line.id];
+        box.cartonStatus = 'shipped';
+        box.loc = ship.lane;
+        this.recordMovement({ holder: box.id, from: line.loc, to: ship.lane, qty: line.qty, event: 'shipped', by: actor, note: order.id });
+        shippedCartons.push(box.id);
+      }
+      ship.status = 'dispatched';
+      ship.dispatchedAt = this.now();
+      ship.dispatchedBy = actor;
+      order.status = 'shipped';
+      order.shippedAt = this.now();
+      const record = { orderId: order.id, customer: order.customer, t: this.now(), lane: ship.lane, truck: ship.truck, pallets: shippedPallets, cartons: shippedCartons, status: 'dispatched' };
+      (this.shipments = this.shipments || []).push(record);
+      this.log(`Order ${order.id} dispatched as one shipment`);
+      return ship;
+    };
+
+    proto.deliveryNote = function (orderId) {
+      const order = this.orders[String(orderId)];
+      if (!order || !order.shipment) throw new Error(`Order ${orderId} has no shipment`);
+      const ship = order.shipment;
+      const rows = ship.holders.map((h) => `<tr><td>${htmlEscape(h.kind)}</td><td>${htmlEscape(h.sscc || h.id)}</td><td>${htmlEscape(h.itemNo || '')}</td><td>${htmlEscape(h.qty)}</td><td>${h.loaded ? 'loaded' : 'staged'}</td></tr>`).join('');
+      return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Delivery note ${htmlEscape(order.id)}</title>
+        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}@media print{body{margin:12px}}</style></head>
+        <body><h1>Delivery note ${htmlEscape(order.id)}</h1><p>${htmlEscape(order.customer)} · lane ${htmlEscape(ship.lane)}${ship.truck ? ` · truck ${htmlEscape(ship.truck)}` : ''} · ${htmlEscape(ship.status)}</p>
+        <h2>Load manifest</h2><table><tr><th>Kind</th><th>Holder</th><th>Item</th><th>Qty</th><th>Load</th></tr>${rows}</table></body></html>`;
+    };
+
+    proto.ensureTransit = function () {
+      if (this.locations['IN-TRANSIT']) return this.locations['IN-TRANSIT'];
+      return this.createLocation({ code: 'IN-TRANSIT', kind: 'virtual', role: 'transit', name: 'In transit' });
+    };
+
+    proto.shipTransfer = function ({ id, itemNo, qty, toSite, fromSite = null, by } = {}) {
+      const amount = whole(qty, 'Transfer quantity');
+      const dest = String(toSite || '').trim().toUpperCase();
+      if (!dest) throw new Error('A destination warehouse is required');
+      const item = this.items[itemNo];
+      if (!item) throw new Error(`Unknown item ${itemNo}`);
+      const tid = String(id || '').trim().toUpperCase();
+      if (!/^[A-Z0-9][A-Z0-9_-]{0,23}$/.test(tid)) throw new Error('Transfer id uses letters, digits, hyphen or underscore');
+      this.siteTransfers = this.siteTransfers || {};
+      if (this.siteTransfers[tid]) throw new Error(`Transfer ${tid} already exists`);
+      this.ensureTransit();
+      const actor = by || this._actor || 'office';
+      const pallet = Object.values(this.pallets).find((p) => p.itemNo === itemNo && p.status !== 'shipped' && p.loc && p.loc !== 'IN-TRANSIT' && !p.orderId && p.qty === amount);
+      let record;
+      if (pallet) {
+        const from = pallet.loc;
+        this._remove(pallet);
+        this._place(pallet, 'IN-TRANSIT');
+        pallet.transitFrom = from;
+        record = { id: tid, itemNo, qty: amount, batch: pallet.batch, expiry: pallet.expiry, clientId: pallet.clientId || item.clientId || null, toSite: dest, fromSite: fromSite || 'MAIN', from, sscc: pallet.sscc, holderId: pallet.holderId || null, partial: false, status: 'in-transit', by: actor, t: this.now() };
+        this.recordMovement({ sscc: pallet.sscc, holder: pallet.holderId || null, from, to: 'IN-TRANSIT', qty: amount, event: 'transferred', by: actor, note: tid });
+      } else {
+        const holder = Object.values(this.holders || {}).find((h) => h.status !== 'retired' && h.status !== 'transferred' && !h.cartonStatus && h.loc !== 'IN-TRANSIT' && (h.contents || []).some((c) => c.itemNo === itemNo && Number(c.qty) >= amount));
+        if (!holder) throw new Error(`No ${itemNo} stock of ${amount} to transfer`);
+        const line = holder.contents.find((c) => c.itemNo === itemNo && Number(c.qty) >= amount);
+        const from = holder.loc;
+        if (Number(line.qty) === amount) {
+          holder.loc = 'IN-TRANSIT';
+          holder.transitFrom = from;
+          record = { id: tid, itemNo, qty: amount, batch: line.batch || null, expiry: line.expiry || null, clientId: holder.clientId || item.clientId || null, toSite: dest, fromSite: fromSite || 'MAIN', from, sscc: null, holderId: holder.id, partial: false, status: 'in-transit', by: actor, t: this.now() };
+        } else {
+          line.qty -= amount;
+          record = { id: tid, itemNo, qty: amount, batch: line.batch || null, expiry: line.expiry || null, clientId: holder.clientId || item.clientId || null, toSite: dest, fromSite: fromSite || 'MAIN', from, sscc: null, holderId: holder.id, partial: true, status: 'in-transit', by: actor, t: this.now() };
+        }
+        this.recordMovement({ holder: holder.id, from, to: 'IN-TRANSIT', qty: amount, event: 'transferred', by: actor, note: tid });
+      }
+      this.siteTransfers[tid] = record;
+      this.log(`Transfer ${tid} in transit to ${dest}: ${itemNo} × ${amount}`);
+      return record;
+    };
+
+    proto.cancelSiteTransfer = function ({ id, by } = {}) {
+      const tid = String(id || '').trim().toUpperCase();
+      const record = (this.siteTransfers || {})[tid];
+      if (!record) throw new Error(`Unknown transfer ${tid}`);
+      if (record.status !== 'in-transit') throw new Error(`Transfer ${tid} is ${record.status}`);
+      const actor = by || this._actor || 'office';
+      if (record.sscc) {
+        const pallet = this.pallets[record.sscc];
+        this._remove(pallet);
+        this._place(pallet, record.from);
+        delete pallet.transitFrom;
+      } else {
+        const holder = this.holders[record.holderId];
+        const line = (holder.contents || []).find((c) => c.itemNo === record.itemNo);
+        if (record.partial) line.qty += record.qty;
+        else holder.loc = record.from;
+      }
+      record.status = 'cancelled';
+      record.cancelledAt = this.now();
+      this.recordMovement({ sscc: record.sscc, holder: record.holderId, from: 'IN-TRANSIT', to: record.from, qty: record.qty, event: 'moved', by: actor, note: `${tid} refused` });
+      this.log(`Transfer ${tid} returned to ${record.from}`);
+      return record;
+    };
+
+    proto.completeSiteTransfer = function ({ id, by } = {}) {
+      const tid = String(id || '').trim().toUpperCase();
+      const record = (this.siteTransfers || {})[tid];
+      if (!record) throw new Error(`Unknown transfer ${tid}`);
+      if (record.status !== 'in-transit') throw new Error(`Transfer ${tid} is ${record.status}`);
+      if (record.sscc) {
+        const pallet = this.pallets[record.sscc];
+        this._remove(pallet);
+        pallet.status = 'shipped';
+        pallet.transferredTo = record.toSite;
+      } else if (!record.partial) {
+        const holder = this.holders[record.holderId];
+        holder.loc = null;
+        holder.status = 'transferred';
+      }
+      record.status = 'received';
+      record.receivedAt = this.now();
+      this.recordMovement({ sscc: record.sscc, holder: record.holderId, from: 'IN-TRANSIT', to: `SITE-${record.toSite}`, qty: record.qty, event: 'shipped', by: by || this._actor || 'office', note: tid });
+      this.log(`Transfer ${tid} received at ${record.toSite}`);
+      return record;
+    };
+
+    proto.receiveSiteTransfer = function (payload) {
+      return this.importStock(payload);
+    };
+
+    function tariffNumber(value, label) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
+      return n;
+    }
+
+    proto.setTariff = function (clientId, tariff = {}) {
+      const client = this._client(clientId);
+      const storageBasis = tariff.storageBasis || 'pallet-day';
+      const inboundBasis = tariff.inboundBasis || 'pallet';
+      const outboundBasis = tariff.outboundBasis || 'order';
+      if (!['pallet-day', 'location-day', 'm3-day'].includes(storageBasis)) throw new Error('Storage is charged per pallet-day, location-day or m3-day');
+      if (!['pallet', 'line'].includes(inboundBasis)) throw new Error('Inbound is charged per pallet or line');
+      if (!['order', 'line', 'carton'].includes(outboundBasis)) throw new Error('Outbound is charged per order, line or carton');
+      client.tariff = {
+        storageBasis, storageRate: tariffNumber(tariff.storageRate || 0, 'Storage rate'),
+        inboundBasis, inboundRate: tariffNumber(tariff.inboundRate || 0, 'Inbound rate'),
+        outboundBasis, outboundRate: tariffNumber(tariff.outboundRate || 0, 'Outbound rate'),
+        valRate: tariffNumber(tariff.valRate || 0, 'VAL rate'),
+        minimum: tariffNumber(tariff.minimum || 0, 'Minimum charge'),
+      };
+      this.log(`Tariff for ${client.id} updated`);
+      return client.tariff;
+    };
+
+    function inPeriod(t, from, to) {
+      if (from != null && t < from) return false;
+      if (to != null && t > to) return false;
+      return true;
+    }
+
+    proto.invoice = function ({ clientId, from = null, to = null } = {}) {
+      const client = this._client(clientId);
+      const tariff = client.tariff || {
+        storageBasis: 'pallet-day', storageRate: Number(client.storageRate) || 0,
+        inboundBasis: 'pallet', inboundRate: 0,
+        outboundBasis: 'order', outboundRate: Number(client.handlingRate) || 0,
+        valRate: 0, minimum: 0,
+      };
+      const start = from == null || from === '' ? null : (typeof from === 'number' ? from : Date.parse(`${from}T00:00:00Z`));
+      const end = to == null || to === '' ? null : (typeof to === 'number' ? to : Date.parse(`${to}T23:59:59Z`));
+      if (Number.isNaN(start) || Number.isNaN(end)) throw new Error('Use dates as YYYY-MM-DD');
+      const day = 86400000;
+      const now = this.now();
+      let palletDays = 0;
+      let locationDays = 0;
+      let cubicDays = 0;
+      let inboundPallets = 0;
+      for (const p of Object.values(this.pallets)) {
+        const owner = p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
+        if (owner !== client.id || !p.receivedAt) continue;
+        let stop = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
+        const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
+        const b = Math.min(stop, end == null ? stop : end);
+        const days = Math.max(0, (b - a) / day);
+        palletDays += days;
+        locationDays += days;
+        const item = this.items[p.itemNo];
+        if (item && item.lengthMm && item.widthMm && item.heightMm) cubicDays += days * (item.lengthMm * item.widthMm * item.heightMm) / 1e9;
+        if (inPeriod(p.receivedAt, start, end)) inboundPallets += 1;
+      }
+      const ownedMove = (m) => {
+        const pallet = m.sscc && this.pallets[m.sscc];
+        const holder = m.holder && this.holders[m.holder];
+        const owner = (pallet && (pallet.clientId || (this.items[pallet.itemNo] && this.items[pallet.itemNo].clientId))) || (holder && holder.clientId);
+        return owner === client.id && inPeriod(m.t, start, end);
+      };
+      const moves = (this.movements || []).filter((m) => ownedMove(m) && ['moved', 'picked', 'consolidated', 'shipped', 'received', 'packed', 'transferred'].includes(m.event));
+      const inboundLines = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'received').length;
+      const orders = Object.values(this.orders).filter((o) => o.clientId === client.id && o.shippedAt && inPeriod(o.shippedAt, start, end));
+      const outboundLines = orders.reduce((s, o) => s + o.lines.length, 0);
+      const outboundCartons = (this.shipments || []).filter((s) => orders.some((o) => o.id === s.orderId)).reduce((n, s) => n + (s.cartons || []).length, 0);
+      const valUnits = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'kitted').length;
+      const storageQty = tariff.storageBasis === 'location-day' ? locationDays : tariff.storageBasis === 'm3-day' ? cubicDays : palletDays;
+      const inboundQty = tariff.inboundBasis === 'line' ? inboundLines : inboundPallets;
+      const outboundQty = tariff.outboundBasis === 'line' ? outboundLines : tariff.outboundBasis === 'carton' ? outboundCartons : orders.length;
+      const lines = [
+        { code: 'storage', label: `Storage (${tariff.storageBasis})`, qty: Math.round(storageQty * 100) / 100, rate: tariff.storageRate },
+        { code: 'inbound', label: `Inbound (${tariff.inboundBasis})`, qty: inboundQty, rate: tariff.inboundRate },
+        { code: 'outbound', label: `Outbound (${tariff.outboundBasis})`, qty: outboundQty, rate: tariff.outboundRate },
+        { code: 'val', label: 'VAL / kitting (unit)', qty: valUnits, rate: tariff.valRate },
+      ].map((l) => ({ ...l, amount: Math.round(l.qty * l.rate * 100) / 100 }));
+      const subtotal = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+      const total = Math.round(Math.max(tariff.minimum || 0, subtotal) * 100) / 100;
+      return {
+        clientId: client.id, name: client.name, from: start, to: end, tariff, lines, subtotal,
+        minimum: tariff.minimum || 0, total, palletDays: Math.round(palletDays * 100) / 100, moves: moves.length,
+      };
+    };
+
+    proto.invoiceHtml = function (opts) {
+      const inv = this.invoice(opts);
+      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
+      return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${htmlEscape(inv.clientId)}</title>
+        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}.total{font-size:18px;font-weight:700}@media print{body{margin:12px}}</style></head>
+        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p>
+        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>${rows}</table>
+        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}.</p><p class="total">Total ${htmlEscape(inv.total)}</p></body></html>`;
     };
 
     proto.availability = function () {

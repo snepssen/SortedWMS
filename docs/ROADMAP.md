@@ -44,6 +44,10 @@ That's a low-risk way to prove the rules on real data.
 - Administrator password reset with a forced change, optional TOTP, lockout after failed sign-ins, and an idle session timeout.
 - Available-to-sell CSV and JSON, low-stock alerts, and a 3PL billing export (pallet-days and moves).
 - The GitHub Pages build of `/app` is a labelled demo with a role picker. It does not check passwords.
+- One dispatch document for a mixed pallet and carton order, with load scans and the statuses staged, loaded and dispatched.
+- Replenishment to a maximum in units, splitting the source plate, plus a whole-pallet mode. Default plate padding is 7 and is set per series.
+- Inter-warehouse transfer through an in-transit location. A refusal returns the original plate.
+- A per-client 3PL tariff and printable period invoices. Backup and restore of the journal and accounts.
 
 ## 3. Hardware
 

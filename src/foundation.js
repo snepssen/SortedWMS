@@ -14,7 +14,7 @@
   'use strict';
 
   const KINDS = ['zone', 'aisle', 'rack', 'level', 'bin', 'mezzanine', 'virtual', 'block', 'lane'];
-  const VIRTUAL_ROLES = ['consolidation', 'staging', 'return', 'quarantine', 'other'];
+  const VIRTUAL_ROLES = ['consolidation', 'staging', 'return', 'quarantine', 'transit', 'other'];
   const SERIES = ['PAL', 'MASTER', 'ST', 'INB', 'OUT'];
   const HOLDER_TYPES = ['pallet', 'crate', 'tote'];
   const ADJUST_REASONS = ['damage', 'expiry', 'found', 'recount', 'correction', 'other'];

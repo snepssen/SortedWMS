@@ -404,7 +404,22 @@
     }));
     on('GET', '/api/sites', () => ({ current: store.siteId || 'MAIN', sites: store.listSites ? store.listSites() : [{ id: 'MAIN', name: 'Main warehouse' }] }));
     on('POST', '/api/sites', (_, q, b) => store.createSite(b));
-    on('POST', '/api/sites/transfer', (_, q, b, by) => store.transferBetween({ from: b.from || store.siteId || 'MAIN', to: b.to, itemNo: b.itemNo, qty: b.qty, by }));
+    on('POST', '/api/sites/transfer', (_, q, b, by) => store.startTransfer({ from: b.from || store.siteId || 'MAIN', to: b.to, itemNo: b.itemNo, qty: b.qty, id: b.id, by }));
+    on('POST', '/api/sites/transfers/:id/receive', ({ id }, q, b, by) => store.receiveTransfer({ id: decodeURIComponent(id), from: b.from || 'MAIN', to: b.to, by }));
+    on('POST', '/api/sites/transfers/:id/cancel', ({ id }, q, b, by) => store.cancelTransfer({ id: decodeURIComponent(id), from: b.from || store.siteId || 'MAIN', by }));
+    on('POST', '/api/orders/:id/shipment', ({ id }, q, b, by) => run('stageShipment', { orderId: decodeURIComponent(id), truck: b.truck || null }, by));
+    on('POST', '/api/orders/:id/shipment/scan', ({ id }, q, b, by) => run('scanShipment', { orderId: decodeURIComponent(id), code: b.code }, by));
+    on('POST', '/api/orders/:id/shipment/dispatch', ({ id }, q, b, by) => run('dispatchShipment', { orderId: decodeURIComponent(id) }, by));
+    on('GET', '/api/orders/:id/shipment', ({ id }) => {
+      const order = wh().orders[decodeURIComponent(id)];
+      if (!order) return { status: 404, error: `No order ${id}` };
+      return order.shipment || { status: 404, error: 'No shipment' };
+    });
+    on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
+    on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
+    on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/backup', () => store.exportBackup());
+    on('POST', '/api/backup', (_, q, b) => store.importBackup(b));
     on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null }, by));
     on('GET', '/api/equipment', () => ({ equipment: Object.values(wh().equipment || {}), faults: wh().faults || [], maintenance: (wh().maintenance || []).slice(0, 100) }));
     on('POST', '/api/equipment', (_, q, b, by) => run('addEquipment', b, by));
