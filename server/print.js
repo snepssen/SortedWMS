@@ -59,6 +59,14 @@ class Printers {
     });
   }
 
+  /** Send one ZPL job. Resolution scaling matches flush. */
+  send(name, zpl) {
+    const p = this.map[name];
+    if (!p || !p.address) return Promise.reject(new Error(`No address configured for ${name}`));
+    const [host, port] = this._hostPort(p.address);
+    return this._send(host, port, scaleZpl(zpl, p.dpi));
+  }
+
   _hostPort(address) {
     const [host, port = '9100'] = address.split(':');
     return [host, Number(port)];

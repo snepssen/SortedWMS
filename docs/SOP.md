@@ -2,7 +2,7 @@
 
 How the prototype connects warehouse work, task by task: who does what, on which screen, and what the system does in return.
 
-**Demo procedures, not an approved site SOP.** This manual describes the demonstration, not a replacement for the current WMS or the warehouse's working instructions. Stock, customers, measurements and timing are examples. Site safety, hygiene, temperature limits and quality decisions remain governed by the warehouse's approved procedures. Admin, Office, Scanner and Station in the guided shift are views of the same demonstration, not access-controlled permissions.
+**Demo procedures, not an approved site SOP.** This manual describes the demonstration, not a replacement for the current WMS or the warehouse's working instructions. Stock, customers, measurements and timing are examples. Site safety, hygiene, temperature limits and quality decisions remain governed by the warehouse's approved procedures. Admin, Office, Scanner and Station in the guided shift are views of the same demonstration, not access-controlled permissions. The server WMS (`npm run start:demo`, then `/login`) does sign people in; those roles and the default accounts are in [ACCOUNTS.md](ACCOUNTS.md).
 
 For a coordinator presentation, start with the [presenter guide](DEMO.md) and [guided shift](../walkthrough.html). The procedures below are the reference for exploring individual tasks.
 

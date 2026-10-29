@@ -135,6 +135,7 @@
       if (timer) clearTimeout(timer);
     }
     if (res.status === 502 || res.status === 503 || res.status === 504) throw netError('The server is not answering');
+    if (res.status === 401 && !token && location && typeof location.assign === 'function') location.assign('/login?next=' + encodeURIComponent(location.pathname || '/handheld'));
     const data = await res.json().catch(() => ({}));
     $('#offline').classList.remove('on');
     if (!res.ok) throw new Error(data.error || res.statusText);

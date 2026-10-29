@@ -16,9 +16,9 @@
  * Runs in the browser (window.SortedWMS) and Node (require('./engine')).
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./gs1'), require('./labels'));
-  else root.SortedWMS = factory(root.GS1, root.Labels);
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (GS1, Labels) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./gs1'), require('./labels'), require('./foundation'));
+  else root.SortedWMS = factory(root.GS1, root.Labels, root.SortedFoundation);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (GS1, Labels, Foundation) {
   'use strict';
 
   const CATEGORIES = { YOG: 'Yoghurt', CHE: 'Cheese', PRO: 'Protein drinks' };
@@ -75,6 +75,7 @@
     remnant: 'Few left in a block lane: to the racks, easier to ship',
     quarantine: 'Move to quarantine',
     'quarantine-return': 'Return released stock to storage',
+    replenish: 'Replenish a pick face',
   };
 
   // Receiving asks for these in this order. A GS1 label scan can fill several at once.
@@ -251,11 +252,20 @@
       this.deliveries = {};
       this.printQueue = [];
       this.events = [];
+      // Clients own items and stock. Holders are pallets, crates and totes.
+      // Equipment, faults and labels sit beside the reach-truck model.
+      this.clients = {};
+      this.holders = {};
+      this.adjustments = [];
+      this.equipment = {};
+      this.faults = [];
+      this.maintenance = [];
+      this.labelLog = [];
       this.stations = {};
       this.routes = {};
       this.desks = {};
       this.processLog = [];
-      this._seq = { task: 0, sscc: 0, label: 0 };
+      this._seq = { task: 0, sscc: 0, label: 0, fault: 0, maint: 0 };
       this.ssccPrefix = '9990000'; // stand-in GS1 company prefix for SSCCs printed here
 
       this.locations['DOCK-IN'] = { code: 'DOCK-IN', kind: 'lane', role: 'in', aisle: null, pallets: [], blocked: false };
@@ -487,16 +497,34 @@
      * numbers that mean this item, such as a supplier's article number,
      * printed as "(91)40012009" on the label.
      */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [] }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active' }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
       if (unitGtin && !GS1.isValidGtin(unitGtin)) throw new Error(`Unit EAN ${unitGtin} has a wrong check digit`);
       if (unitGtin && !(Number.isInteger(Number(unitsPerCase)) && Number(unitsPerCase) > 0)) throw new Error('Units per case must be a whole number above 0');
       const list = (Array.isArray(codes) ? codes : String(codes).split(/[\s,;]+/)).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+      const measure = (v, label) => {
+        if (v == null || v === '') return null;
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
+        return n;
+      };
+      const owner = clientId ? String(clientId).trim().toUpperCase() : null;
+      if (owner) {
+        const client = this.clients && this.clients[owner];
+        if (!client) throw new Error(`Unknown client ${owner}`);
+        if (client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
+      }
+      const gtin14 = gtin ? GS1.gtin14(gtin) : null;
+      const barcodeList = Array.isArray(barcodes) ? barcodes.map((b) => (typeof b === 'string' ? { type: 'CODE128', value: b } : { type: b.type || 'CODE128', value: String(b.value || '').trim() })).filter((b) => b.value) : [];
+      if (gtin14 && !barcodeList.some((b) => b.type === 'GTIN' && b.value === gtin14)) barcodeList.unshift({ type: 'GTIN', value: gtin14 });
       this.items[itemNo] = {
-        itemNo, gtin: gtin ? GS1.gtin14(gtin) : null, name, category, palletQty, minShipDays, storage,
+        itemNo, gtin: gtin14, name, category, palletQty, minShipDays, storage,
         unitGtin: unitGtin ? GS1.gtin14(unitGtin) : null, unitsPerCase: unitGtin ? Number(unitsPerCase) : null, codes: list,
+        clientId: owner, uom: uom || 'case', status: status === 'archived' ? 'archived' : 'active',
+        lengthMm: measure(lengthMm, 'Length'), widthMm: measure(widthMm, 'Width'), heightMm: measure(heightMm, 'Height'), weightKg: measure(weightKg, 'Weight'),
+        barcodes: barcodeList,
       };
       return this.items[itemNo];
     }
@@ -519,6 +547,7 @@
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
     shipState(pallet) {
+      if (!pallet.qty || pallet.qty <= 0) return 'blocked';
       if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet) || pallet.quarantine || this.locations[pallet.loc]?.quarantine) return 'blocked';
       const days = daysBetween(this.today(), pallet.expiry);
       if (days < 0) return 'expired';
@@ -603,11 +632,18 @@
     }
 
     /** Put existing stock straight into a location (opening balance, imports). */
-    stockPallet(code, { sscc, itemNo, batch, expiry, qty, receivedAt, status = 'available', blockReason = null }) {
+    stockPallet(code, { sscc, itemNo, batch, expiry, qty, receivedAt, status = 'available', blockReason = null, clientId = null }) {
       const loc = this._loc(code);
       if (loc.kind === 'trailer') throw new Error('Use loading scans to put stock on a trailer');
+      if (loc.structural || loc.kind === 'zone' || loc.kind === 'aisle' || loc.kind === 'level' || loc.kind === 'frame') throw new Error(`${code} cannot hold stock`);
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
+      if (item.status === 'archived') throw new Error(`Item ${itemNo} is archived`);
+      const owner = clientId ? String(clientId).trim().toUpperCase() : (item.clientId || null);
+      if (owner && item.clientId && owner !== item.clientId) throw new Error(`Item ${itemNo} belongs to another client`);
+      const client = owner && this.clients && this.clients[owner];
+      if (owner && !client) throw new Error(`Unknown client ${owner}`);
+      if (client && client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
       sscc = sscc || this.nextSscc();
       if (!GS1.isValidSscc(sscc)) throw new Error(`SSCC ${sscc} has a wrong check digit`);
       if (this.pallets[sscc]) throw new Error(`SSCC ${sscc} is already in stock`);
@@ -617,7 +653,9 @@
         sscc, itemNo, batch, expiry, qty: qty || item.palletQty,
         receivedAt: receivedAt == null ? this.now() : receivedAt,
         status, blockReason, loc: null, orderId: null, labelCode: null, checked: false,
+        clientId: owner,
       };
+      if (!this._fits(loc, pallet)) throw new Error(`Pallet …${sscc.slice(-6)} (${itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
       this.pallets[sscc] = pallet;
       this._place(pallet, code);
       this._quarantinePlacement(pallet, 'opening-stock');
@@ -1014,19 +1052,30 @@
      * (FEFO), oldest received first on a tie (FIFO). Blocked and expired
      * stock is never picked.
      */
-    addOrder({ id, customer, lane, lines, verifyLoading = false }) {
+    addOrder({ id, customer, lane, lines, verifyLoading = false, clientId = null }) {
       if (this.orders[id]) throw new Error(`Order ${id} already exists`);
       if (typeof verifyLoading !== 'boolean') throw new Error('Loading verification must be true or false');
+      if (clientId) clientId = String(clientId).trim().toUpperCase();
       const laneLoc = this._loc(lane);
       if (laneLoc.kind !== 'lane' || laneLoc.role !== 'out') throw new Error(`${lane} is not a shipping lane`);
       // Imports report errors per order, so all lines must validate before any allocation changes.
       if (!Array.isArray(lines)) throw new Error('Order lines must be a list');
       for (const line of lines) {
         if (!line || !this.items[line.itemNo]) throw new Error(`Unknown item ${line?.itemNo}`);
+        const item = this.items[line.itemNo];
+        if (item.status === 'archived') throw new Error(`Item ${line.itemNo} is archived`);
+        const owner = item.clientId && this.clients && this.clients[item.clientId];
+        if (owner && owner.status === 'archived') throw new Error(`Client ${owner.name} is archived`);
+        if (clientId && item.clientId && item.clientId !== clientId) throw new Error(`Item ${line.itemNo} belongs to another client`);
         if (line.process && !this.routes[line.process]) throw new Error(`Unknown process ${line.process}`);
         if (!Number.isSafeInteger(Number(line.pallets)) || Number(line.pallets) < 1) throw new Error('Pallets per order line must be a whole number above 0');
       }
-      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading };
+      if (clientId) {
+        const client = this.clients && this.clients[clientId];
+        if (!client) throw new Error(`Unknown client ${clientId}`);
+        if (client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
+      }
+      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null };
       this.orders[id] = order;
       for (const line of lines) {
         const item = this.items[line.itemNo];
@@ -1215,11 +1264,21 @@
      * `list` is the supplier's pallet list (SSCC, item, batch, expiry, qty),
      * when there is one: then scanning the SSCC alone registers the pallet.
      */
-    addDelivery({ id, supplier, category, pallets, list = null, at = 'dock' }) {
+    addDelivery({ id, supplier, category, pallets, list = null, at = 'dock', asn = null, clientId = null, expectedAt = null }) {
       if (this.deliveries[id]) throw new Error(`Delivery ${id} already exists`);
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
+      if (clientId) clientId = String(clientId).trim().toUpperCase();
+      if (clientId) {
+        const client = this.clients && this.clients[clientId];
+        if (!client) throw new Error(`Unknown client ${clientId}`);
+        if (client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
+        for (const line of list || []) {
+          const item = this.items[line.itemNo];
+          if (item && item.clientId && item.clientId !== clientId) throw new Error(`Item ${line.itemNo} belongs to another client`);
+        }
+      }
       const byS = list ? Object.fromEntries(list.map((l) => [l.sscc, l])) : null;
-      const delivery = { id, supplier, category, expected: pallets || (list ? list.length : 0), received: [], list: byS, createdAt: this.now(), status: 'open' };
+      const delivery = { id, supplier, category, expected: pallets || (list ? list.length : 0), received: [], list: byS, createdAt: this.now(), status: 'open', asn: asn || null, clientId: clientId || null, expectedAt: expectedAt || null };
       this.deliveries[id] = delivery;
       const task = this._newTask({ type: 'RECEIVE', category, from: 'DOCK-IN', to: 'DOCK-IN', deliveryId: id });
       task.draft = {};
@@ -1701,6 +1760,8 @@
       if (t.autoSlot) return Boolean(t.to || this._findSlot(this.pallets[t.sscc], t.from, { ground: t.ground, noBury: t.noBury }));
       const to = this.locations[t.to];
       if (to.kind === 'station') return this._stationRoom(to.station, t.id) > 0;
+      const pallet = t.sscc && this.pallets[t.sscc];
+      if (pallet && !this._fits(to, pallet)) return false;
       if (to.kind !== 'rack') return true;
       return !to.sscc && (!to.reservedBy || to.reservedBy === t.id);
     }
@@ -1831,6 +1892,8 @@
       const to = this.locations[code];
       if (!to) return { ok: false, text: `${code} is not a location` };
       if (to.kind === 'trailer' || this.locations[pallet.loc]?.kind === 'trailer') return { ok: false, text: 'Use loading or unloading scans for trailer stock' };
+      if (to.structural || to.kind === 'zone' || to.kind === 'aisle' || to.kind === 'level' || to.kind === 'frame') return { ok: false, text: `${code} cannot hold stock` };
+      if (!this._fits(to, pallet)) return { ok: false, text: `…${sscc.slice(-6)} does not fit ${code} (height, width, depth or weight)` };
       if (pallet.loc === code) return { ok: true, text: `…${sscc.slice(-6)} is already recorded at ${code}` };
       const live = this._liveTaskFor(sscc);
       if (live && live.status === 'active' && (live.step > 0 || this.trucks[live.truckId]?.load === sscc)) {
@@ -2200,6 +2263,16 @@
       const wh = Object.create(Warehouse.prototype);
       Object.assign(wh, JSON.parse(JSON.stringify(state)));
       wh.clock = clock || (() => Date.now());
+      wh.clients = wh.clients || {};
+      wh.holders = wh.holders || {};
+      wh.adjustments = wh.adjustments || [];
+      wh.equipment = wh.equipment || {};
+      wh.faults = wh.faults || [];
+      wh.maintenance = wh.maintenance || [];
+      wh.labelLog = wh.labelLog || [];
+      if (!wh._seq) wh._seq = { task: 0, sscc: 0, label: 0, fault: 0, maint: 0 };
+      if (wh._seq.fault == null) wh._seq.fault = 0;
+      if (wh._seq.maint == null) wh._seq.maint = 0;
       return wh;
     }
 
@@ -2614,7 +2687,7 @@
     _drop(truck, task) {
       const pallet = this.pallets[truck.load];
       const to = this.locations[task.to];
-      if (to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
+      if (to.reservedBy === task.id || to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
       const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
       this._place(pallet, task.to);
       this._quarantinePlacement(pallet, truck.id);
@@ -2798,7 +2871,7 @@
             const ahead = this._blockSeq(loc.lane);
             const i = ahead.indexOf(p.sscc);
             if (ahead.slice(0, i).some((s) => !this.pallets[s].orderId)) return false;
-          } else if (loc.kind !== 'rack') return false;
+          } else if (loc.kind !== 'rack' && loc.kind !== 'bin') return false;
           const t = live.get(p.sscc);
           return !t || (t.type === 'SHIFT' && t.status === 'open');
         })
@@ -3313,9 +3386,37 @@
     // ---- Internals: slotting --------------------------------------------------
 
     _slotFree(loc, pallet) {
-      return loc.kind === 'rack' && !loc.sscc && !loc.blocked && !loc.reservedBy
+      return Boolean(loc) && loc.kind === 'rack' && !loc.structural && !loc.sscc && !loc.blocked && !loc.reservedBy
         && loc.category === this.items[pallet.itemNo].category
-        && Boolean(loc.quarantine) === Boolean(pallet.quarantine && pallet.quarantine.state !== 'returning');
+        && Boolean(loc.quarantine) === Boolean(pallet.quarantine && pallet.quarantine.state !== 'returning')
+        && this._fits(loc, pallet);
+    }
+
+    /**
+     * Does this pallet fit the location? Unknown dimensions are not a refusal.
+     * Footprint may rotate; height does not. Item dimensions are the full
+     * stored unit (one pallet); weight and height scale with quantity.
+     */
+    _fits(loc, pallet) {
+      const cap = loc && loc.capacity;
+      if (!cap || !pallet) return true;
+      const item = this.items[pallet.itemNo];
+      if (!item) return true;
+      const frac = item.palletQty ? (Number(pallet.qty) || item.palletQty) / item.palletQty : 1;
+      if (cap.maxWeightKg != null && item.weightKg != null && item.weightKg * frac > cap.maxWeightKg) return false;
+      if (cap.heightMm != null && item.heightMm != null && item.heightMm * frac > cap.heightMm) return false;
+      if (cap.widthMm != null && cap.depthMm != null && item.lengthMm != null && item.widthMm != null) {
+        const load = [item.lengthMm, item.widthMm].sort((a, b) => a - b);
+        const slot = [cap.widthMm, cap.depthMm].sort((a, b) => a - b);
+        if (load[0] > slot[0] || load[1] > slot[1]) return false;
+      }
+      return true;
+    }
+
+    _assertFit(loc, pallet) {
+      if (!loc || this._fits(loc, pallet)) return;
+      const item = this.items[pallet.itemNo];
+      throw new Error(`Pallet …${pallet.sscc.slice(-6)} (${item ? item.itemNo : pallet.itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
     }
 
     /**
@@ -3532,6 +3633,11 @@
 
     _place(pallet, code) {
       const loc = this.locations[code];
+      if (!loc) throw new Error(`${code} is not a location`);
+      if (loc.structural || loc.kind === 'zone' || loc.kind === 'aisle' || loc.kind === 'level' || loc.kind === 'frame') {
+        throw new Error(`${code} cannot hold stock`);
+      }
+      this._assertFit(loc, pallet);
       if (loc.kind === 'rack') loc.sscc = pallet.sscc;
       else loc.pallets.push(pallet.sscc);
       pallet.loc = code;
@@ -3564,14 +3670,14 @@
       if (!this._bayCache) this._bayCache = new Map();
       let out = this._bayCache.get(loc.code);
       if (!out) {
-        out = this.layout.positions.map((p) => this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]);
+        out = this.layout.positions.map((p) => this.locations[rackCode(loc.aisle, loc.bay, loc.level, p)]).filter(Boolean);
         this._bayCache.set(loc.code, out);
       }
       return out;
     }
 
     _racks() {
-      if (!this._rackList) this._rackList = Object.values(this.locations).filter((l) => l.kind === 'rack');
+      if (!this._rackList) this._rackList = Object.values(this.locations).filter((l) => l.kind === 'rack' && !l.structural);
       return this._rackList;
     }
 
@@ -3623,6 +3729,8 @@
       return truck;
     }
   }
+
+  if (Foundation && Foundation.install) Foundation.install(Warehouse, { GS1, Labels });
 
   return {
     Warehouse, CATEGORIES, TASK_TYPES, TRUCK_MODES, SCAN_COMMANDS, COMMAND_PREFIX, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, DEFAULT_CONFIG, DESK_CALLOUTS,

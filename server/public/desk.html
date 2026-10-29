@@ -81,6 +81,7 @@
       return r.body;
     }
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-token': $('#token').value, 'x-operator': deskId || 'desk' }, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401 && !$('#token').value && location && typeof location.assign === 'function') location.assign('/login?next=' + encodeURIComponent(location.pathname || '/desk'));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
