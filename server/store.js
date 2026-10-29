@@ -62,6 +62,7 @@ class Store {
     this.replayErrors = [];
     for (const r of rows) {
       this.replayT = r.t;
+      this.wh._actor = r.by;
       try { COMMANDS[r.op](this.wh, JSON.parse(r.args), r.by); } catch (e) { this.replayErrors.push(`#${r.id} ${r.op}: ${e.message}`); }
     }
     this.replayT = null;
@@ -77,6 +78,7 @@ class Store {
     if (!COMMANDS[op]) throw new Error(`Unknown command ${op}`);
     const t = this.now();
     this.replayT = t;
+    this.wh._actor = by;
     let result;
     try {
       result = COMMANDS[op](this.wh, args, by);

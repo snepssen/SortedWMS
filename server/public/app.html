@@ -67,16 +67,16 @@
   'use strict';
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'equipment', operator: 'work', machine: 'line' };
+  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['locations', 'Locations'], ['holders', 'Holders']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['reports', 'Reports'], ['labels', 'Labels']],
-    technician: [['equipment', 'Equipment'], ['faults', 'Faults'], ['maintenance', 'Maintenance'], ['hardware', 'Hardware']],
-    operator: [['work', 'Work'], ['queue', 'Queue'], ['counts', 'Counts']],
-    machine: [['line', 'Line'], ['faults', 'Errors']],
+    technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
+    operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
+    machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
   };
-  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technician', operator: 'Operator', machine: 'Machine operator' };
+  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator' };
   let me = null;
   let panel = '';
 
@@ -111,6 +111,94 @@
 
   const PANELS = {
     async missing() { return msg('This view is not on your role.', false); },
+    async receive() {
+      const [deliveries, holders] = await Promise.all([api('GET', '/api/deliveries'), api('GET', '/api/holders')]);
+      const inbound = holders.filter((h) => h.series === 'INB' || (h.id || '').startsWith('INB'));
+      return `<section><h2>Inbound receiving</h2><p class="hint">On foot, with a handheld. A full pallet is labelled PAL and MASTER after it is received. Lower-value lines use an INB plate.</p>
+        <form class="form" data-act="issue-plates"><label>Received pallet SSCC<input name="sscc" required placeholder="18 digit SSCC"></label><button class="primary">Issue PAL + MASTER</button></form>
+        <form class="form" data-act="issue-series"><input type="hidden" name="series" value="INB"><label>Item<input name="itemNo" value="Y1002"></label><label>Qty<input name="qty" type="number" value="1"></label><label>Location<input name="loc" value="DOCK-IN"></label><button>Issue INB plate</button></form>
+        <h3>Open deliveries</h3>${table(['Delivery', 'Supplier', 'ASN', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || d.id)}</td><td>${esc(d.status)}</td></tr>`))}
+        <h3>INB plates</h3>${plateTable(inbound)}</section>`;
+    },
+    async mezzanine() {
+      const [locs, holders] = await Promise.all([api('GET', '/api/locations?kind=mezzanine&limit=50'), api('GET', '/api/holders')]);
+      const here = holders.filter((h) => (locs.locations || []).some((l) => l.code === h.loc));
+      return `<section><h2>Mezzanine picking</h2><p class="hint">Scan the license plate on the mezzanine pick face. This is a walk pick, not a truck move.</p>
+        ${table(['Location', 'Name'], (locs.locations || []).map((l) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name || '')}</td></tr>`))}
+        ${plateTable(here)}
+        <form class="scan" data-act="mezz-scan"><label>Scan plate<input name="code" id="scan" autocomplete="off" placeholder="ST0000001"></label><p class="big"><button class="primary">Confirm pick</button></p></form><div id="scanMsg"></div></section>`;
+    },
+    async kitting() {
+      const val = await api('GET', '/api/val');
+      const open = (val.jobs || []).find((j) => j.status === 'open');
+      const station = (val.stations[0] && val.stations[0].id) || 'VAL-01';
+      return `<section><h2>VAL / kitting</h2><p class="hint">Scan the base product, then each component. Example: add a power plug to a laptop.</p>
+        ${val.kits.map((k) => `<p><b>${esc(k.name)}</b> — base ${esc(k.base.itemNo)} × ${k.base.qty}, ${k.components.map((c) => esc(c.itemNo) + ' × ' + c.qty).join(', ')}</p>`).join('') || '<p class="dim">No kits.</p>'}
+        <form class="form" data-act="val-start"><label>Station<input name="stationId" value="${esc(station)}"></label><button class="primary">Start kit</button></form>
+        ${open ? `<p>Open job #${open.id} ${esc(open.kitName)}. Scanned ${open.got.length} / ${open.need.reduce((n, l) => n + l.qty, 0)}.</p><ul>${open.need.map((n) => `<li>${esc(n.role)} ${esc(n.itemNo)} × ${n.qty}</li>`).join('')}</ul>` : '<p class="dim">No kit in progress.</p>'}
+        <form class="scan" data-act="val-scan"><input type="hidden" name="stationId" value="${esc(station)}"><label>Scan component or plate<input name="code" placeholder="NB-14 or PLUG-EU"></label><p class="big"><button class="primary">Scan</button></p></form></section>`;
+    },
+    async moves() {
+      const [tasks, devices] = await Promise.all([api('GET', '/api/tasks'), api('GET', '/api/devices')]);
+      const trucks = devices.filter((d) => d.kind !== 'desk');
+      const moves = tasks.filter((t) => ['PUTAWAY', 'SHIFT', 'MOVE', 'PICK'].includes(t.type));
+      const id = sessionStorage.getItem('device') || (trucks.find((t) => t.operator === me.username) || trucks[0] || {}).id || 'HH01';
+      let dev = null;
+      try { dev = await api('GET', '/api/devices/' + encodeURIComponent(id)); } catch (e) { dev = null; }
+      const ins = dev && dev.instruction || {};
+      const asked = (ins.pallet && ins.pallet.sscc) || ins.target || '';
+      return `<section><h2>Equipment moves</h2><p class="hint">Reach truck or high-level order picker. The screen is the next move: put-away, replenishment, transfer, pallet move, block lane.</p>
+        <form class="form"><label>Truck<select id="devicePick">${trucks.map((t) => `<option ${t.id === id ? 'selected' : ''}>${esc(t.id)}</option>`).join('')}</select></label></form>
+        <p class="job">${ins.task ? esc(ins.task.typeLabel) : 'Waiting for the next move'}</p>
+        ${ins.targetName ? `<p>Drop at <b>${esc(ins.targetName)}</b></p>` : ''}
+        ${ins.pallet ? `<p>Plate / pallet …${esc(ins.pallet.sscc.slice(-6))} ${esc(ins.pallet.itemNo || '')}</p>` : ''}
+        <form class="scan" data-act="scan"><label>Scan<input name="code" id="scan" autocomplete="off" placeholder="Pallet, then location"></label><p class="big"><button class="primary">Send</button> <button type="button" id="sim" data-code="${esc(asked)}">Simulate scan</button></p></form>
+        <div id="scanMsg"></div></section>
+        <section><h2>Move queue</h2>${taskTable(moves.slice(0, 14), false)}</section>`;
+    },
+    async replenish() {
+      const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
+      return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
+        <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button class="primary">Replenish</button></form>
+        <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><button>Consolidate under a new MASTER</button></form></section>`;
+    },
+    async sort() {
+      const tech = await api('GET', '/api/technical');
+      const s = tech.autoSort || {};
+      const rules = (s.rules || []).map((r) => `${r.category || ''}: ${r.putaway || ''}`).join('\n');
+      return `<section><h2>Auto-sort</h2><p class="hint">Parameters the WMS technical team owns. Stock administration does not change these.</p>
+        <form data-act="tech-sort"><label>Strategy<select name="strategy"><option ${s.strategy === 'fefo' ? 'selected' : ''}>fefo</option><option ${s.strategy === 'fifo' ? 'selected' : ''}>fifo</option><option ${s.strategy === 'nearest' ? 'selected' : ''}>nearest</option></select></label>
+        <label><input type="checkbox" name="enabled" ${s.enabled !== false ? 'checked' : ''}> Enabled</label>
+        <label><input type="checkbox" name="sameBatchTogether" ${s.sameBatchTogether !== false ? 'checked' : ''}> Keep the same batch together</label>
+        <label><input type="checkbox" name="groundForNextOut" ${s.groundForNextOut !== false ? 'checked' : ''}> Next-out stock to ground</label>
+        <label>Rules, one per line (CATEGORY: instruction)<textarea name="rules">${esc(rules)}</textarea></label>
+        <p><button class="primary">Save auto-sort</button></p></form></section>`;
+    },
+    async defaults() {
+      const tech = await api('GET', '/api/technical');
+      const d = tech.locationDefaults || {};
+      const row = (kind) => {
+        const x = d[kind] || {};
+        return `<tr><td>${kind}</td><td><input name="${kind}.heightMm" type="number" value="${x.heightMm == null ? '' : esc(x.heightMm)}"></td><td><input name="${kind}.widthMm" type="number" value="${x.widthMm == null ? '' : esc(x.widthMm)}"></td><td><input name="${kind}.depthMm" type="number" value="${x.depthMm == null ? '' : esc(x.depthMm)}"></td><td><input name="${kind}.maxWeightKg" type="number" value="${x.maxWeightKg == null ? '' : esc(x.maxWeightKg)}"></td></tr>`;
+      };
+      return `<section><h2>Location defaults</h2><p class="hint">Dimension and capacity defaults by location type. Virtual locations such as CONSO00 have no physical size unless you set one.</p>
+        <form data-act="tech-defaults"><table><tr><th>Type</th><th>H mm</th><th>W mm</th><th>D mm</th><th>Max kg</th></tr>${['rack', 'bin', 'mezzanine', 'virtual'].map(row).join('')}</table>
+        <p><button class="primary">Save defaults</button></p></form>
+        <p class="dim">Types: zone, aisle, rack, level, bin, mezzanine, virtual (consolidation, staging), block lane.</p></section>`;
+    },
+    async series() {
+      const tech = await api('GET', '/api/technical');
+      const rows = Object.entries(tech.holderSeries || {}).map(([k, s]) => `<tr><td>${esc(k)}</td><td><input name="prefix.${k}" value="${esc(s.prefix)}"></td><td><input name="pad.${k}" type="number" min="1" max="12" value="${esc(s.pad)}"></td><td>${esc(s.prefix)}${String(s.next).padStart(s.pad, '0')}</td><td>${esc(s.next)}</td></tr>`).join('');
+      return `<section><h2>License plate series</h2><p class="hint">PAL and MASTER for full pallets. ST, INB and OUT for lower-value stock. Numbers only increase and are never reused.</p>
+        <form data-act="tech-series"><table><tr><th>Series</th><th>Prefix</th><th>Pad</th><th>Next id</th><th>Counter</th></tr>${rows}</table>
+        <p><button class="primary">Save format</button></p></form></section>${await PANELS.hardware()}`;
+    },
+    async history() {
+      const [users, movements] = await Promise.all([can('users.read') ? api('GET', '/api/users') : { users: [] }, api('GET', '/api/movements')]);
+      return `<section><h2>Movement history</h2><p class="hint">Every move stores the person, the license plate, from, to, time and quantity.</p>
+        <form class="form" data-act="history"><label>User<select name="user"><option value="">Anyone</option>${(users.users || []).map((u) => `<option>${esc(u.username)}</option>`).join('')}</select></label><label>Plate or SSCC<input name="holder" placeholder="PAL0000001"></label><button class="primary">Show</button></form>
+        <div id="historyOut">${moveTable(movements)}</div></section>`;
+    },
     async users() {
       const { users } = await api('GET', '/api/users');
       const roles = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
@@ -135,7 +223,8 @@
         <form class="form" data-act="config"><label>Trucks per aisle<input name="aisleCap" type="number" min="1" value="${esc(summary.config.aisleCap)}"></label><button class="primary">Save</button></form>
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
-        <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p></section>`;
+        <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p>
+        <p><a href="/setup">Open the setup wizard</a> to change the warehouse type, category features and location codes.</p></section>`;
     },
     async audit() { return `<section><h2>Audit log</h2><p class="hint">Warehouse commands and sign-in events. The journal is also how the warehouse is rebuilt.</p>${await auditBits(80)}</section>`; },
     async master() {
@@ -224,7 +313,7 @@
     },
     async holders() {
       const holders = await api('GET', '/api/holders');
-      return `<section><h2>Holders</h2><p class="hint">Pallets, crates and totes. Each one has a place and a list of what is on it.</p>
+      return `<section><h2>License plates</h2><p class="hint">PAL, MASTER, ST, INB and OUT are issued numbers. A MASTER can hold several PAL plates after consolidation.</p>
         <form class="form" data-act="holder-add"><label>Id<input name="id" required></label><label>Type<select name="type"><option>pallet</option><option>crate</option><option>tote</option></select></label><label>Location<input name="loc" value="DOCK-IN"></label><label>Client<input name="clientId" placeholder="CL-DAIRY"></label><button class="primary">Add</button></form>
         <form class="form" data-act="holder-move"><label>Holder<input name="id" required></label><label>To<input name="loc" required></label><button>Move</button></form>
         <form class="form" data-act="holder-load"><label>Holder<input name="id" required></label><label>Item<input name="itemNo"></label><label>Qty<input name="qty" type="number"></label><label>Or SSCC<input name="sscc"></label><button>Load</button></form>
@@ -281,6 +370,12 @@
     },
   };
 
+  function plateTable(holders) {
+    return table(['Plate', 'Series', 'Where', 'Under', 'Qty'], (holders || []).map((h) => `<tr><td>${esc(h.id)}</td><td>${esc(h.series || h.type || '')}</td><td>${esc(h.loc || '')}</td><td>${esc(h.parentId || ((h.children || []).length ? h.children.join(', ') : ''))}</td><td>${(h.contents || []).map((c) => esc(c.qty)).join(', ')}</td></tr>`));
+  }
+  function moveTable(rows) {
+    return table(['When', 'Who', 'Plate', 'Event', 'From', 'To', 'Qty'], (rows || []).map((m) => `<tr><td>${new Date(m.t).toLocaleString()}</td><td>${esc(m.by)}</td><td>${esc(m.holder || m.sscc || '')}</td><td>${esc(m.event)}</td><td>${esc(m.from || '')}</td><td>${esc(m.to || '')}</td><td>${m.qty == null ? '' : esc(m.qty)}</td></tr>`));
+  }
   function taskTable(tasks, actions) {
     return table(['Job', 'Type', 'Status', 'From', 'To', ''], (tasks || []).map((t) => `<tr><td>#${t.id}</td><td>${esc(t.typeLabel)}</td><td>${t.urgent ? '<span class="tag warn">urgent</span> ' : ''}${esc(t.status)}</td><td>${esc(t.fromName || '')}</td><td>${esc(t.toName || '')}</td><td>${actions && t.status === 'open' ? `<button type="button" data-act="urgent" data-id="${t.id}">Urgent</button>` : ''}</td></tr>`));
   }
@@ -365,7 +460,20 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
-      if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
+      if (form.dataset.act === 'history') {
+      const q = new URLSearchParams();
+      if (data.user) q.set('user', data.user);
+      if (data.holder) q.set('holder', data.holder);
+      document.getElementById('historyOut').innerHTML = moveTable(await api('GET', '/api/movements?' + q.toString()));
+      return;
+    }
+    if (form.dataset.act === 'mezz-scan') {
+      await api('POST', '/api/holders/' + encodeURIComponent(data.code) + '/pick', {});
+      const el = document.getElementById('scanMsg');
+      if (el) el.innerHTML = msg('Picked ' + data.code, true);
+      return;
+    }
+    if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
       if (form.dataset.act === 'station-scan') return sendStation(data.code, wedgeBurst ? 'wedge' : 'manual');
       await act(form.dataset.act, data);
       form.reset();
@@ -432,6 +540,31 @@
     if (name === 'maint') return api('POST', '/api/equipment/' + encodeURIComponent(data.equipmentId) + '/maintenance', data);
     if (name === 'test-print') return api('POST', '/api/hardware/print', { printer: 'SIM', zpl: data.zpl, html: '<p>SortedWMS test</p>', kind: 'test' });
     if (name === 'plan-counts') return api('POST', '/api/plan/counts', { limit: Number(data.limit || 3) });
+    if (name === 'issue-plates') return api('POST', '/api/holders/issue', { sscc: data.sscc });
+    if (name === 'issue-series') return api('POST', '/api/holders/series', { series: data.series, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
+    if (name === 'replenish') return api('POST', '/api/replenish', data);
+    if (name === 'consolidate') return api('POST', '/api/consolidate', { pals: String(data.pals || '').split(/\s+/).filter(Boolean), at: data.at });
+    if (name === 'val-start') return api('POST', '/api/val/start', data);
+    if (name === 'val-scan') return api('POST', '/api/val/scan', data);
+    if (name === 'tech-sort') {
+      const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+        const i = line.indexOf(':');
+        return { category: (i < 0 ? line : line.slice(0, i)).trim(), putaway: i < 0 ? '' : line.slice(i + 1).trim() };
+      });
+      return api('POST', '/api/technical', { autoSort: { strategy: data.strategy, enabled: data.enabled === 'on', sameBatchTogether: data.sameBatchTogether === 'on', groundForNextOut: data.groundForNextOut === 'on', rules } });
+    }
+    if (name === 'tech-defaults') {
+      const locationDefaults = {};
+      for (const kind of ['rack', 'bin', 'mezzanine', 'virtual']) {
+        locationDefaults[kind] = { heightMm: num(data[kind + '.heightMm']), widthMm: num(data[kind + '.widthMm']), depthMm: num(data[kind + '.depthMm']), maxWeightKg: num(data[kind + '.maxWeightKg']) };
+      }
+      return api('POST', '/api/technical', { locationDefaults });
+    }
+    if (name === 'tech-series') {
+      const holderSeries = {};
+      for (const series of ['PAL', 'MASTER', 'ST', 'INB', 'OUT']) holderSeries[series] = { prefix: data['prefix.' + series], pad: Number(data['pad.' + series]) };
+      return api('POST', '/api/technical', { holderSeries });
+    }
     throw new Error('Unknown action');
   }
   const num = (v) => (v === '' || v == null ? null : Number(v));

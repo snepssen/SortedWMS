@@ -43,6 +43,9 @@ const PERMISSIONS = [
   ['equipment.read', 'View equipment'],
   ['equipment.write', 'Log faults, maintenance and device mode'],
   ['labels.print', 'Generate and print labels'],
+  ['val.execute', 'Run value-added and kitting scans'],
+  ['technical.write', 'Edit auto-sort, location defaults and label series'],
+  ['movements.read', 'View movement history'],
   ['reports.read', 'View and export reports'],
   ['scans.execute', 'Scan from a handheld, desk or station'],
   ['wms.read', 'Read warehouse screens'],
@@ -55,14 +58,14 @@ const ROLES = [
   ['administrator', 'Administrator'],
   ['manager', 'Manager / supervisor'],
   ['office', 'Office'],
-  ['technician', 'Technician'],
+  ['technician', 'Technical'],
   ['operator', 'Operator'],
   ['machine', 'Machine operator'],
 ];
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -75,17 +78,17 @@ const DEFAULTS = {
     'wms.read', 'wms.write', 'scans.execute', 'settings.read',
   ],
   technician: [
-    'equipment.read', 'equipment.write', 'locations.read', 'locations.write',
-    'stock.read', 'holders.read', 'wms.read', 'settings.read', 'labels.print',
+    'technical.write', 'locations.read', 'locations.write', 'settings.read',
+    'equipment.read', 'equipment.write', 'holders.read', 'stock.read', 'wms.read', 'labels.print',
   ],
   operator: [
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'items.read',
-    'tasks.read', 'picks.execute', 'putaway.execute', 'moves.execute', 'counts.execute',
-    'scans.execute', 'labels.print', 'stock.adjust', 'wms.read', 'inbound.read', 'orders.read',
+    'tasks.read', 'picks.execute', 'inbound.read', 'inbound.write', 'val.execute',
+    'scans.execute', 'labels.print', 'wms.read', 'orders.read',
   ],
   machine: [
-    'equipment.read', 'equipment.write', 'scans.execute', 'tasks.read', 'wms.read',
-    'labels.print', 'stock.read', 'locations.read',
+    'stock.read', 'holders.read', 'holders.write', 'locations.read', 'tasks.read',
+    'putaway.execute', 'moves.execute', 'scans.execute', 'wms.read', 'labels.print',
   ],
 };
 
@@ -139,6 +142,23 @@ const RULES = [
   ['POST', '/api/hardware/mode', 'equipment.write'],
   ['POST', '/api/hardware/scan', 'scans.execute'],
   ['POST', '/api/hardware/print', 'labels.print'],
+  ['POST', '/api/holders/:id/pick', 'picks.execute'],
+  ['POST', '/api/holders/issue', 'holders.write'],
+  ['POST', '/api/holders/series', 'holders.write'],
+  ['POST', '/api/consolidate', 'holders.write'],
+  ['GET', '/api/movements', 'movements.read'],
+  ['GET', '/api/holders/:id/history', 'holders.read'],
+  ['GET', '/api/technical', 'wms.read'],
+  ['POST', '/api/technical', 'technical.write'],
+  ['GET', '/api/setup', 'settings.write'],
+  ['POST', '/api/setup/preset', 'settings.write'],
+  ['POST', '/api/setup/features', 'settings.write'],
+  ['POST', '/api/setup/complete', 'settings.write'],
+  ['POST', '/api/locations/preview', 'settings.write'],
+  ['POST', '/api/locations/generate', 'settings.write'],
+  ['GET', '/api/val', 'val.execute'],
+  ['POST', '/api/val/start', 'val.execute'],
+  ['POST', '/api/val/scan', 'val.execute'],
   ['POST', '/api/stock/adjust', 'stock.adjust'],
   ['POST', '/api/replenish', 'putaway.execute'],
   ['POST', '/api/orders/:id/pack', 'outbound.write'],

@@ -34,9 +34,8 @@ That's a low-risk way to prove the rules on real data.
 - If many sites or heavy reporting come later: the same journal on PostgreSQL.
 
 **Done since the prototype:**
-- Sign-in with scrypt password hashes and cookie sessions. Six roles (administrator, manager / supervisor, office, technician, operator, machine operator), a permission list an administrator can edit, and a view per role at `/app`. See [ACCOUNTS.md](ACCOUNTS.md).
-- Clients that own items and stock; item units, dimensions, weight and barcodes; locations with height, width, depth and weight capacity; holders (pallet, crate, tote).
-- Pallet and master (SSCC / GS1-128) labels as ZPL and as printable HTML.
+- Sign-in with scrypt password hashes and cookie sessions. Six roles (administrator, manager / supervisor, office, technical, operator on foot, machine operator on a truck or order picker). See [ACCOUNTS.md](ACCOUNTS.md).
+- License plates PAL, MASTER, ST, INB and OUT. The counter never goes backwards. Consolidation puts several PAL plates under one MASTER. Virtual locations include consolidation and staging. Every move records the person, plate, from, to, time and quantity.
 - Scanner input as a keyboard wedge, manual entry, or a simulated scan. Printers as ZPL over the network, a browser print/PDF page, or a simulated device.
 
 ## 3. Hardware

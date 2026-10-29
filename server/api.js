@@ -129,7 +129,7 @@
       structural: Boolean(l.structural), custom: Boolean(l.custom),
       zone: l.zone || null, aisle: l.aisle || null, rack: l.rack || null, level: l.level ?? null, bin: l.bin || null,
       parent: l.parent || null, category: l.category || null, blocked: Boolean(l.blocked),
-      capacity: l.capacity || null, occupied, sscc: l.sscc || null,
+      capacity: l.capacity || null, occupied, sscc: l.sscc || null, virtual: Boolean(l.virtual), role: l.role || null,
     };
   }
 
@@ -328,6 +328,38 @@
     on('DELETE', '/api/locations/:code', ({ code }, q, b, by) => run('deleteLocation', { code: decodeURIComponent(code) }, by));
     on('GET', '/api/holders', () => Object.values(wh().holders || {}).map((h) => holderView(wh(), h)));
     on('POST', '/api/holders', (_, q, b, by) => run('addHolder', b, by));
+    on('POST', '/api/holders/:id/pick', ({ id }, q, b, by) => run('pickHolder', { id: decodeURIComponent(id) }, by));
+    on('POST', '/api/holders/issue', (_, q, b, by) => run('issuePlates', b, by));
+    on('POST', '/api/holders/series', (_, q, b, by) => run('issueSeries', b, by));
+    on('POST', '/api/consolidate', (_, q, b, by) => run('consolidate', b, by));
+    on('GET', '/api/holders/:id/history', ({ id }) => {
+      const h = wh().holders[decodeURIComponent(id).toUpperCase()];
+      if (!h) return { status: 404, error: `Unknown holder ${id}` };
+      return { id: h.id, series: h.series || null, parentId: h.parentId || null, children: h.children || [], history: h.history || [], movements: wh().movementsFor({ holder: h.id }) };
+    });
+    on('GET', '/api/movements', (_, q) => wh().movementsFor({ user: q.user || null, holder: q.holder || null }));
+    on('GET', '/api/technical', () => ({ ...(wh().technical || {}), holderSeries: wh().holderSeries }));
+    on('POST', '/api/technical', (_, q, b, by) => run('setTechnical', { patch: b }, by));
+    on('GET', '/api/setup', () => {
+      const { PRESETS, FEATURES } = require('../src/presets');
+      const { EXAMPLES, LEVELS } = require('../src/locations');
+      return {
+        setup: wh().setup || { completed: false },
+        features: wh().features,
+        presets: PRESETS.map((p) => ({ id: p.id, name: p.name, summary: p.summary, features: p.features, locationPlan: p.locationPlan, virtual: p.virtual, categories: p.categories })),
+        featureList: FEATURES.map(([id, label, hint]) => ({ id, label, hint })),
+        examples: Object.values(EXAMPLES).map((ex) => ({ ...ex, preview: require('../src/locations').expand(ex.plan, { limit: 6 }) })),
+        levels: LEVELS,
+      };
+    });
+    on('POST', '/api/setup/preset', (_, q, b, by) => run('applyPreset', b, by));
+    on('POST', '/api/setup/features', (_, q, b, by) => run('setFeatures', { features: b.features || b }, by));
+    on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
+    on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
+    on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
+    on('GET', '/api/val', () => ({ stations: wh().valStations || [], kits: Object.values(wh().kits || {}), jobs: (wh().valJobs || []).slice(0, 20) }));
+    on('POST', '/api/val/start', (_, q, b, by) => run('startVal', b, by));
+    on('POST', '/api/val/scan', (_, q, b, by) => run('scanVal', b, by));
     on('POST', '/api/holders/:id', ({ id }, q, b, by) => run('updateHolder', { ...b, id: decodeURIComponent(id) }, by));
     on('POST', '/api/holders/:id/move', ({ id }, q, b, by) => run('moveHolder', { id: decodeURIComponent(id), loc: b.loc }, by));
     on('POST', '/api/holders/:id/load', ({ id }, q, b, by) => run('loadHolder', { ...b, id: decodeURIComponent(id) }, by));

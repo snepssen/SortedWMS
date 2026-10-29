@@ -35,11 +35,16 @@
     for (const eq of site.equipment || []) wh.addEquipment(eq);
     for (const f of site.faults || []) wh.reportFault(f, 'setup');
     for (const m of site.maintenance || []) wh.recordMaintenance(m, 'setup');
+    for (const kit of site.kits || []) wh.addKit(kit);
+    for (const station of site.valStations || []) wh.addValStation(station);
+    if (site.technical) wh.setTechnical(site.technical);
+    for (const plate of site.licensePlates || []) wh.issueSeries({ ...plate, by: 'setup' });
     for (const [name, notes] of Object.entries(site.customers || {})) wh.setCustomerNotes(name, notes);
     for (const tpl of site.templates || []) wh.applyTemplate(wh.selectLocations(tpl.from, tpl.to), tpl.category, { by: 'setup' });
     for (const zone of site.quarantine || []) wh.setQuarantineLocations(wh.selectLocations(zone.from, zone.to), true, zone.reason || 'Site quarantine designation', 'setup');
     if (site.naming) wh.setNaming(site.naming);
     wh.events.length = 0;
+    wh.printQueue.length = 0;
     wh.log(`Site "${site.name || 'unnamed'}" created`);
     return wh;
   }

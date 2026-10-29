@@ -261,6 +261,30 @@
       this.faults = [];
       this.maintenance = [];
       this.labelLog = [];
+      this.movements = [];
+      this.holderSeries = {
+        PAL: { prefix: 'PAL', pad: 7, next: 1 },
+        MASTER: { prefix: 'MASTER', pad: 7, next: 1 },
+        ST: { prefix: 'ST', pad: 7, next: 1 },
+        INB: { prefix: 'INB', pad: 7, next: 1 },
+        OUT: { prefix: 'OUT', pad: 7, next: 1 },
+      };
+      this.technical = {
+        autoSort: { enabled: true, strategy: 'fefo', sameBatchTogether: true, groundForNextOut: true, rules: [] },
+        locationDefaults: {
+          rack: { heightMm: 1800, widthMm: 1000, depthMm: 1200, maxWeightKg: 1000 },
+          bin: { heightMm: 1600, widthMm: 800, depthMm: 1200, maxWeightKg: 500 },
+          mezzanine: { heightMm: 1400, widthMm: 800, depthMm: 1200, maxWeightKg: 400 },
+          virtual: { heightMm: null, widthMm: null, depthMm: null, maxWeightKg: null },
+        },
+      };
+      this.kits = {};
+      this.valStations = [];
+      this.valJobs = [];
+      // Category features default on so the existing food rules keep working.
+      // A preset or the setup wizard turns off the ones a site does not need.
+      this.features = { temperatureZones: true, lotExpiry: true, fefo: true, highValueSecurity: true };
+      this.setup = { completed: false, preset: null };
       this.stations = {};
       this.routes = {};
       this.desks = {};
@@ -454,8 +478,14 @@
      * cell the truck is in.
      */
     resolve(input, { cell = null } = {}) {
-      const raw = String(input).trim().toUpperCase();
+      const typed = String(input).trim();
+      if (this.locations[typed]) return typed;
+      const raw = typed.toUpperCase();
       if (this.locations[raw]) return raw;
+      if (typed !== raw) {
+        const found = Object.keys(this.locations).find((code) => code.toUpperCase() === raw);
+        if (found) return found;
+      }
       const s = raw.replace(/[\s-]/g, ''); // "AA-03-C-2" and "AA 03 C 2" read as AA03C2
       let m = /^([A-Z])([A-Z])(\d{2})([A-Z])(\d)$/.exec(s);
       if (!m && cell) {
@@ -546,12 +576,21 @@
      * Can this pallet ship today? 'ok', 'short' (fewer days left than the
      * manager's minimum), 'expired' or 'blocked' (damaged, held back).
      */
+    /** Missing feature flags stay on, so a warehouse created before presets still uses FEFO and expiry. */
+    feature(name) {
+      const flags = this.features;
+      if (!flags || flags[name] == null) return true;
+      return Boolean(flags[name]);
+    }
+
     shipState(pallet) {
       if (!pallet.qty || pallet.qty <= 0) return 'blocked';
       if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet) || pallet.quarantine || this.locations[pallet.loc]?.quarantine) return 'blocked';
-      const days = daysBetween(this.today(), pallet.expiry);
-      if (days < 0) return 'expired';
-      if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
+      if (this.feature('lotExpiry')) {
+        const days = daysBetween(this.today(), pallet.expiry);
+        if (days < 0) return 'expired';
+        if (days < this.items[pallet.itemNo].minShipDays && !pallet.allowShort) return 'short';
+      }
       return 'ok';
     }
 
@@ -676,6 +715,7 @@
     }
 
     recordTemperature(sscc, temperature, min, max, reason, by = 'office') {
+      if (!this.feature('temperatureZones')) throw new Error('Temperature zones are not enabled for this warehouse');
       const pallet = this._pallet(sscc);
       if (pallet.status === 'shipped') throw new Error('Cannot inspect shipped stock');
       if (![temperature, min, max].every((n) => typeof n === 'number' && Number.isFinite(n)) || min > max) throw new Error('Temperature and limits must be finite numbers, with minimum <= maximum');
@@ -1241,8 +1281,10 @@
       const shipped = [];
       for (const sscc of order.lines.flatMap((l) => l.allocated)) {
         const p = this.pallets[sscc];
+        const fromLoc = p.loc;
         this._remove(p);
         p.status = 'shipped';
+        if (typeof this.recordMovement === 'function') this.recordMovement({ holder: p.holderId || null, sscc, from: fromLoc, to: null, qty: p.qty, event: 'shipped', by });
         shipped.push({ sscc, itemNo: p.itemNo, batch: p.batch, expiry: p.expiry, qty: p.qty });
       }
       order.status = 'shipped';
@@ -1919,6 +1961,7 @@
       const quarantineMove = Boolean(pallet.quarantine || to.quarantine);
       this._remove(pallet);
       this._place(pallet, code);
+      if (typeof this.recordMovement === 'function') this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from, to: code, qty: pallet.qty, event: 'moved', by });
       this._quarantinePlacement(pallet, by);
       if (pallet.status === 'missing') { pallet.status = pallet.blockReason ? 'blocked' : 'available'; notes.push('found again'); }
       pallet.missingFrom = null;
@@ -2249,11 +2292,31 @@
 
     // ---- Save and restore ---------------------------------------------------------
 
+    /**
+     * One stock movement. `holder` is the license plate (PAL, MASTER, ST, INB, OUT)
+     * when the pallet has one. The same row is copied onto that holder's history.
+     */
+    recordMovement({ holder = null, sscc = null, from = null, to = null, qty = null, event = 'moved', by = null, note = null } = {}) {
+      const entry = {
+        t: this.now(), by: by || this._actor || 'unknown', holder: holder || null, sscc: sscc || null,
+        from: from || null, to: to || null, qty: qty == null ? null : qty, event, note: note || null,
+      };
+      this.movements = this.movements || [];
+      this.movements.unshift(entry);
+      if (this.movements.length > 2000) this.movements.length = 2000;
+      const plate = holder && this.holders && this.holders[holder];
+      if (plate) {
+        plate.history = plate.history || [];
+        plate.history.unshift(entry);
+      }
+      return entry;
+    }
+
     /** The whole state as plain data (for the server's snapshots). */
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt') continue;
         out[k] = v;
       }
       return out;
@@ -2270,6 +2333,14 @@
       wh.faults = wh.faults || [];
       wh.maintenance = wh.maintenance || [];
       wh.labelLog = wh.labelLog || [];
+      wh.movements = wh.movements || [];
+      wh.kits = wh.kits || {};
+      wh.valStations = wh.valStations || [];
+      wh.valJobs = wh.valJobs || [];
+      wh.holderSeries = wh.holderSeries || { PAL: { prefix: 'PAL', pad: 7, next: 1 }, MASTER: { prefix: 'MASTER', pad: 7, next: 1 }, ST: { prefix: 'ST', pad: 7, next: 1 }, INB: { prefix: 'INB', pad: 7, next: 1 }, OUT: { prefix: 'OUT', pad: 7, next: 1 } };
+      wh.technical = wh.technical || { autoSort: { enabled: true, strategy: 'fefo', sameBatchTogether: true, groundForNextOut: true, rules: [] }, locationDefaults: {} };
+      wh.features = wh.features || { temperatureZones: true, lotExpiry: true, fefo: true, highValueSecurity: true };
+      wh.setup = wh.setup || { completed: false, preset: null };
       if (!wh._seq) wh._seq = { task: 0, sscc: 0, label: 0, fault: 0, maint: 0 };
       if (wh._seq.fault == null) wh._seq.fault = 0;
       if (wh._seq.maint == null) wh._seq.maint = 0;
@@ -2689,7 +2760,9 @@
       const to = this.locations[task.to];
       if (to.reservedBy === task.id || to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;
       const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
+      const fromLoc = task.from;
       this._place(pallet, task.to);
+      if (typeof this.recordMovement === 'function') this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: fromLoc, to: task.to, qty: pallet.qty, event: task.type === 'PICK' ? 'picked' : 'moved', by: this._actor || truck.id });
       this._quarantinePlacement(pallet, truck.id);
       if (buries) {
         this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
@@ -2871,12 +2944,12 @@
             const ahead = this._blockSeq(loc.lane);
             const i = ahead.indexOf(p.sscc);
             if (ahead.slice(0, i).some((s) => !this.pallets[s].orderId)) return false;
-          } else if (loc.kind !== 'rack' && loc.kind !== 'bin') return false;
+          } else if (loc.kind !== 'rack' && loc.kind !== 'bin' && loc.kind !== 'mezzanine') return false;
           const t = live.get(p.sscc);
           return !t || (t.type === 'SHIFT' && t.status === 'open');
         })
         .sort((a, b) => (blockers.has(b.sscc) - blockers.has(a.sscc))
-          || (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0)
+          || (this.feature('fefo') && this.feature('lotExpiry') ? (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0) : 0)
           || a.receivedAt - b.receivedAt
           || (this.locations[a.loc].level || 0) - (this.locations[b.loc].level || 0)
           || (a.loc < b.loc ? -1 : 1));

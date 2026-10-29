@@ -98,9 +98,9 @@ test('each demo role can sign in and is refused a screen it does not own', async
       ['admin', 'sorted-admin', 'administrator', '/api/users', 200],
       ['manager', 'sorted-manager', 'manager', '/api/users', 200],
       ['office', 'sorted-office', 'office', '/api/clients', 200],
-      ['tech', 'sorted-tech', 'technician', '/api/equipment', 200],
-      ['operator', 'sorted-operator', 'operator', '/api/tasks', 200],
-      ['machine', 'sorted-machine', 'machine', '/api/stations', 200],
+      ['tech', 'sorted-tech', 'technician', '/api/technical', 200],
+      ['operator', 'sorted-operator', 'operator', '/api/val', 200],
+      ['machine', 'sorted-machine', 'machine', '/api/tasks', 200],
     ];
     for (const [username, password, role, path, status] of expect) {
       const cookie = await app.sign(username, password);
@@ -112,6 +112,12 @@ test('each demo role can sign in and is refused a screen it does not own', async
     assert.equal((await app.call('POST', '/api/config', { aisleCap: 2 }, { cookie: operator })).status, 403);
     const machine = await app.sign('machine', 'sorted-machine');
     assert.equal((await app.call('POST', '/api/orders', { id: 'NO', customer: 'X', lane: 'OUT-01', lines: [] }, { cookie: machine })).status, 403);
+    assert.equal((await app.call('POST', '/api/technical', { autoSort: { strategy: 'fifo' } }, { cookie: machine })).status, 403);
+    const tech = await app.sign('tech', 'sorted-tech');
+    assert.equal((await app.call('POST', '/api/technical', { autoSort: { strategy: 'fifo', rules: [] } }, { cookie: tech })).body.autoSort.strategy, 'fifo');
+    const manager = await app.sign('manager', 'sorted-manager');
+    assert.equal((await app.call('POST', '/api/technical', { autoSort: { strategy: 'nearest' } }, { cookie: manager })).status, 403);
+    assert.equal((await app.call('GET', '/api/movements', null, { cookie: manager })).status, 200);
     const office = await app.sign('office', 'sorted-office');
     const clients = await app.call('GET', '/api/clients', null, { cookie: office });
     assert.ok(clients.body.some((c) => c.id === 'CL-DAIRY' && c.pallets >= 0));

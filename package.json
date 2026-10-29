@@ -2,7 +2,7 @@
   "name": "sortedwms",
   "version": "0.1.0",
   "private": true,
-  "description": "Warehouse management for a chilled site: roles, clients, locations, holders, labels, and reach-truck workflows",
+  "description": "Warehouse management for any building: presets, license plates, roles, and optional food or high-value rules",
   "scripts": {
     "start": "node --no-warnings server/index.js",
     "start:demo": "node --no-warnings server/index.js --seed-demo",

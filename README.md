@@ -1,6 +1,8 @@
 # SortedWMS
 
-A warehouse management system for a chilled site, with sign-in, a role for each job on the floor, and the reach-truck rules (receiving, put-away, FEFO, counts, dispatch) underneath.
+A warehouse system for whoever is deploying it: a distribution centre, a high-value store, a home garage, or a small maker. Food rules (temperature zones, lot, expiry, FEFO) and high-value PAL/MASTER plates are switches, not assumptions. The chilled reach-truck warehouse is one sample preset, not the only shape the software can take.
+
+**Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. An administrator builds the building in the [setup wizard](http://localhost:8080/setup): pick a preset, turn features on or off, and generate location codes. Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 **Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. Each account lands on its own view at `/app`. Accounts, permissions and the default passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
@@ -193,17 +195,24 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 
 The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer's resolution is set in the site file and labels are scaled to it. The office can ask a printer for its status (paper, ribbon, head, pause). The handhelds are Zebra MC9401s: the handheld page has a compact layout for their screen, and Esc and F1–F5 work on their keypad. Setup for both is in [docs/HARDWARE.md](docs/HARDWARE.md).
 
+## Locations
+
+Codes run **Cell > Aisle > Bay > Position > Height**. Any of those levels can be left out, so a garage can be only Bay > Height. Each level is numbers (`01-03-12-2-04`), letters and numbers (`A-03-B12-2-D`), or words (`Garage-Left-Shelf3-Box2-Top`). A colour is the word Red or Blue. The wizard shows a live preview, then creates the locations with default height, width, depth and weight capacity. Virtual locations such as `CONSO00` are added beside the physical ones.
+
+Presets: chilled distribution centre (including frozen as a zone), high-value, home garage, small maker.
+
 ## What the WMS adds
 
 On top of the reach-truck rules already in `src/engine.js`:
 
 - **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator.
-- **Roles.** Administrator, manager / supervisor, office, technician, operator, machine operator. Permissions are a list an administrator can edit. Each role has its own view.
+- **Roles.** Administrator, manager / supervisor, office, technical, operator (on foot), machine operator (reach truck or order picker). Permissions are a list an administrator can edit. Each role has its own view.
 - **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
 - **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
-- **Locations.** Zones, aisles, racks, levels, bins and block lanes. Height, width, depth and weight capacity. A load that does not fit is refused.
-- **Holders.** Pallets, crates and totes: what is on each one, and where it stands.
-- **Labels.** Pallet labels and master labels (SSCC / GS1-128) as ZPL and as a printable HTML page (the PDF path is the browser print dialog).
+- **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation) and staging. Height, width, depth and weight capacity. A load that does not fit is refused.
+- **License plates.** `PAL`, `MASTER`, `ST`, `INB` and `OUT` plus a number that only increases (`PAL0000001`). A full pallet gets a PAL and a MASTER. Consolidation puts several PAL plates under one MASTER, with the previous link kept in the history. Prefix and padding are set by the technical role.
+- **Labels.** The plate id is the barcode. An SSCC / GS1-128 can be printed as well. ZPL, and HTML for the browser print dialog.
+- **Traceability.** Each movement stores the person, the plate, from, to, time and quantity. A manager can open a person's history or a plate's history.
 - **Floor flows already in the engine, now behind a permission:** ASN receiving, put-away, replenishment moves, FEFO picking, packing notes, shipping, cycle counts, quantity adjustments with a reason, search, and CSV stock export. The journal is still the audit trail.
 - **Hardware, partially.** Keyboard-wedge scans, manual entry, and a simulated scan. Printers speak ZPL, can fall back to the browser page, or stay simulated until an address is configured.
 
@@ -224,9 +233,9 @@ Then open `http://localhost:8080/login`.
 | `admin` | `sorted-admin` | Users, roles, settings, audit |
 | `manager` | `sorted-manager` | KPIs, staff, tasks, exceptions, locations, holders |
 | `office` | `sorted-office` | Clients, items, orders, inbound, outbound, reports, labels |
-| `tech` | `sorted-tech` | Equipment, faults, maintenance, hardware |
-| `operator` | `sorted-operator` | Put-away, picking, moves, counts, task queue |
-| `machine` | `sorted-machine` | Line jobs, status, errors |
+| `tech` | `sorted-tech` | Auto-sort, location defaults, label series, hardware |
+| `operator` | `sorted-operator` | Receiving, mezzanine pick, VAL / kitting |
+| `machine` | `sorted-machine` | Put-away, replenishment, transfers, block-lane moves |
 
 `SORTED_ADMIN_USER` and `SORTED_ADMIN_PASSWORD` set the first administrator when the database has no users. `SORTED_DEMO_USERS=0` skips the other five accounts. Details are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
