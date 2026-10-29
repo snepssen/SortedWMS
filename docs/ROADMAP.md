@@ -36,7 +36,14 @@ That's a low-risk way to prove the rules on real data.
 **Done since the prototype:**
 - Sign-in with scrypt password hashes and cookie sessions. Six roles (administrator, manager / supervisor, office, technical, operator on foot, machine operator on a truck or order picker). See [ACCOUNTS.md](ACCOUNTS.md).
 - License plates PAL, MASTER, ST, INB and OUT, with a counter per warehouse that only moves forward. Consolidation reuses the earliest MASTER already on those pallets unless the operator names another of them; the other source MASTER plates are retired and their numbers stay retired. The printed MASTER label lists the child PAL numbers. Food features and high-value plates start off and come on through a preset. Virtual locations include consolidation and staging. Every move records the person, plate, from, to, time and quantity.
-- Scanner input as a keyboard wedge, manual entry, or a simulated scan. Printers as ZPL over the network, a browser print/PDF page, or a simulated device.
+- Scanner input as a keyboard wedge, manual entry, or a simulated scan. Printers as ZPL over the network, a browser print/PDF page, or a simulated device. The handheld keeps scans while offline and sends them in order later; a refusal holds the scans behind it.
+- Unit sales lines picked on a mezzanine, kit work orders that consume a bill of materials, carton packing with dimensions, weight, an OUT label and a packing slip, and dispatch of those cartons.
+- Pick-face minimum, trigger and maximum, with a replenishment move in the machine-operator queue.
+- Returns received against an order and graded restock, quarantine or scrap.
+- More than one warehouse per install, a site switcher, per-user site access, and transfers between sites. Plate counters stay on the site that issued them.
+- Administrator password reset with a forced change, optional TOTP, lockout after failed sign-ins, and an idle session timeout.
+- Available-to-sell CSV and JSON, low-stock alerts, and a 3PL billing export (pallet-days and moves).
+- The GitHub Pages build of `/app` is a labelled demo with a role picker. It does not check passwords.
 
 ## 3. Hardware
 

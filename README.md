@@ -205,14 +205,21 @@ Presets: chilled distribution centre (temperature, lot, expiry and FEFO on; froz
 
 On top of the reach-truck rules already in `src/engine.js`:
 
-- **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator.
+- **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator. An administrator can reset a password without email; the person must change it at the next sign-in. Optional authenticator-app codes (TOTP). Five failed sign-ins lock the account for 15 minutes. A session ends after 30 idle minutes, or 12 hours at the latest.
 - **Roles.** Administrator, manager / supervisor, office, technical, operator (on foot), machine operator (reach truck or order picker). Permissions are a list an administrator can edit. Each role has its own view.
 - **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
 - **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
-- **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation) and staging. Height, width, depth and weight capacity. A load that does not fit is refused.
+- **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation), staging, returns and quarantine. Height, width, depth and weight capacity. A load that does not fit is refused.
 - **License plates.** `PAL`, `MASTER`, `ST`, `INB` and `OUT` plus a number that only increases (`PAL0000001`). Each warehouse has its own counters. A full pallet gets a PAL and a MASTER when high-value plates are on. Consolidation keeps one MASTER that already parents those PAL plates: the earliest number, unless the operator names another of those MASTER plates. The other source MASTER plates are retired, the close is written into the history, and those numbers stay retired. The printed MASTER label lists the child PAL numbers. Prefix and padding are set by the technical role.
 - **Labels.** The plate id is the barcode. An SSCC / GS1-128 can be printed as well. ZPL, and HTML for the browser print dialog.
 - **Traceability.** Each movement stores the person, the plate, from, to, time and quantity. A manager can open a person's history or a plate's history.
+- **Orders on the floor.** A sales-order line in units is picked on foot at a mezzanine face and the line quantity goes down, the same way a reach-truck pick takes a pallet. A kit has a bill of materials. A work order, or an order line that names the kit, consumes component plates as they are scanned and counts the finished units.
+- **Packing bench.** Scan a pick into an `OUT` carton, close it with length, width, height and weight, and print an OUT label plus a packing slip. Closed cartons dispatch onto the order's shipping lane.
+- **Replenishment.** A pick face keeps a minimum, a maximum and a trigger. When the quantity on the face is at or below the trigger, one replenishment move joins the machine-operator queue.
+- **Returns.** Receive a return against an order at a virtual return location, then grade it restock, quarantine or scrap. The grade stays on the return's history.
+- **Warehouses.** One install can hold more than one site. The header switches site. A user can be limited to some sites. A transfer moves a quantity to the other site, which receives it on a new plate. Each site keeps its own plate counters.
+- **Selling and 3PL.** An available-to-sell CSV or JSON feed per SKU, low-stock alerts from a reorder point, and a billing export of pallet-days and moves at the client's storage and handling rates.
+- **Handheld offline queue.** While the handheld is offline, scans stay on the device and send in order when the connection returns. A refusal stops the rest of the queue.
 - **Floor flows already in the engine, now behind a permission:** ASN receiving, put-away, replenishment moves, FEFO picking, packing notes, shipping, cycle counts, quantity adjustments with a reason, search, and CSV stock export. The journal is still the audit trail.
 - **Hardware, partially.** Keyboard-wedge scans, manual entry, and a simulated scan. Printers speak ZPL, can fall back to the browser page, or stay simulated until an address is configured.
 

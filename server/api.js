@@ -130,6 +130,7 @@
       zone: l.zone || null, aisle: l.aisle || null, rack: l.rack || null, level: l.level ?? null, bin: l.bin || null,
       parent: l.parent || null, category: l.category || null, blocked: Boolean(l.blocked),
       capacity: l.capacity || null, occupied, sscc: l.sscc || null, virtual: Boolean(l.virtual), role: l.role || null,
+      replenishment: l.replenishment || null,
     };
   }
 
@@ -142,12 +143,12 @@
   }
 
   function createApi({ store, printers, hardware }) {
-    const wh = () => store.wh;
+    const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
     const run = (op, args, by) => {
       const result = store.exec(op, args, by);
-      printers.flush(store.wh.printQueue);
+      printers.flush(wh().printQueue);
       return result;
     };
 
@@ -328,7 +329,6 @@
     on('DELETE', '/api/locations/:code', ({ code }, q, b, by) => run('deleteLocation', { code: decodeURIComponent(code) }, by));
     on('GET', '/api/holders', () => Object.values(wh().holders || {}).map((h) => holderView(wh(), h)));
     on('POST', '/api/holders', (_, q, b, by) => run('addHolder', b, by));
-    on('POST', '/api/holders/:id/pick', ({ id }, q, b, by) => run('pickHolder', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/holders/issue', (_, q, b, by) => run('issuePlates', b, by));
     on('POST', '/api/holders/series', (_, q, b, by) => run('issueSeries', b, by));
     on('POST', '/api/consolidate', (_, q, b, by) => run('consolidate', b, by));
@@ -359,6 +359,7 @@
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
     on('GET', '/api/val', () => ({ stations: wh().valStations || [], kits: Object.values(wh().kits || {}), jobs: (wh().valJobs || []).slice(0, 20) }));
     on('POST', '/api/val/start', (_, q, b, by) => run('startVal', b, by));
+    on('POST', '/api/holders/:id/pick', ({ id }, q, b, by) => run('pickHolder', { id: decodeURIComponent(id), orderId: b.orderId || null, qty: b.qty }, by));
     on('POST', '/api/val/scan', (_, q, b, by) => run('scanVal', b, by));
     on('POST', '/api/holders/:id', ({ id }, q, b, by) => run('updateHolder', { ...b, id: decodeURIComponent(id) }, by));
     on('POST', '/api/holders/:id/move', ({ id }, q, b, by) => run('moveHolder', { id: decodeURIComponent(id), loc: b.loc }, by));
@@ -379,6 +380,31 @@
     on('POST', '/api/stock/adjust', (_, q, b, by) => run('adjustQuantity', b, by));
     on('POST', '/api/replenish', (_, q, b, by) => run('replenish', b, by));
     on('POST', '/api/orders/:id/pack', ({ id }, q, b, by) => run('recordPacking', { id: decodeURIComponent(id), note: b.note }, by));
+    on('POST', '/api/orders/:id/carton', ({ id }, q, b, by) => run('openCarton', { orderId: decodeURIComponent(id) }, by));
+    on('POST', '/api/orders/:id/dispatch-cartons', ({ id }, q, b, by) => run('dispatchCartons', { orderId: decodeURIComponent(id) }, by));
+    on('POST', '/api/cartons/:id/pack', ({ id }, q, b, by) => run('packIntoCarton', { carton: decodeURIComponent(id), code: b.code, qty: b.qty }, by));
+    on('POST', '/api/cartons/:id/close', ({ id }, q, b, by) => run('closeCarton', { carton: decodeURIComponent(id), ...b }, by));
+    on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
+    on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));
+    on('POST', '/api/replenishment/plan', (_, q, b, by) => run('planReplenishment', {}, by));
+    on('GET', '/api/returns', () => Object.values(wh().returns || {}));
+    on('POST', '/api/returns', (_, q, b, by) => run('receiveReturn', b, by));
+    on('POST', '/api/returns/:id/grade', ({ id }, q, b, by) => run('gradeReturn', { ...b, id: decodeURIComponent(id) }, by));
+    on('GET', '/api/reports/availability', () => wh().availability());
+    on('GET', '/api/reports/availability.json', () => wh().availability());
+    on('GET', '/api/reports/availability.csv', () => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
+    }));
+    on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: q.clientId || null }));
+    on('GET', '/api/reports/billing.csv', (_, q) => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: csv([['client', 'name', 'palletDays', 'moves', 'storageRate', 'handlingRate', 'storage', 'handling', 'total'], ...wh().billingReport({ clientId: q.clientId || null }).map((r) => [r.clientId, r.name, r.palletDays, r.moves, r.storageRate, r.handlingRate, r.storage, r.handling, r.total])]),
+    }));
+    on('GET', '/api/sites', () => ({ current: store.siteId || 'MAIN', sites: store.listSites ? store.listSites() : [{ id: 'MAIN', name: 'Main warehouse' }] }));
+    on('POST', '/api/sites', (_, q, b) => store.createSite(b));
+    on('POST', '/api/sites/transfer', (_, q, b, by) => store.transferBetween({ from: b.from || store.siteId || 'MAIN', to: b.to, itemNo: b.itemNo, qty: b.qty, by }));
     on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null }, by));
     on('GET', '/api/equipment', () => ({ equipment: Object.values(wh().equipment || {}), faults: wh().faults || [], maintenance: (wh().maintenance || []).slice(0, 100) }));
     on('POST', '/api/equipment', (_, q, b, by) => run('addEquipment', b, by));

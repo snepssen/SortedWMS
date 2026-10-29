@@ -55,7 +55,21 @@
     const data = Object.fromEntries(new FormData(e.target));
     const res = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
     const body = await res.json().catch(() => ({}));
+    if (res.status === 429) { document.getElementById('err').textContent = body.error || 'Too many sign-in attempts.'; return; }
     if (!res.ok) { document.getElementById('err').textContent = body.error || 'Sign-in failed'; return; }
+    if (body.mfaRequired) {
+      const form = document.getElementById('form');
+      form.innerHTML = '<label>Authenticator code <input name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label><button type="submit">Confirm code</button><p class="err" id="err" role="alert"></p>';
+      form.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const code = new FormData(ev.target).get('code');
+        const second = await fetch('/api/login/totp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mfaToken: body.mfaToken, code }) });
+        const again = await second.json().catch(() => ({}));
+        if (!second.ok) { document.getElementById('err').textContent = again.error || 'That code was refused'; return; }
+        location.assign(dest);
+      };
+      return;
+    }
     location.assign(dest);
   };
 })();

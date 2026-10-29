@@ -155,7 +155,7 @@
       '^XA',
       '^CI28',
       '^PW812^LL1218',
-      `^FO40,30^A0N,32,32^FD${clean(d.series === 'MASTER' || d.kind === 'master' ? 'MASTER LABEL' : 'PALLET LABEL')}^FS`,
+      `^FO40,30^A0N,32,32^FD${clean(d.series === 'MASTER' || d.kind === 'master' ? 'MASTER LABEL' : d.series === 'OUT' ? 'OUT LABEL' : 'PALLET LABEL')}^FS`,
       `^FO40,80^A0N,64,64^FD${clean(d.plate || d.title || '')}^FS`,
       d.itemName ? `^FO40,160^A0N,36,36^FD${clean(d.itemName)}^FS` : '',
       d.itemNo ? `^FO40,210^A0N,28,28^FDItem ${clean(d.itemNo)}   Qty ${clean(d.qty == null ? '' : d.qty)}^FS` : '',
@@ -172,5 +172,21 @@
     return lines.filter(Boolean).join('\n');
   }
 
-  return { shippingLabel, palletLabel, masterLabel, licenseLabel, labelHtml, scaleZpl, escapeHtml };
+  function packingSlip(d) {
+    const body = (d.lines || []).slice(0, 14).map((line, i) => `^FO40,${250 + i * 34}^A0N,26,26^FD${clean(line.qty)}  ${clean(line.itemNo)}  ${clean(line.name || '')}^FS`);
+    return [
+      '^XA',
+      '^CI28',
+      '^PW812^LL1218',
+      '^FO40,30^A0N,36,36^FDPACKING SLIP^FS',
+      `^FO40,80^A0N,32,32^FDOrder ${clean(d.orderId)}   ${clean(d.customer || '')}^FS`,
+      `^FO40,130^A0N,28,28^FDCarton ${clean(d.plate || '')}^FS`,
+      `^FO40,175^A0N,24,24^FD${clean(d.lengthMm)} x ${clean(d.widthMm)} x ${clean(d.heightMm)} mm   ${clean(d.weightKg)} kg^FS`,
+      '^FO40,220^GB732,3,3^FS',
+      ...body,
+      '^XZ',
+    ].join('\n');
+  }
+
+  return { shippingLabel, palletLabel, masterLabel, licenseLabel, packingSlip, labelHtml, scaleZpl, escapeHtml };
 });

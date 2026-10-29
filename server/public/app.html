@@ -57,6 +57,7 @@
   <span class="who" id="who"></span>
   <nav id="nav"></nav>
   <span style="flex:1"></span>
+  <label id="siteLabel" class="who">Warehouse <select id="sitePick"></select></label>
   <a class="btn" href="/admin">Floor</a>
   <a class="btn" href="/handheld">Handheld</a>
   <button id="out" type="button">Sign out</button>
@@ -69,9 +70,9 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['reports', 'Reports'], ['labels', 'Labels']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
@@ -126,7 +127,8 @@
       return `<section><h2>Mezzanine picking</h2><p class="hint">Scan the license plate on the mezzanine pick face. This is a walk pick, not a truck move.</p>
         ${table(['Location', 'Name'], (locs.locations || []).map((l) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name || '')}</td></tr>`))}
         ${plateTable(here)}
-        <form class="scan" data-act="mezz-scan"><label>Scan plate<input name="code" id="scan" autocomplete="off" placeholder="ST0000001"></label><p class="big"><button class="primary">Confirm pick</button></p></form><div id="scanMsg"></div></section>`;
+        <form class="scan" data-act="mezz-pick"><label>Order<input name="orderId" placeholder="4501"></label><label>Plate<input name="code" id="scan" autocomplete="off" placeholder="ST0000001"></label><label>Qty<input name="qty" type="number" min="1" placeholder="all"></label><p class="big"><button class="primary">Confirm pick</button></p></form>
+        <p class="hint">A pick against an order consumes that sales-order line. Leave the order blank to record the plate only.</p><div id="scanMsg"></div></section>`;
     },
     async kitting() {
       const val = await api('GET', '/api/val');
@@ -134,9 +136,36 @@
       const station = (val.stations[0] && val.stations[0].id) || 'VAL-01';
       return `<section><h2>VAL / kitting</h2><p class="hint">Scan the base product, then each component. Example: add a power plug to a laptop.</p>
         ${val.kits.map((k) => `<p><b>${esc(k.name)}</b> — base ${esc(k.base.itemNo)} × ${k.base.qty}, ${k.components.map((c) => esc(c.itemNo) + ' × ' + c.qty).join(', ')}</p>`).join('') || '<p class="dim">No kits.</p>'}
-        <form class="form" data-act="val-start"><label>Station<input name="stationId" value="${esc(station)}"></label><button class="primary">Start kit</button></form>
+        <form class="form" data-act="work-order"><label>Work order<input name="id" placeholder="WO-1"></label><label>Kit<input name="kitId" value="${esc((val.kits[0] && val.kits[0].id) || '')}"></label><label>Qty<input name="qty" type="number" value="1"></label><label>Order<input name="orderId" placeholder="optional"></label><button>Create work order</button></form>
+        <form class="form" data-act="val-start"><label>Station<input name="stationId" value="${esc(station)}"></label><label>Work order<input name="workOrderId" placeholder="optional"></label><button class="primary">Start kit</button></form>
         ${open ? `<p>Open job #${open.id} ${esc(open.kitName)}. Scanned ${open.got.length} / ${open.need.reduce((n, l) => n + l.qty, 0)}.</p><ul>${open.need.map((n) => `<li>${esc(n.role)} ${esc(n.itemNo)} × ${n.qty}</li>`).join('')}</ul>` : '<p class="dim">No kit in progress.</p>'}
         <form class="scan" data-act="val-scan"><input type="hidden" name="stationId" value="${esc(station)}"><label>Scan component or plate<input name="code" placeholder="NB-14 or PLUG-EU"></label><p class="big"><button class="primary">Scan</button></p></form></section>`;
+    },
+    async pack() {
+      const orders = await api('GET', '/api/orders');
+      const open = orders.filter((o) => o.status !== 'shipped');
+      return `<section><h2>Packing bench</h2><p class="hint">Scan a pick into an OUT carton, record the size and weight, then send the closed cartons to dispatch.</p>
+        <form class="form" data-act="open-carton"><label>Order<input name="orderId" required placeholder="4501"></label><button class="primary">Open carton</button></form>
+        <form class="form" data-act="pack-into"><label>Carton<input name="carton" placeholder="OUT0000001" required></label><label>Picked plate<input name="code" required></label><label>Qty<input name="qty" type="number" value="1"></label><button>Pack</button></form>
+        <form class="form" data-act="close-carton"><label>Carton<input name="carton" required></label><label>L mm<input name="lengthMm" type="number" value="400"></label><label>W mm<input name="widthMm" type="number" value="300"></label><label>H mm<input name="heightMm" type="number" value="200"></label><label>kg<input name="weightKg" type="number" value="2.5" step="0.1"></label><button>Close and print</button></form>
+        <form class="form" data-act="dispatch-cartons"><label>Order<input name="orderId" required></label><button>Dispatch cartons</button></form>
+        ${table(['Order', 'Customer', 'Status'], open.slice(0, 12).map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td></tr>`))}</section>`;
+    },
+    async returns() {
+      const [rows, orders] = await Promise.all([api('GET', '/api/returns'), api('GET', '/api/orders')]);
+      return `<section><h2>Returns</h2><p class="hint">Receive against an order at a virtual return location, then grade the goods: restock, quarantine or scrap.</p>
+        <form class="form" data-act="return-receive"><label>RMA<input name="id" required placeholder="RMA-1"></label><label>Order<input name="orderId" required></label><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>At<input name="loc" value="RETURNS"></label><button class="primary">Receive</button></form>
+        <form class="form" data-act="return-grade"><label>RMA<input name="id" required></label><label>Grade<select name="grade"><option>restock</option><option>quarantine</option><option>scrap</option></select></label><label>To<input name="to" placeholder="location, except scrap"></label><button>Grade</button></form>
+        ${table(['RMA', 'Order', 'Item', 'Qty', 'Status'], (rows || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.orderId)}</td><td>${esc(r.itemNo)}</td><td>${esc(r.qty)}</td><td>${esc(r.status)}</td></tr>`))}
+        <p class="dim">${orders.filter((o) => o.status === 'shipped').length} shipped order(s) can take a return.</p></section>`;
+    },
+    async sites() {
+      const data = await api('GET', '/api/sites');
+      return `<section><h2>Warehouses</h2><p class="hint">Each site has its own stock and its own plate counters. People can be limited to some sites. A transfer moves quantity and keeps the history on both sides.</p>
+        <p>Current warehouse: <b>${esc(data.current)}</b></p>
+        ${table(['Id', 'Name'], (data.sites || []).map((s) => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td></tr>`))}
+        <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
+        <form class="form" data-act="site-transfer"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>To<input name="to" required placeholder="NORTH"></label><button>Transfer</button></form></section>`;
     },
     async moves() {
       const [tasks, devices] = await Promise.all([api('GET', '/api/tasks'), api('GET', '/api/devices')]);
@@ -159,7 +188,9 @@
     async replenish() {
       const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
       return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
-        <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button class="primary">Replenish</button></form>
+        <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" value="Y1001"></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><button>Save min / max</button></form>
+        <form class="form" data-act="plan-replen"><button class="primary">Queue replenishment</button></form>
+        <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
         <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><label>Keep MASTER<input name="master" placeholder="blank = earliest"></label><button>Consolidate</button></form>
         <p class="hint">The earliest MASTER survives unless you name another MASTER already on these pallets. The other MASTER plates are retired and their numbers are not reused.</p></section>`;
     },
@@ -206,7 +237,7 @@
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
       return `<section><h2>Users and roles</h2><p class="hint">Assign one of the six roles. The last administrator stays an administrator.</p>
         <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('operator')}</select></label><button class="primary">Add user</button></form>
-        ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button></td></tr>`))}</section>
+        ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
     async roles() {
@@ -294,7 +325,11 @@
     },
     async reports() {
       const [stock, expiry] = await Promise.all([api('GET', '/api/reports/stock'), api('GET', '/api/reports/expiry?days=45')]);
-      return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Download stock CSV</a></p>
+      const [avail, low, billing] = await Promise.all([api('GET', '/api/reports/availability'), api('GET', '/api/alerts/low-stock'), api('GET', '/api/reports/billing')]);
+      return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Stock CSV</a> · <a href="/api/reports/availability.csv">Available to sell CSV</a> · <a href="/api/reports/availability.json">JSON feed</a> · <a href="/api/reports/billing.csv">Billing CSV</a></p>
+        <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
+        <p class="dim">${low.length} low-stock alert(s).</p>
+        <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)}</td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
         <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
         <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
     },
@@ -443,6 +478,11 @@
         await api('POST', '/api/users/' + id, { role, active: act === 'user-off' ? !u.active : u.active });
         return draw();
       }
+      if (act === 'user-reset') {
+        const reset = await api('POST', '/api/users/' + b.dataset.id + '/reset-password', {});
+        $('#main').insertAdjacentHTML('afterbegin', msg(`Temporary password for ${reset.username}: ${reset.temporaryPassword}. They must change it at the next sign-in.`, true));
+        return;
+      }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'loc-del') { await api('POST', '/api/locations/' + encodeURIComponent(b.dataset.id) + '/delete', {}); return draw(); }
       if (act === 'holder-del') { await api('POST', '/api/holders/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
@@ -545,8 +585,20 @@
     if (name === 'issue-series') return api('POST', '/api/holders/series', { series: data.series, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'replenish') return api('POST', '/api/replenish', data);
     if (name === 'consolidate') return api('POST', '/api/consolidate', { pals: String(data.pals || '').split(/\s+/).filter(Boolean), at: data.at, master: data.master || null });
-    if (name === 'val-start') return api('POST', '/api/val/start', data);
+    if (name === 'val-start') return api('POST', '/api/val/start', { stationId: data.stationId, workOrderId: data.workOrderId || null });
     if (name === 'val-scan') return api('POST', '/api/val/scan', data);
+    if (name === 'work-order') return api('POST', '/api/work-orders', { id: data.id, kitId: data.kitId, qty: Number(data.qty || 1), orderId: data.orderId || null });
+    if (name === 'mezz-pick') return api('POST', '/api/holders/' + encodeURIComponent(data.code) + '/pick', { orderId: data.orderId || null, qty: data.qty ? Number(data.qty) : null });
+    if (name === 'open-carton') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/carton', {});
+    if (name === 'pack-into') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/pack', { code: data.code, qty: Number(data.qty || 1) });
+    if (name === 'close-carton') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
+    if (name === 'dispatch-cartons') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/dispatch-cartons', {});
+    if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger) });
+    if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});
+    if (name === 'return-receive') return api('POST', '/api/returns', { id: data.id, orderId: data.orderId, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
+    if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { grade: data.grade, to: data.to || null });
+    if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null });
+    if (name === 'site-transfer') return api('POST', '/api/sites/transfer', { itemNo: data.itemNo, qty: Number(data.qty), to: data.to });
     if (name === 'tech-sort') {
       const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
         const i = line.indexOf(':');
@@ -575,7 +627,83 @@
     return out;
   }
 
-  api('GET', '/api/session').then((r) => { me = r.user; panel = (location.hash || '#').slice(1).split('?')[0]; draw(); }).catch(() => {});
+  const DEMO_NAV_ROLES = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
+  function demoUser(role) {
+    const permissions = {
+      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute'],
+      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read'],
+      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'items.read'],
+      technician: ['wms.read', 'sites.switch', 'technical.write', 'labels.print'],
+      operator: ['wms.read', 'sites.switch', 'picks.execute', 'val.execute', 'inbound.write', 'outbound.write', 'orders.read', 'labels.print', 'holders.write'],
+      machine: ['wms.read', 'sites.switch', 'putaway.execute', 'moves.execute', 'labels.print'],
+    };
+    return { username: 'demo-' + role, displayName: 'Demo ' + (TITLES[role] || role), role, permissions: permissions[role] || ['wms.read'], mustChangePassword: false };
+  }
+  async function loadSites() {
+    const pick = document.getElementById('sitePick');
+    if (!pick) return;
+    try {
+      const data = window.SORTED_DEMO ? { current: 'MAIN', sites: [{ id: 'MAIN', name: 'Demo warehouse' }] } : await api('GET', '/api/sites');
+      pick.innerHTML = (data.sites || []).map((s) => `<option value="${esc(s.id)}" ${s.id === data.current ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+      pick.onchange = async () => {
+        if (window.SORTED_DEMO) return;
+        await api('POST', '/api/sites/switch', { id: pick.value });
+        draw();
+      };
+    } catch (e) { pick.innerHTML = '<option>MAIN</option>'; }
+  }
+  function showDemoBar() {
+    if (!window.SORTED_DEMO || document.getElementById('demoBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'demoBar';
+    bar.style.cssText = 'background:#9a6700;color:#fff;padding:8px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+    const role = new URLSearchParams(location.search).get('as') || 'administrator';
+    bar.innerHTML = `<b>Demo</b> <span>Not a signed-in warehouse. Pick a role to look around.</span> ` + DEMO_NAV_ROLES.map((r) => `<button type="button" data-demo="${r}" style="background:${r === role ? '#fff' : 'transparent'};color:${r === role ? '#9a6700' : '#fff'};border:1px solid #fff;border-radius:8px;padding:4px 8px">${TITLES[r]}</button>`).join('');
+    bar.onclick = (e) => {
+      const b = e.target.closest('[data-demo]');
+      if (!b) return;
+      const url = new URL(location.href);
+      url.searchParams.set('as', b.dataset.demo);
+      location.assign(url.pathname + url.search + location.hash);
+    };
+    document.body.prepend(bar);
+  }
+  async function start() {
+    if (window.SORTED_DEMO) {
+      const role = new URLSearchParams(location.search).get('as') || 'administrator';
+      me = demoUser(DEMO_NAV_ROLES.includes(role) ? role : 'administrator');
+      showDemoBar();
+      panel = (location.hash || '#').slice(1).split('?')[0];
+      await draw();
+      return loadSites();
+    }
+    const session = await api('GET', '/api/session');
+    me = session.user;
+    if (me.mustChangePassword) {
+      document.body.dataset.role = me.role;
+      $('#title').textContent = 'Change password';
+      $('#who').textContent = me.displayName;
+      $('#main').innerHTML = `<section><h2>Choose a new password</h2><p class="hint">An administrator reset this account. The next screen opens after the password changes.</p><form class="form" id="pw"><label>Current password<input name="current" type="password" required></label><label>New password<input name="next" type="password" required minlength="8"></label><button class="primary">Save password</button></form></section>`;
+      document.getElementById('pw').onsubmit = async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target));
+        await api('POST', '/api/password', data);
+        location.assign('/app');
+      };
+      return;
+    }
+    panel = (location.hash || '#').slice(1).split('?')[0];
+    await draw();
+    loadSites();
+  }
+  const realApi = api;
+  api = window.SORTED_DEMO ? async function (method, path, body) {
+    if (!window.SortedLocal) throw new Error('Demo data is not loaded');
+    const out = await window.SortedLocal.fetch(method, path, body, { operator: me && me.username || 'demo' });
+    if (out.status >= 400) throw new Error((out.body && out.body.error) || 'Request failed');
+    return out.body;
+  } : realApi;
+  start().catch((e) => { if (!window.SORTED_DEMO) return; $('#main').innerHTML = msg(e.message, false); });
   window.addEventListener('hashchange', () => { panel = location.hash.slice(1).split('?')[0]; if (me) draw(); });
 })();
 </script>
