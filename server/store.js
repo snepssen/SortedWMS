@@ -16,6 +16,8 @@ const SNAPSHOT_EVERY = 200;
 class Store {
   constructor({ file = ':memory:', site, now = () => Date.now() } = {}) {
     this.site = site;
+    this.siteId = 'MAIN';
+    this._extra = null;
     this.now = now;
     this.replayT = null; // during a command or replay, the engine's clock is pinned to the command's time
     this.clock = () => (this.replayT == null ? this.now() : this.replayT);
@@ -25,6 +27,8 @@ class Store {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEGER NOT NULL, op TEXT NOT NULL, args TEXT NOT NULL, by TEXT);
       CREATE TABLE IF NOT EXISTS snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, journal_id INTEGER NOT NULL, t INTEGER NOT NULL, state TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS extra_sites (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS extra_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, site TEXT NOT NULL, t INTEGER NOT NULL, op TEXT NOT NULL, args TEXT NOT NULL, by TEXT);
     `);
     this._insert = this.db.prepare('INSERT INTO journal (t, op, args, by) VALUES (?, ?, ?, ?)');
     this.load();
@@ -74,8 +78,85 @@ class Store {
    * Run a command now and journal it. If it fails, nothing is journaled and
    * the state is rebuilt, so a half-done command can never linger.
    */
+  listSites() {
+    const extras = this.db.prepare('SELECT id, name FROM extra_sites ORDER BY id').all();
+    return [{ id: 'MAIN', name: (this.siteUsed && this.siteUsed.name) || 'Main warehouse' }, ...extras];
+  }
+
+  warehouse(siteId) {
+    const id = !siteId || siteId === 'MAIN' ? 'MAIN' : String(siteId).toUpperCase();
+    if (id === 'MAIN') return this.wh;
+    if (this._extra && this._extra.id === id) return this._extra.wh;
+    const row = this.db.prepare('SELECT state FROM extra_sites WHERE id = ?').get(id);
+    if (!row) throw new Error(`Unknown warehouse ${id}`);
+    const wh = Warehouse.restore(JSON.parse(row.state), { clock: this.clock });
+    this._extra = { id, wh };
+    return wh;
+  }
+
+  createSite({ id, name, preset } = {}) {
+    const siteId = String(id || '').trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9_-]{0,15}$/.test(siteId)) throw new Error('A warehouse id starts with a letter and uses letters, digits, hyphen or underscore');
+    if (siteId === 'MAIN') throw new Error('MAIN is the first warehouse');
+    if (this.db.prepare('SELECT id FROM extra_sites WHERE id = ?').get(siteId)) throw new Error(`Warehouse ${siteId} already exists`);
+    const wh = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: this.clock });
+    if (preset) wh.applyPreset(preset);
+    wh.siteId = siteId;
+    const label = String(name || siteId).trim() || siteId;
+    this.db.prepare('INSERT INTO extra_sites (id, name, created_at, state) VALUES (?, ?, ?, ?)').run(siteId, label, this.now(), JSON.stringify(wh));
+    return { id: siteId, name: label };
+  }
+
+  transferBetween({ from = 'MAIN', to, itemNo, qty, by = 'office' } = {}) {
+    const source = String(from || 'MAIN').toUpperCase();
+    const dest = String(to || '').trim().toUpperCase();
+    if (!dest || dest === source) throw new Error('Choose a different warehouse');
+    this.warehouse(source);
+    const destWh = this.warehouse(dest);
+    if (!destWh.items[itemNo]) throw new Error(`Warehouse ${dest} has no item ${itemNo}`);
+    const previous = this.siteId;
+    let exported = null;
+    try {
+      this.siteId = source;
+      exported = this.exec('exportStock', { itemNo, qty, toSite: dest, fromSite: source }, by);
+      this.siteId = dest;
+      const imported = this.exec('receiveTransfer', exported, by);
+      return { from: source, to: dest, itemNo, qty: Number(qty), holder: imported.holder.id };
+    } catch (e) {
+      if (exported) {
+        this.siteId = source;
+        try { this.exec('receiveTransfer', { ...exported, fromSite: dest }, by); } catch (ignore) { /* the original error still stands */ }
+      }
+      throw e;
+    } finally {
+      this.siteId = previous || 'MAIN';
+      this._extra = null;
+    }
+  }
+
+  _execExtra(siteId, op, args, by) {
+    const wh = this.warehouse(siteId);
+    const t = this.now();
+    this.replayT = t;
+    wh._actor = by;
+    let result;
+    try {
+      result = COMMANDS[op](wh, args, by);
+    } catch (e) {
+      this.replayT = null;
+      this._extra = null;
+      throw e;
+    }
+    this.replayT = null;
+    this.db.prepare('INSERT INTO extra_journal (site, t, op, args, by) VALUES (?, ?, ?, ?, ?)').run(siteId, t, op, JSON.stringify(args), by);
+    this.db.prepare('UPDATE extra_sites SET state = ? WHERE id = ?').run(JSON.stringify(wh), siteId);
+    this._extra = { id: siteId, wh };
+    return result;
+  }
+
   exec(op, args = {}, by = 'unknown') {
     if (!COMMANDS[op]) throw new Error(`Unknown command ${op}`);
+    if ((this.siteId || 'MAIN') !== 'MAIN') return this._execExtra(this.siteId, op, args, by);
     const t = this.now();
     this.replayT = t;
     this.wh._actor = by;

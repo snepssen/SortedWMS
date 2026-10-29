@@ -99,6 +99,7 @@
 <div class="offline" id="offline">No connection to the server: trying again</div>
 <div class="net" id="net" role="status" aria-live="polite"></div>
 <div id="app"></div>
+<script src="src/offline-queue.js"></script>
 <script>
 (function () {
   'use strict';
@@ -328,6 +329,16 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function act(method, path, body) {
+    const offlineRoot = typeof window === 'undefined' ? null : window;
+    if (offlineRoot && offlineRoot.SortedOffline && offlineRoot.SortedOffline.createOfflineQueue && !offlineRoot.__offlineQueue) offlineRoot.__offlineQueue = offlineRoot.SortedOffline.createOfflineQueue(localStorage);
+    const offlineQueue = offlineRoot && offlineRoot.__offlineQueue;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && offlineQueue) {
+      offlineQueue.enqueue({ method, path, body, id: `${deviceId}-off-${Date.now().toString(36)}` });
+      netStatus('Offline: this scan stays on the handheld and sends when the connection returns.', true);
+      const mark = $('#offline');
+      if (mark) mark.classList.add('on');
+      return;
+    }
     const same = (q) => q && q.path === path && JSON.stringify(q.body) === JSON.stringify(body);
     const confirming = body && /^CMD-/i.test(String(body.code || '')); // reports are confirmed by scanning them twice
     if (!confirming && (same(sending) || queue.some(same))) {
@@ -416,6 +427,18 @@
   });
 
   window.hhRefresh = () => refresh(true);
+  async function flushOffline() {
+    if (window.SortedOffline && window.SortedOffline.createOfflineQueue && !window.__offlineQueue) window.__offlineQueue = window.SortedOffline.createOfflineQueue(localStorage);
+    if (!window.__offlineQueue || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    const result = await window.__offlineQueue.flush(async (item) => {
+      try { return await api(item.method, item.path, item.body, { requestId: item.id }); }
+      catch (e) { if (e.network) throw e; return { ok: false, text: e.message }; }
+    });
+    if (result.stopped === 'conflict') netStatus(`Sync stopped: ${result.conflicts[result.conflicts.length - 1].error}. Later scans are still queued.`, true);
+    else if (result.sent) netStatus(`Sent ${result.sent} scan(s) from this handheld.`, false);
+  }
+  window.addEventListener('online', () => flushOffline());
+  flushOffline();
   refresh(true);
   setInterval(refresh, 2000);
 })();

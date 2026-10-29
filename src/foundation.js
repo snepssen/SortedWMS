@@ -14,7 +14,7 @@
   'use strict';
 
   const KINDS = ['zone', 'aisle', 'rack', 'level', 'bin', 'mezzanine', 'virtual', 'block', 'lane'];
-  const VIRTUAL_ROLES = ['consolidation', 'staging', 'other'];
+  const VIRTUAL_ROLES = ['consolidation', 'staging', 'return', 'quarantine', 'other'];
   const SERIES = ['PAL', 'MASTER', 'ST', 'INB', 'OUT'];
   const HOLDER_TYPES = ['pallet', 'crate', 'tote'];
   const ADJUST_REASONS = ['damage', 'expiry', 'found', 'recount', 'correction', 'other'];
@@ -88,6 +88,12 @@
         client.name = name;
       }
       for (const key of ['contact', 'email', 'phone', 'notes']) if (patch[key] != null) client[key] = String(patch[key]).trim();
+      for (const key of ['storageRate', 'handlingRate']) {
+        if (patch[key] == null || patch[key] === '') continue;
+        const rate = Number(patch[key]);
+        if (!Number.isFinite(rate) || rate < 0) throw new Error(`${key === 'storageRate' ? 'Storage' : 'Handling'} rate must be a number of 0 or more`);
+        client[key] = rate;
+      }
       this.log(`Client ${client.id} updated`);
       return client;
     };
@@ -136,6 +142,14 @@
         const q = Number(patch.palletQty);
         if (!Number.isInteger(q) || q < 1) throw new Error('Pallet quantity must be a whole number above 0');
         item.palletQty = q;
+      }
+      if ('reorderPoint' in patch) {
+        if (patch.reorderPoint == null || patch.reorderPoint === '') item.reorderPoint = null;
+        else {
+          const point = Number(patch.reorderPoint);
+          if (!Number.isInteger(point) || point < 0) throw new Error('Reorder point must be a whole number of 0 or more');
+          item.reorderPoint = point;
+        }
       }
       for (const [key, label] of [['lengthMm', 'Length'], ['widthMm', 'Width'], ['heightMm', 'Height'], ['weightKg', 'Weight']]) {
         if (key in patch) item[key] = num(patch[key], label);
@@ -641,13 +655,41 @@
       return { master: parent, pals: plates, at: code };
     };
 
-    proto.pickHolder = function ({ id, by } = {}) {
+    proto.pickHolder = function ({ id, orderId = null, qty = null, by } = {}) {
       const holder = this._holder(id);
       const loc = holder.loc && this.locations[holder.loc];
       if (!loc || loc.kind !== 'mezzanine') throw new Error(`${holder.id} is not standing on a mezzanine location`);
-      const qty = holder.contents[0] ? holder.contents[0].qty : null;
-      this.recordMovement({ holder: holder.id, sscc: holder.sscc || null, from: holder.loc, to: null, qty, event: 'picked', by: by || this._actor || 'operator' });
-      this.log(`Mezzanine pick ${holder.id} from ${holder.loc}`);
+      const line = (holder.contents || []).find((c) => Number(c.qty) > 0) || holder.contents[0];
+      const available = line ? Number(line.qty) || 0 : 0;
+      const take = qty == null || qty === '' ? available : Number(qty);
+      if (!Number.isInteger(take) || take < 1) throw new Error('Pick quantity must be a whole number above 0');
+      if (take > available) throw new Error(`${holder.id} has ${available}, not ${take}`);
+      const actor = by || this._actor || 'operator';
+      let note = null;
+      if (orderId) {
+        const order = this.orders[String(orderId)];
+        if (!order) throw new Error(`No order ${orderId}`);
+        if (order.status === 'shipped') throw new Error(`Order ${order.id} is shipped`);
+        const itemNo = line && line.itemNo;
+        const open = order.lines.find((l) => l.kind === 'each' && l.itemNo === itemNo && (l.picked || 0) < l.units);
+        if (!open) throw new Error(`Order ${order.id} has no open line for ${itemNo}`);
+        const need = open.units - (open.picked || 0);
+        if (take > need) throw new Error(`Order ${order.id} only needs ${need} more of ${itemNo}`);
+        open.picked = (open.picked || 0) + take;
+        open.picks = open.picks || [];
+        open.picks.push({ holder: holder.id, qty: take, from: holder.loc, t: this.now(), by: actor });
+        order.staged = order.staged || [];
+        order.staged.push({ itemNo, qty: take, holder: holder.id, batch: line.batch || null, expiry: line.expiry || null });
+        note = order.id;
+        const piece = order.lines.filter((l) => l.kind === 'each');
+        const done = piece.every((l) => (l.picked || 0) >= l.units);
+        if (!order.lines.some((l) => l.kind !== 'each' && l.pallets)) order.status = done ? 'ready' : 'picking';
+        else if (order.status === 'open') order.status = 'picking';
+      }
+      if (line) line.qty = available - take;
+      this.recordMovement({ holder: holder.id, sscc: holder.sscc || null, from: holder.loc, to: orderId ? `ORDER-${orderId}` : null, qty: take, event: 'picked', by: actor, note });
+      this.log(`Mezzanine pick ${holder.id} × ${take}${orderId ? ` for ${orderId}` : ''} from ${holder.loc}`);
+      if (typeof this.planReplenishment === 'function') this.planReplenishment();
       return holder;
     };
 
@@ -678,7 +720,7 @@
       return this.technical;
     };
 
-    proto.addKit = function ({ id, name, base, components }) {
+    proto.addKit = function ({ id, name, base, components, output = null }) {
       if (!id || !name) throw new Error('A kit needs an id and a name');
       if (!base || !base.itemNo || !this.items[base.itemNo]) throw new Error('Kit base item is unknown');
       if (!Array.isArray(components) || !components.length) throw new Error('A kit needs components');
@@ -686,7 +728,8 @@
         if (!this.items[c.itemNo]) throw new Error(`Unknown component ${c.itemNo}`);
         if (!Number.isInteger(Number(c.qty)) || Number(c.qty) < 1) throw new Error('Component quantity must be a whole number above 0');
       }
-      this.kits[id] = { id, name, base: { itemNo: base.itemNo, qty: Number(base.qty || 1) }, components: components.map((c) => ({ itemNo: c.itemNo, qty: Number(c.qty) })) };
+      if (output && !this.items[output]) throw new Error(`Unknown kit output ${output}`);
+      this.kits[id] = { id, name, base: { itemNo: base.itemNo, qty: Number(base.qty || 1) }, components: components.map((c) => ({ itemNo: c.itemNo, qty: Number(c.qty) })), output: output || null };
       this.log(`Kit ${id} ${name}`);
       return this.kits[id];
     };
@@ -699,15 +742,23 @@
       return station;
     };
 
-    proto.startVal = function ({ stationId, by } = {}) {
+    proto.startVal = function ({ stationId, workOrderId = null, by } = {}) {
       const station = this.valStations.find((s) => s.id === stationId);
       if (!station) throw new Error(`Unknown kitting station ${stationId}`);
       const kit = this.kits[station.kitId];
       const job = {
         id: (this.valJobs[0] ? this.valJobs[0].id : 0) + 1, stationId, kitId: kit.id, kitName: kit.name,
         need: [{ itemNo: kit.base.itemNo, qty: kit.base.qty, role: 'base' }, ...kit.components.map((c) => ({ itemNo: c.itemNo, qty: c.qty, role: 'component' }))],
-        got: [], status: 'open', startedAt: this.now(), by: by || this._actor || 'operator',
+        got: [], status: 'open', startedAt: this.now(), by: by || this._actor || 'operator', workOrderId: null, orderId: null,
       };
+      if (workOrderId) {
+        const wo = (this.workOrders || {})[String(workOrderId)];
+        if (!wo) throw new Error(`Unknown work order ${workOrderId}`);
+        if (wo.status !== 'open') throw new Error(`Work order ${wo.id} is ${wo.status}`);
+        if (wo.kitId !== kit.id) throw new Error(`Station ${stationId} builds ${kit.id}, not ${wo.kitId}`);
+        job.workOrderId = wo.id;
+        job.orderId = wo.orderId || null;
+      }
       this.valJobs.unshift(job);
       if (this.valJobs.length > 100) this.valJobs.length = 100;
       this.log(`Kitting ${kit.name} started at ${stationId}`);
@@ -724,11 +775,17 @@
       const line = job.need.find((n) => job.got.filter((g) => g.itemNo === n.itemNo).length < n.qty);
       if (!line || line.itemNo !== item.itemNo) throw new Error(`${item.itemNo} is not the next scan for this kit`);
       const actor = by || this._actor || 'operator';
+      if (holder) {
+        const content = (holder.contents || []).find((c) => c.itemNo === item.itemNo && Number(c.qty) > 0);
+        if (!content) throw new Error(`${holder.id} has no ${item.itemNo} left`);
+        content.qty -= 1;
+        this.recordMovement({ holder: holder.id, from: holder.loc, to: stationId, qty: 1, event: 'kitted', by: actor, note: `Kit ${job.kitId}` });
+      } else if (job.workOrderId) throw new Error('Scan the component license plate so stock is consumed');
       job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role });
-      if (holder) this.recordMovement({ holder: holder.id, from: holder.loc, to: stationId, qty: 1, event: line.role === 'base' ? 'received' : 'moved', by: actor, note: `Kit ${job.kitId}` });
       const done = job.need.every((n) => job.got.filter((g) => g.itemNo === n.itemNo).length >= n.qty);
-      if (done) job.status = 'done';
-      this.log(`${stationId}: scanned ${item.itemNo}${done ? ', kit complete' : ''}`);
+      if (done && job.workOrderId && typeof this._advanceWorkOrder === 'function') this._advanceWorkOrder(job, actor);
+      else if (done) job.status = 'done';
+      this.log(`${stationId}: scanned ${item.itemNo}${job.status === 'done' ? ', kit complete' : ''}`);
       return job;
     };
 
@@ -824,20 +881,22 @@
       return entry;
     };
 
-    proto.replenish = function (itemNo, toCode) {
+    proto.replenish = function (itemNo, toCode, opts = {}) {
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       const dest = this._loc(this.resolve(toCode));
-      if (dest.kind !== 'rack' && dest.kind !== 'bin') throw new Error('Replenish into a rack slot or a bin');
+      const topUp = Boolean(opts.topUp);
       if (dest.structural) throw new Error(`${dest.code} cannot hold stock`);
+      if (!topUp && dest.kind !== 'rack' && dest.kind !== 'bin') throw new Error('Replenish into a rack slot or a bin');
+      if (topUp && !['rack', 'bin', 'mezzanine'].includes(dest.kind)) throw new Error('Replenish into a rack slot, a bin or a mezzanine');
       if (dest.kind === 'rack' && dest.sscc) throw new Error(`${dest.code} is not empty`);
-      if (dest.kind === 'bin' && dest.pallets.length) throw new Error(`${dest.code} is not empty`);
+      if (dest.kind === 'bin' && dest.pallets.length && (!topUp || dest.pallets.some((id) => this.pallets[id] && this.pallets[id].itemNo !== item.itemNo))) throw new Error(`${dest.code} is not empty`);
       if (dest.category && dest.category !== item.category) throw new Error(`${dest.code} is ${this.categories[dest.category] || dest.category}, not ${this.categories[item.category]}`);
       const source = this._fefo(itemNo).find((p) => p.loc !== dest.code);
       if (!source) throw new Error(`No free stock of ${itemNo} to replenish`);
       if (!this._fits(dest, source)) throw new Error(`Pallet …${source.sscc.slice(-6)} does not fit ${dest.code}`);
       const task = this._newTask({ type: 'SHIFT', reason: 'replenish', sscc: source.sscc, from: source.loc, to: dest.code, category: item.category });
-      if (dest.kind === 'rack' || dest.kind === 'bin') dest.reservedBy = task.id;
+      if (dest.kind === 'rack' || dest.kind === 'bin' || dest.kind === 'mezzanine') dest.reservedBy = task.id;
       this.log(`Replenish ${itemNo} → ${dest.code} with …${source.sscc.slice(-6)}`, { taskId: task.id });
       this.dispatch();
       return task;
@@ -936,6 +995,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadOperations() {
+      if (typeof require === 'function') {
+        try { return require('./operations'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedOperations;
+    }
+
     proto.applyPreset = function (id) {
       const { PRESETS } = loadPresets();
       const preset = PRESETS.find((p) => p.id === id);
@@ -984,6 +1050,9 @@
       this.log('Setup wizard saved');
       return this.setup;
     };
+
+    const operations = loadOperations();
+    if (operations && operations.install) operations.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

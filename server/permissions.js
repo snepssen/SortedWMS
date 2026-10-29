@@ -50,6 +50,8 @@ const PERMISSIONS = [
   ['scans.execute', 'Scan from a handheld, desk or station'],
   ['wms.read', 'Read warehouse screens'],
   ['wms.write', 'Warehouse changes that have no finer permission'],
+  ['sites.switch', 'Switch the active warehouse'],
+  ['sites.write', 'Create a warehouse'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -65,7 +67,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -75,20 +77,20 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
-    'equipment.read', 'equipment.write', 'holders.read', 'stock.read', 'wms.read', 'labels.print',
+    'equipment.read', 'equipment.write', 'holders.read', 'stock.read', 'wms.read', 'labels.print', 'sites.switch',
   ],
   operator: [
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'items.read',
     'tasks.read', 'picks.execute', 'inbound.read', 'inbound.write', 'val.execute',
-    'scans.execute', 'labels.print', 'wms.read', 'orders.read',
+    'scans.execute', 'labels.print', 'wms.read', 'orders.read', 'outbound.write', 'sites.switch',
   ],
   machine: [
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'tasks.read',
-    'putaway.execute', 'moves.execute', 'scans.execute', 'wms.read', 'labels.print',
+    'putaway.execute', 'moves.execute', 'scans.execute', 'wms.read', 'labels.print', 'sites.switch',
   ],
 };
 
@@ -162,6 +164,32 @@ const RULES = [
   ['POST', '/api/stock/adjust', 'stock.adjust'],
   ['POST', '/api/replenish', 'putaway.execute'],
   ['POST', '/api/orders/:id/pack', 'outbound.write'],
+  ['POST', '/api/orders/:id/carton', 'outbound.write'],
+  ['POST', '/api/orders/:id/dispatch-cartons', 'outbound.write'],
+  ['POST', '/api/cartons/:id/pack', 'outbound.write'],
+  ['POST', '/api/cartons/:id/close', 'outbound.write'],
+  ['POST', '/api/work-orders', 'val.execute'],
+  ['POST', '/api/pick-faces', 'putaway.execute'],
+  ['POST', '/api/replenishment/plan', 'putaway.execute'],
+  ['GET', '/api/returns', 'inbound.read'],
+  ['POST', '/api/returns', 'inbound.write'],
+  ['POST', '/api/returns/:id/grade', 'inbound.write'],
+  ['GET', '/api/reports/availability', 'reports.read'],
+  ['GET', '/api/reports/availability.csv', 'reports.read'],
+  ['GET', '/api/reports/availability.json', 'reports.read'],
+  ['GET', '/api/alerts/low-stock', 'reports.read'],
+  ['GET', '/api/reports/billing', 'reports.read'],
+  ['GET', '/api/reports/billing.csv', 'reports.read'],
+  ['GET', '/api/sites', 'wms.read'],
+  ['POST', '/api/sites', 'sites.write'],
+  ['POST', '/api/sites/switch', 'sites.switch'],
+  ['POST', '/api/sites/transfer', 'moves.execute'],
+  ['POST', '/api/password', 'wms.read'],
+  ['POST', '/api/totp/setup', 'wms.read'],
+  ['POST', '/api/totp/enable', 'wms.read'],
+  ['POST', '/api/totp/disable', 'wms.read'],
+  ['POST', '/api/login/totp', null],
+  ['POST', '/api/users/:id/reset-password', 'users.write'],
   ['GET', '/api/reports/stock', 'reports.read'],
   ['GET', '/api/reports/expiry', 'reports.read'],
   ['GET', '/api/reports/orders', 'reports.read'],

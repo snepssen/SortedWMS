@@ -31,7 +31,8 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
+    '/app.html': 'server/public/app.html',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
@@ -58,8 +59,16 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
 
       if (auth && access.public && req.method === 'POST' && url.pathname === '/api/login') {
         const signed = auth.login(body.username, body.password);
+        if (signed && signed.locked) return send(429, { error: 'Too many sign-in attempts. Try again later.', until: signed.until });
         if (!signed) return send(401, { error: 'Unknown username or password' });
+        if (signed.mfaRequired) return send(200, { mfaRequired: true, mfaToken: signed.mfaToken });
         return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge) });
+      }
+      if (auth && access.public && req.method === 'POST' && url.pathname === '/api/login/totp') {
+        try {
+          const signed = auth.loginTotp(body.mfaToken, body.code);
+          return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge) });
+        } catch (e) { return send(401, { error: e.message }); }
       }
       if (auth && access.public && req.method === 'POST' && url.pathname === '/api/logout') {
         auth.logout(auth.cookieToken(req));
@@ -90,6 +99,38 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
       if (auth && actor && access.permission && !auth.can(actor, access.permission)) {
         return send(403, { error: `Missing permission: ${access.permission}` });
+      }
+      if (auth && actor && actor.mustChangePassword && !['/api/password', '/api/logout', '/api/session'].includes(url.pathname)) {
+        return send(403, { error: 'Change your password before continuing', mustChangePassword: true });
+      }
+      const siteCookie = String((req.headers.cookie || '').split(';').map((p) => p.trim()).find((p) => p.startsWith('sorted_site=')) || '').slice('sorted_site='.length);
+      const requestedSite = decodeURIComponent(req.headers['x-site'] || siteCookie || 'MAIN').toUpperCase() || 'MAIN';
+      if (req.method === 'POST' && url.pathname === '/api/sites/switch') {
+        try {
+          const target = String(body.id || 'MAIN').toUpperCase();
+          if (auth && actor && !auth.canAccessSite(actor, target)) return send(403, { error: `No access to warehouse ${target}` });
+          store.warehouse(target);
+          store.siteId = target;
+          return send(200, { current: store.siteId, sites: store.listSites() }, 'application/json; charset=utf-8', { 'set-cookie': `sorted_site=${encodeURIComponent(store.siteId)}; Path=/; SameSite=Lax` });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && actor && !auth.canAccessSite(actor, requestedSite)) return send(403, { error: `No access to warehouse ${requestedSite}` });
+      store.siteId = requestedSite;
+      if (auth && req.method === 'POST' && url.pathname === '/api/password') {
+        try { return send(200, { user: auth.changePassword(actor.id, body) }); } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/totp/setup') {
+        try { return send(200, auth.beginTotp(actor.id)); } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/totp/enable') {
+        try { return send(200, { user: auth.enableTotp(actor.id, body.code) }); } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/totp/disable') {
+        try { return send(200, { user: auth.disableTotp(actor.id, body) }); } catch (e) { return send(400, { error: e.message }); }
+      }
+      const reset = url.pathname.match(/^\/api\/users\/(\d+)\/reset-password$/);
+      if (auth && req.method === 'POST' && reset) {
+        try { return send(200, auth.resetPassword(reset[1], by)); } catch (e) { return send(400, { error: e.message }); }
       }
 
       if (auth && req.method === 'GET' && url.pathname === '/api/users') return send(200, { users: auth.listUsers() });

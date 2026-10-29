@@ -78,14 +78,22 @@ An administrator edits a role under **Roles**. The last active administrator can
 - **Consolidation** at a virtual location such as `CONSO00` keeps one MASTER that already parents the PAL plates in the move. The earliest MASTER, by sequence number, survives. The consolidation step can name another of those MASTER plates and that one survives instead. Every other source MASTER is closed: status `retired`, `supersededBy` the survivor, and a `retired` movement. The surviving plate is one of the MASTER numbers already on the pallets. A retired number stays retired. A PAL with no MASTER, or a MASTER that does not already parent one of these PAL plates, is refused. The printed MASTER label lists the child PAL numbers under the MASTER id. An SSCC can still be printed as a second barcode.
 - A **movement** stores the person, the plate, from-location, to-location, time, quantity and the event (`received`, `labelled`, `moved`, `consolidated`, `retired`, `picked`, `shipped`). Managers open this under History.
 - **Labels** barcode the plate id. An SSCC is an optional second barcode. ZPL is the printer payload. `/api/labels/:id/html` is the page you print or save as PDF.
-- **Kitting** is a bill of materials on a VAL station. The demo kit is a laptop plus an EU power plug: scan the base, then the component.
+- **Kitting** is a bill of materials on a VAL station. A work order, or a sales-order line that names the kit, consumes one unit from each scanned component plate and counts the finished unit. The demo kit is a laptop plus an EU power plug.
+- **Mezzanine picks** against a unit line reduce that line. The quantity leaves the pick face and waits, staged on the order, for the packing bench.
+- **Packing** opens an `OUT` carton, scans the staged pick into it, and closes the carton with length, width, height and weight. Closing prints the OUT label and a packing slip. Dispatch moves the closed cartons to the order's shipping lane.
+- **Pick faces** store a minimum, a trigger and a maximum. At or below the trigger, the next replenishment move is a whole pallet into the machine-operator queue.
+- **Returns** are received against an order at a virtual return, quarantine or staging location, then graded restock, quarantine or scrap.
+- **Warehouses.** `MAIN` is the site in the original journal. Further sites keep their own stock and plate counters. The header switches site. A user's site list, when set, is the only sites they can open. An empty list means every site. Administrators can open every site.
+- **Sign-in.** An administrator reset sets a temporary password and signs the person out. The next sign-in must change it. Optional TOTP: the setup screen shows the secret once. Five wrong passwords lock the account for 15 minutes. Idle sessions end after 30 minutes (`SORTED_IDLE_MS` overrides that).
+- **Feeds.** `/api/reports/availability.csv` and `/api/reports/availability.json` are the available-to-sell quantities. A reorder point on the item raises a low-stock row. `/api/reports/billing.csv` is pallet-days times the storage rate, plus moves times the handling rate.
 
 ## Still not in this version
 
-- The static Pages demo does not sign in.
-- No password-reset email, no second factor, and no roles beyond these six.
+- The GitHub Pages build does not check passwords. `app.html` there is a labelled demo with a role picker.
+- No password-reset email. The administrator hands over the temporary password.
 - No ERP or EDI connection. Orders and stock still come in through the API or CSV.
-- Packing is a note plus the existing check-and-label step, not a carton-level pack bench.
-- Replenishment creates one move to a rack or bin. It does not keep a min/max on every pick face.
+- A mixed order (whole pallets and unit lines) still ships the pallets on the reach-truck path and the units as cartons. There is not one combined dispatch document.
+- Replenishment queues one pallet. It does not calculate a unit quantity up to the maximum.
 - Real scanners and printers are the wedge and the ZPL transport. There is no DataWedge installer and no USB claim.
-- No returns, billing, multi-warehouse, or offline queue beyond the handheld's existing retry.
+- Billing is pallet-days and moves. It is not a full 3PL tariff (no carton fee, no storage tiers).
+- The offline queue is on the handheld page. The role views in `/app` need a connection.

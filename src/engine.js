@@ -1100,6 +1100,7 @@
       // Imports report errors per order, so all lines must validate before any allocation changes.
       if (!Array.isArray(lines)) throw new Error('Order lines must be a list');
       for (const line of lines) {
+        if (line && line.kitId && !line.itemNo && this.kits && this.kits[line.kitId]) line.itemNo = this.kits[line.kitId].output || this.kits[line.kitId].base.itemNo;
         if (!line || !this.items[line.itemNo]) throw new Error(`Unknown item ${line?.itemNo}`);
         const item = this.items[line.itemNo];
         if (item.status === 'archived') throw new Error(`Item ${line.itemNo} is archived`);
@@ -1107,7 +1108,16 @@
         if (owner && owner.status === 'archived') throw new Error(`Client ${owner.name} is archived`);
         if (clientId && item.clientId && item.clientId !== clientId) throw new Error(`Item ${line.itemNo} belongs to another client`);
         if (line.process && !this.routes[line.process]) throw new Error(`Unknown process ${line.process}`);
-        if (!Number.isSafeInteger(Number(line.pallets)) || Number(line.pallets) < 1) throw new Error('Pallets per order line must be a whole number above 0');
+        if (line.kitId && !(this.kits && this.kits[line.kitId])) throw new Error(`Unknown kit ${line.kitId}`);
+        const hasUnits = line.units != null && line.units !== '';
+        const hasPallets = line.pallets != null && line.pallets !== '';
+        if (line.kitId && !hasUnits) throw new Error('A kit line is ordered in units');
+        if (hasUnits && hasPallets) throw new Error('An order line is either whole pallets or units');
+        if (hasUnits) {
+          if (!Number.isSafeInteger(Number(line.units)) || Number(line.units) < 1) throw new Error('Units per order line must be a whole number above 0');
+          const itemNo = line.itemNo || (line.kitId && ((this.kits[line.kitId].output) || this.kits[line.kitId].base.itemNo));
+          if (!itemNo || !this.items[itemNo]) throw new Error(`Unknown item ${line.itemNo || itemNo}`);
+        } else if (!Number.isSafeInteger(Number(line.pallets)) || Number(line.pallets) < 1) throw new Error('Pallets per order line must be a whole number above 0');
       }
       if (clientId) {
         const client = this.clients && this.clients[clientId];
@@ -1117,6 +1127,13 @@
       const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null };
       this.orders[id] = order;
       for (const line of lines) {
+        const hasUnits = line.units != null && line.units !== '' && (line.pallets == null || line.pallets === '');
+        if (hasUnits) {
+          const kit = line.kitId ? this.kits[line.kitId] : null;
+          const itemNo = line.itemNo || (kit && (kit.output || kit.base.itemNo));
+          order.lines.push({ itemNo, units: Number(line.units), picked: 0, picks: [], pallets: 0, allocated: [], short: 0, kind: 'each', process: line.process || null, kitId: line.kitId || null });
+          continue;
+        }
         const item = this.items[line.itemNo];
         const l = { itemNo: line.itemNo, pallets: Number(line.pallets), process: line.process || null, allocated: [], short: 0 };
         order.lines.push(l);
@@ -1261,6 +1278,8 @@
     shipOrder(id, { seal = null } = {}, by = 'office') {
       const order = this.orders[id];
       if (!order) throw new Error(`No order ${id}`);
+      if (order.lines.some((l) => l.kind === 'each') && !order.lines.some((l) => l.allocated && l.allocated.length)) throw new Error('Dispatch the packed cartons for this order');
+      if (order.lines.some((l) => l.kind === 'each' && (l.picked || 0) < l.units)) throw new Error('Piece lines are still open');
       if (order.status !== 'ready') throw new Error(`Order ${id} is not ready to load`);
       if (order.verifyLoading) {
         if (!order.loading) throw new Error('Open a trailer manifest and scan every pallet before dispatch');
