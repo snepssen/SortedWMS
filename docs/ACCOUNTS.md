@@ -81,19 +81,20 @@ An administrator edits a role under **Roles**. The last active administrator can
 - **Kitting** is a bill of materials on a VAL station. A work order, or a sales-order line that names the kit, consumes one unit from each scanned component plate and counts the finished unit. The demo kit is a laptop plus an EU power plug.
 - **Mezzanine picks** against a unit line reduce that line. The quantity leaves the pick face and waits, staged on the order, for the packing bench.
 - **Packing** opens an `OUT` carton, scans the staged pick into it, and closes the carton with length, width, height and weight. Closing prints the OUT label and a packing slip. Dispatch moves the closed cartons to the order's shipping lane.
-- **Pick faces** store a minimum, a trigger and a maximum. At or below the trigger, the next replenishment move is a whole pallet into the machine-operator queue.
+- **Pick faces** store a minimum, a trigger and a maximum. The default tops the face up to the maximum and splits that quantity off the source plate. A face set to whole-pallet mode moves one full pallet instead. Plate numbers use 7 digits unless that series sets a different pad (1 to 12).
 - **Returns** are received against an order at a virtual return, quarantine or staging location, then graded restock, quarantine or scrap.
-- **Warehouses.** `MAIN` is the site in the original journal. Further sites keep their own stock and plate counters. The header switches site. A user's site list, when set, is the only sites they can open. An empty list means every site. Administrators can open every site.
+- **Warehouses.** `MAIN` is the site in the original journal. Further sites keep their own stock and plate counters. The header switches site. A user's site list, when set, is the only sites they can open. An empty list means every site. Administrators can open every site. A transfer ships onto the virtual `IN-TRANSIT` location. The destination receives it, and only then is the source plate closed. A refusal puts the quantity back on that same plate.
 - **Sign-in.** An administrator reset sets a temporary password and signs the person out. The next sign-in must change it. Optional TOTP: the setup screen shows the secret once. Five wrong passwords lock the account for 15 minutes. Idle sessions end after 30 minutes (`SORTED_IDLE_MS` overrides that).
-- **Feeds.** `/api/reports/availability.csv` and `/api/reports/availability.json` are the available-to-sell quantities. A reorder point on the item raises a low-stock row. `/api/reports/billing.csv` is pallet-days times the storage rate, plus moves times the handling rate.
+- **Feeds.** `/api/reports/availability.csv` and `/api/reports/availability.json` are the available-to-sell quantities. A reorder point on the item raises a low-stock row.
+- **Billing.** A client tariff sets storage (pallet-day, location-day or cubic-metre-day), inbound (pallet or line), outbound (order, line or carton), VAL per unit, and a minimum charge. `/api/reports/billing.csv` and `/api/reports/billing.html` are the period invoice.
+- **One shipment.** Staging a mixed order builds one delivery note and one load manifest for its pallets and cartons. Each holder is scanned onto the load. Dispatch is refused until every one is confirmed. Status runs staged, loaded, dispatched.
+- **Backup.** `GET /api/backup` and `POST /api/backup` export and import the journal, snapshots and accounts. Only an administrator can do that.
 
 ## Still not in this version
 
 - The GitHub Pages build does not check passwords. `app.html` there is a labelled demo with a role picker.
 - No password-reset email. The administrator hands over the temporary password.
 - No ERP or EDI connection. Orders and stock still come in through the API or CSV.
-- A mixed order (whole pallets and unit lines) still ships the pallets on the reach-truck path and the units as cartons. There is not one combined dispatch document.
-- Replenishment queues one pallet. It does not calculate a unit quantity up to the maximum.
 - Real scanners and printers are the wedge and the ZPL transport. There is no DataWedge installer and no USB claim.
-- Billing is pallet-days and moves. It is not a full 3PL tariff (no carton fee, no storage tiers).
+- The tariff has one rate per charge type. It does not tier by volume or season.
 - The offline queue is on the handheld page. The role views in `/app` need a connection.

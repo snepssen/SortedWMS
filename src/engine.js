@@ -2639,6 +2639,7 @@
         type: fields.type,
         category: fields.category,
         reason: fields.reason || null,
+        splitQty: fields.splitQty || null,
         sscc: fields.sscc || null,
         from: fields.from,
         to: fields.to || null,
@@ -2774,6 +2775,10 @@
     }
 
     _drop(truck, task) {
+      if (task.splitQty && typeof this.applySplitDrop === 'function') {
+        this.applySplitDrop(truck, task);
+        return;
+      }
       const pallet = this.pallets[truck.load];
       const to = this.locations[task.to];
       if (to.reservedBy === task.id || to.kind === 'rack' || to.kind === 'block') to.reservedBy = null;

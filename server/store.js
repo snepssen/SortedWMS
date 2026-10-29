@@ -107,31 +107,36 @@ class Store {
     return { id: siteId, name: label };
   }
 
-  transferBetween({ from = 'MAIN', to, itemNo, qty, by = 'office' } = {}) {
+  _withSite(siteId, fn) {
+    const previous = this.siteId;
+    this.siteId = siteId;
+    try { return fn(); } finally { this.siteId = previous || 'MAIN'; this._extra = null; }
+  }
+
+  startTransfer({ from = 'MAIN', to, itemNo, qty, id, by = 'office' } = {}) {
     const source = String(from || 'MAIN').toUpperCase();
     const dest = String(to || '').trim().toUpperCase();
     if (!dest || dest === source) throw new Error('Choose a different warehouse');
-    this.warehouse(source);
     const destWh = this.warehouse(dest);
     if (!destWh.items[itemNo]) throw new Error(`Warehouse ${dest} has no item ${itemNo}`);
-    const previous = this.siteId;
-    let exported = null;
-    try {
-      this.siteId = source;
-      exported = this.exec('exportStock', { itemNo, qty, toSite: dest, fromSite: source }, by);
-      this.siteId = dest;
-      const imported = this.exec('receiveTransfer', exported, by);
-      return { from: source, to: dest, itemNo, qty: Number(qty), holder: imported.holder.id };
-    } catch (e) {
-      if (exported) {
-        this.siteId = source;
-        try { this.exec('receiveTransfer', { ...exported, fromSite: dest }, by); } catch (ignore) { /* the original error still stands */ }
-      }
-      throw e;
-    } finally {
-      this.siteId = previous || 'MAIN';
-      this._extra = null;
-    }
+    const transferId = String(id || `TR${this.now().toString(36)}`).toUpperCase();
+    return this._withSite(source, () => this.exec('shipTransfer', { id: transferId, itemNo, qty, toSite: dest, fromSite: source }, by));
+  }
+
+  receiveTransfer({ id, from = 'MAIN', to, by = 'office' } = {}) {
+    const source = String(from || 'MAIN').toUpperCase();
+    const dest = String(to || '').trim().toUpperCase();
+    const record = this.warehouse(source).siteTransfers && this.warehouse(source).siteTransfers[String(id).toUpperCase()];
+    if (!record || record.status !== 'in-transit') throw new Error(`Transfer ${id} is not in transit`);
+    if (record.toSite !== dest) throw new Error(`Transfer ${id} is for ${record.toSite}`);
+    const imported = this._withSite(dest, () => this.exec('receiveSiteTransfer', record, by));
+    this._withSite(source, () => this.exec('completeSiteTransfer', { id: record.id }, by));
+    return { ...record, status: 'received', holder: imported.holder.id };
+  }
+
+  cancelTransfer({ id, from = 'MAIN', by = 'office' } = {}) {
+    const source = String(from || 'MAIN').toUpperCase();
+    return this._withSite(source, () => this.exec('cancelSiteTransfer', { id }, by));
   }
 
   _execExtra(siteId, op, args, by) {
@@ -209,6 +214,61 @@ class Store {
   close() {
     this.snapshot();
     this.db.close();
+  }
+
+  exportBackup() {
+    const table = (name) => {
+      const exists = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+      return exists ? this.db.prepare(`SELECT * FROM ${name}`).all() : [];
+    };
+    return {
+      version: 1,
+      exportedAt: this.now(),
+      meta: table('meta'),
+      journal: table('journal'),
+      snapshots: table('snapshots'),
+      extra_sites: table('extra_sites'),
+      extra_journal: table('extra_journal'),
+      users: table('users'),
+      role_permissions: table('role_permissions'),
+    };
+  }
+
+  importBackup(data) {
+    if (!data || data.version !== 1 || !Array.isArray(data.journal)) throw new Error('Backup must be a version 1 export');
+    if (data.journal.length > 200000) throw new Error('Backup is too large');
+    for (const row of data.journal) {
+      if (!row || typeof row.op !== 'string' || typeof row.args !== 'string' || !Number.isFinite(Number(row.t))) throw new Error('A journal row needs t, op and args');
+    }
+    const insert = (name, rows) => {
+      if (!Array.isArray(rows) || !rows.length) return;
+      const cols = Object.keys(rows[0]);
+      const sql = `INSERT INTO ${name} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
+      const stmt = this.db.prepare(sql);
+      for (const row of rows) stmt.run(...cols.map((c) => row[c]));
+    };
+    this.db.exec('BEGIN');
+    try {
+      for (const name of ['journal', 'snapshots', 'extra_journal', 'extra_sites', 'sessions', 'role_permissions', 'users', 'meta']) {
+        const exists = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+        if (exists) this.db.exec(`DELETE FROM ${name}`);
+      }
+      insert('meta', data.meta);
+      insert('journal', data.journal);
+      insert('snapshots', data.snapshots);
+      insert('extra_sites', data.extra_sites);
+      insert('extra_journal', data.extra_journal);
+      insert('users', data.users);
+      insert('role_permissions', data.role_permissions);
+      const audit = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_audit'").get();
+      if (audit) this.db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(this.now(), 'backup-import', 'backup', JSON.stringify({ journal: data.journal.length }));
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+    this.load();
+    return { journal: data.journal.length, users: (data.users || []).length };
   }
 }
 

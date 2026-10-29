@@ -149,6 +149,10 @@
         <form class="form" data-act="pack-into"><label>Carton<input name="carton" placeholder="OUT0000001" required></label><label>Picked plate<input name="code" required></label><label>Qty<input name="qty" type="number" value="1"></label><button>Pack</button></form>
         <form class="form" data-act="close-carton"><label>Carton<input name="carton" required></label><label>L mm<input name="lengthMm" type="number" value="400"></label><label>W mm<input name="widthMm" type="number" value="300"></label><label>H mm<input name="heightMm" type="number" value="200"></label><label>kg<input name="weightKg" type="number" value="2.5" step="0.1"></label><button>Close and print</button></form>
         <form class="form" data-act="dispatch-cartons"><label>Order<input name="orderId" required></label><button>Dispatch cartons</button></form>
+        <h3>One shipment</h3><p class="hint">Pallets and cartons on the same order share one delivery note and one load manifest. Scan every holder, then dispatch.</p>
+        <form class="form" data-act="stage-ship"><label>Order<input name="orderId" required></label><label>Truck<input name="truck" placeholder="HH01"></label><button class="primary">Stage shipment</button></form>
+        <form class="form" data-act="scan-ship"><label>Order<input name="orderId" required></label><label>Holder<input name="code" required placeholder="SSCC or OUT plate"></label><button>Confirm on load</button></form>
+        <form class="form" data-act="dispatch-ship"><label>Order<input name="orderId" required></label><button>Dispatch shipment</button></form>
         ${table(['Order', 'Customer', 'Status'], open.slice(0, 12).map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td></tr>`))}</section>`;
     },
     async returns() {
@@ -161,11 +165,14 @@
     },
     async sites() {
       const data = await api('GET', '/api/sites');
-      return `<section><h2>Warehouses</h2><p class="hint">Each site has its own stock and its own plate counters. People can be limited to some sites. A transfer moves quantity and keeps the history on both sides.</p>
+      return `<section><h2>Warehouses</h2><p class="hint">Each site has its own stock and its own plate counters. People can be limited to some sites. Shipping a transfer parks the original plate at IN-TRANSIT until the other site receives it.</p>
         <p>Current warehouse: <b>${esc(data.current)}</b></p>
         ${table(['Id', 'Name'], (data.sites || []).map((s) => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td></tr>`))}
         <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
-        <form class="form" data-act="site-transfer"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>To<input name="to" required placeholder="NORTH"></label><button>Transfer</button></form></section>`;
+        <form class="form" data-act="site-transfer"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>To<input name="to" required placeholder="NORTH"></label><button>Ship in transit</button></form>
+        <form class="form" data-act="site-receive"><label>Transfer<input name="id" required placeholder="TR1"></label><label>From<input name="from" value="MAIN"></label><label>To<input name="to" required></label><button>Receive</button></form>
+        <form class="form" data-act="site-cancel"><label>Transfer<input name="id" required></label><button>Refuse and return</button></form>
+        <p class="hint">A refusal puts the quantity back on the original plate. Nothing new is minted on the source.</p></section>`;
     },
     async moves() {
       const [tasks, devices] = await Promise.all([api('GET', '/api/tasks'), api('GET', '/api/devices')]);
@@ -188,7 +195,7 @@
     async replenish() {
       const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
       return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
-        <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" value="Y1001"></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><button>Save min / max</button></form>
+        <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" value="Y1001"></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><label>Mode<select name="mode"><option value="units">units to max</option><option value="pallet">whole pallet</option></select></label><button>Save min / max</button></form>
         <form class="form" data-act="plan-replen"><button class="primary">Queue replenishment</button></form>
         <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
         <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><label>Keep MASTER<input name="master" placeholder="blank = earliest"></label><button>Consolidate</button></form>
@@ -329,6 +336,9 @@
       return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Stock CSV</a> · <a href="/api/reports/availability.csv">Available to sell CSV</a> · <a href="/api/reports/availability.json">JSON feed</a> · <a href="/api/reports/billing.csv">Billing CSV</a></p>
         <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
         <p class="dim">${low.length} low-stock alert(s).</p>
+        <h3>Tariff</h3>
+        <form class="form" data-act="tariff"><label>Client<input name="clientId" value="CL-DAIRY"></label><label>Storage basis<select name="storageBasis"><option>pallet-day</option><option>location-day</option><option>m3-day</option></select></label><label>Storage rate<input name="storageRate" type="number" value="1.5" step="0.01"></label><label>Inbound<select name="inboundBasis"><option>pallet</option><option>line</option></select></label><label>Inbound rate<input name="inboundRate" type="number" value="2" step="0.01"></label><label>Outbound<select name="outboundBasis"><option>order</option><option>line</option><option>carton</option></select></label><label>Outbound rate<input name="outboundRate" type="number" value="3" step="0.01"></label><label>VAL / unit<input name="valRate" type="number" value="0.4" step="0.01"></label><label>Minimum<input name="minimum" type="number" value="50" step="0.01"></label><button>Save tariff</button></form>
+        <p><a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a></p>
         <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)}</td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
         <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
         <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
@@ -593,12 +603,18 @@
     if (name === 'pack-into') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/pack', { code: data.code, qty: Number(data.qty || 1) });
     if (name === 'close-carton') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
     if (name === 'dispatch-cartons') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/dispatch-cartons', {});
-    if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger) });
     if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});
     if (name === 'return-receive') return api('POST', '/api/returns', { id: data.id, orderId: data.orderId, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { grade: data.grade, to: data.to || null });
     if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null });
     if (name === 'site-transfer') return api('POST', '/api/sites/transfer', { itemNo: data.itemNo, qty: Number(data.qty), to: data.to });
+    if (name === 'site-receive') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/receive', { from: data.from, to: data.to });
+    if (name === 'site-cancel') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/cancel', {});
+    if (name === 'stage-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment', { truck: data.truck || null });
+    if (name === 'scan-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/scan', { code: data.code });
+    if (name === 'dispatch-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/dispatch', {});
+    if (name === 'tariff') return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', data);
+    if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger), mode: data.mode });
     if (name === 'tech-sort') {
       const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
         const i = line.indexOf(':');

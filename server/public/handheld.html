@@ -68,6 +68,11 @@
   .offline.on { display: block; }
   .net { display: none; text-align: center; font-weight: 700; padding: 5px; font-size: 14px; background: #26303a; color: var(--ink); }
   .net.on { display: block; }
+  .skip { position: absolute; left: 8px; top: -40px; background: var(--acc); color: #04121f; padding: 8px 12px; z-index: 5; }
+  .skip:focus { top: 8px; }
+  :focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+  @media (max-width: 480px) { .big { font-size: 36px; } header .who { display: none; } }
   .net.warn { background: rgba(255, 176, 32, .18); color: var(--warn); }
   @media (max-width: 360px) { .big { font-size: 42px; } }
   /* Small rugged handhelds (Zebra MC9401: 4.3" 480×800, about 320×480 in the browser):
@@ -96,8 +101,9 @@
 </style>
 </head>
 <body>
-<div class="offline" id="offline">No connection to the server: trying again</div>
+<div class="offline" id="offline" role="status">No connection. Scans stay on this handheld and send when it returns.</div>
 <div class="net" id="net" role="status" aria-live="polite"></div>
+<a class="skip" href="#job">Skip to the job</a>
 <div id="app"></div>
 <script src="src/offline-queue.js"></script>
 <script>
@@ -280,14 +286,14 @@
       <header><span class="id">${esc(v.id)}</span><span class="who">${esc(operator)}${v.categories ? ' · ' + esc(v.categories.join(', ')) : ''}</span>
         <button id="kb" title="Show the keyboard">⌨</button><button id="setup" title="Set up">⚙</button></header>
       <div class="modes">${v.modes.filter((m) => m.id !== 'shift').map((m) => `<button data-mode="${m.id}" class="${m.id === v.mode ? 'on' : ''}">${esc(m.label.replace(' (manual)', ''))}</button>`).join('')}</div>
-      <main>
+      <main id="job">
         ${I.armed ? `<div class="card armed"><div class="kicker" style="color:var(--warn)">Confirm</div><div class="mid">${esc(I.armed.label)}?</div>
           <div class="sub">Scan <b>${esc(I.armed.cmd)}</b> again to confirm. Any other scan cancels.</div></div>` : ''}
         ${I.pending ? heldHtml(I.pending) : ''}
         ${instructionHtml(I)}
         ${localError ? `<div class="msg bad">${esc(localError)}</div>`
           : v.message && !I.armed && !(I.pending && v.message.ok) ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
-        <form class="scan" id="scanForm" autocomplete="off"><input id="scanIn" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button>Enter</button></form>
+        <form class="scan" id="scanForm" autocomplete="off"><label class="hint" for="scanIn">Scan</label><input id="scanIn" aria-label="Scan" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button>Enter</button></form>
         ${canProblem ? `<div class="row">${I.kind === 'pickup' ? '<button class="bad" data-cmd="CMD-MISSING">Pallet missing</button><button class="bad" data-cmd="CMD-DAMAGED">Damaged</button>' : ''}
           <button class="bad" data-cmd="CMD-BLOCKED">Location blocked</button></div>` : ''}
       </main>`;
