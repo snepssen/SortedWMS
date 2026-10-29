@@ -59,13 +59,13 @@
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 
     // Orders and deliveries
-    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading }),
+    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading, clientId: a.clientId || null }),
     startLoading: (wh, a, by) => wh.startLoading(String(req(a.id, 'id')), req(a.trailer, 'trailer'), by, { inspectionPolicy: a.inspectionPolicy === undefined ? null : a.inspectionPolicy }),
     recordTrailerInspection: (wh, a, by) => wh.recordTrailerInspection(String(req(a.id, 'id')), a, by),
     releaseTrailerHold: (wh, a, by) => wh.releaseTrailerHold(String(req(a.id, 'id')), req(a.reason, 'reason'), by),
     scanLoading: (wh, a, by) => wh.scanLoading(String(req(a.id, 'id')), req(a.device, 'device'), req(a.code, 'code'), a.unload === undefined ? false : a.unload, by),
     shipOrder: (wh, a, by) => wh.shipOrder(String(req(a.id, 'id')), { seal: a.seal }, by),
-    addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock' }),
+    addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock', asn: a.asn || null, clientId: a.clientId || null, expectedAt: a.expectedAt || null }),
 
     // Master data and imports
     addItem: (wh, a) => wh.addItem(a),
@@ -106,6 +106,33 @@
       wh.dispatch();
       return out;
     },
+
+    // Clients, items, locations, holders, labels, equipment
+    addClient: (wh, a) => wh.addClient(a),
+    updateClient: (wh, a) => wh.updateClient(req(a.id, 'id'), a),
+    archiveClient: (wh, a) => wh.archiveClient(req(a.id, 'id')),
+    restoreClient: (wh, a) => wh.restoreClient(req(a.id, 'id')),
+    updateItem: (wh, a) => wh.updateItem(req(a.itemNo, 'itemNo'), a),
+    archiveItem: (wh, a) => wh.archiveItem(req(a.itemNo, 'itemNo')),
+    removeItem: (wh, a) => wh.removeItem(req(a.itemNo, 'itemNo')),
+    createLocation: (wh, a) => wh.createLocation(a),
+    deleteLocation: (wh, a) => wh.deleteLocation(req(a.code, 'code')),
+    setLocationCapacity: (wh, a) => wh.setLocationCapacity(req(a.code, 'code'), a),
+    addHolder: (wh, a) => wh.addHolder(a),
+    updateHolder: (wh, a) => wh.updateHolder(req(a.id, 'id'), a),
+    moveHolder: (wh, a) => wh.moveHolder(req(a.id, 'id'), req(a.loc, 'loc')),
+    loadHolder: (wh, a) => wh.loadHolder(req(a.id, 'id'), a),
+    unloadHolder: (wh, a) => wh.unloadHolder(req(a.id, 'id'), a),
+    removeHolder: (wh, a) => wh.removeHolder(req(a.id, 'id')),
+    issueLabel: (wh, a) => wh.issueLabel(a),
+    adjustQuantity: (wh, a, by) => wh.adjustQuantity(req(a.sscc, 'sscc'), a.qty, req(a.reason, 'reason'), by),
+    replenish: (wh, a) => wh.replenish(req(a.itemNo, 'itemNo'), req(a.to, 'to')),
+    recordPacking: (wh, a, by) => wh.recordPacking(req(a.id, 'id'), a.note, by),
+    addEquipment: (wh, a) => wh.addEquipment(a),
+    reportFault: (wh, a, by) => wh.reportFault(a, by),
+    closeFault: (wh, a, by) => wh.closeFault(req(a.id, 'id'), a.note, by),
+    recordMaintenance: (wh, a, by) => wh.recordMaintenance(a, by),
+    assignOperator: (wh, a) => wh.assignOperator(req(a.id, 'id'), a.operator || null),
 
     // Clock tick: dwell timers, waiting trucks, escalations
     tick: (wh) => wh.dispatch(),

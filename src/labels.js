@@ -55,8 +55,75 @@
       `^FO40,170^A0N,34,34^FDBatch ${clean(d.batch)}   Best before ${clean(ddmmyyyy(d.expiry))}^FS`,
       `^FO40,260^BY3^BCN,220,N,N,N^FD>;>800${clean(d.sscc)}^FS`,
       `^FO40,500^A0N,40,40^FD${clean(GS1.hri({ sscc: d.sscc }))}^FS`,
+      ...(d.client ? [`^FO40,560^A0N,30,30^FDClient ${clean(d.client)}^FS`] : []),
+      ...(d.gtin ? [`^FO40,600^A0N,28,28^FDGTIN ${clean(d.gtin)}^FS`] : []),
+      ...(d.location ? [`^FO40,640^A0N,28,28^FDLocation ${clean(d.location)}^FS`] : []),
       '^XZ',
     ].join('\n');
+  }
+
+  /**
+   * Logistic-unit (master) label. The barcode is the GS1-128 SSCC of the
+   * master; child SSCCs are listed in clear so a later scan of any of them
+   * still finds the unit.
+   */
+  function masterLabel(d) {
+    const children = d.children || [];
+    const lines = children.slice(0, 8).map((c, i) => `^FO40,${760 + i * 36}^A0N,28,28^FD${clean(typeof c === 'string' ? c : c.sscc)}  ${clean(c.itemNo || '')}  ${c.qty == null ? '' : clean(c.qty)}^FS`);
+    return [
+      '^XA',
+      '^CI28',
+      '^PW812^LL1218',
+      '^FO40,40^A0N,36,36^FDMASTER^FS',
+      `^FO40,90^A0N,48,48^FD${clean(d.title || d.customer || 'Logistic unit')}^FS`,
+      d.orderId ? `^FO40,150^A0N,32,32^FDOrder ${clean(d.orderId)}^FS` : '',
+      '^FO40,200^GB732,3,3^FS',
+      '^FO40,230^A0N,30,30^FDSSCC^FS',
+      `^FO40,270^BY3^BCN,180,N,N,N^FD>;>800${clean(d.sscc)}^FS`,
+      `^FO40,470^A0N,36,36^FD(00) ${clean(d.sscc)}^FS`,
+      `^FO40,530^A0N,28,28^FDContains ${clean(children.length)} unit${children.length === 1 ? '' : 's'}^FS`,
+      '^FO40,580^GB732,3,3^FS',
+      ...lines,
+      '^XZ',
+    ].filter(Boolean).join('\n');
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  /** Printable 4×6 label. The browser's print dialog is the PDF path. */
+  function labelHtml(d) {
+    const rows = (d.lines || []).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('');
+    const kids = (d.children || []).map((c) => `<li><span class="mono">(00) ${escapeHtml(c.sscc || c)}</span> ${escapeHtml(c.itemNo || '')}${c.qty == null ? '' : ` × ${escapeHtml(c.qty)}`}</li>`).join('');
+    return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(d.kind === 'master' ? 'Master label' : 'Pallet label')} ${escapeHtml(d.sscc)}</title>
+<style>
+  body { margin: 0; font: 14px/1.35 system-ui, sans-serif; color: #111; }
+  .sheet { width: 4in; min-height: 6in; margin: 12px auto; padding: 0.25in; border: 1px solid #111; box-sizing: border-box; }
+  h1 { font-size: 13px; letter-spacing: .12em; margin: 0 0 6px; }
+  h2 { font-size: 22px; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid #ddd; }
+  th { width: 34%; color: #444; font-weight: 600; }
+  .sscc { font: 600 18px ui-monospace, monospace; margin: 8px 0; }
+  .mono { font-family: ui-monospace, monospace; }
+  ul { margin: 6px 0; padding-left: 18px; }
+  .bar { margin: 8px 0; }
+  .actions { margin: 12px auto; width: 4in; }
+  button { font: inherit; padding: 8px 14px; }
+  @media print { .actions { display: none; } .sheet { margin: 0; border: 0; } @page { size: 4in 6in; margin: 0.15in; } }
+</style></head><body>
+<div class="actions"><button onclick="print()">Print / save as PDF</button></div>
+<article class="sheet">
+  <h1>${escapeHtml(d.kind === 'master' ? 'MASTER LABEL' : 'PALLET LABEL')}</h1>
+  <h2>${escapeHtml(d.title || d.itemName || '')}</h2>
+  ${d.barcodeSvg ? `<div class="bar">${d.barcodeSvg}</div>` : ''}
+  <p class="sscc">(00) ${escapeHtml(d.sscc)}</p>
+  <table>${rows}</table>
+  ${kids ? `<p><b>Contains</b></p><ul>${kids}</ul>` : ''}
+</article>
+</body></html>`;
   }
 
   /**
@@ -78,5 +145,5 @@
       .replace(/\^BCN,(\d+)/g, (m, h) => `^BCN,${n(h)}`);
   }
 
-  return { shippingLabel, palletLabel, scaleZpl };
+  return { shippingLabel, palletLabel, masterLabel, labelHtml, scaleZpl, escapeHtml };
 });

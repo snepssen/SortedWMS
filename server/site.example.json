@@ -317,6 +317,35 @@
       "gtin": "04388860261127"
     }
   ],
+  "clients": [
+    { "id": "CL-DAIRY", "name": "Dairy Co", "contact": "Floor desk", "email": "dairy@example.test", "phone": "+31 20 000 0001", "notes": "Yoghurt and skyr. Stock is stored for this client." },
+    { "id": "CL-CHEESE", "name": "Noord Kaas", "contact": "Planning", "email": "kaas@example.test", "phone": "+31 20 000 0002", "notes": "Cheese, including crate pallets in the block lanes." },
+    { "id": "CL-PROTEIN", "name": "Pulse Drinks", "contact": "Inbound", "email": "pulse@example.test", "phone": "+31 20 000 0003", "notes": "Protein drinks. The first deliveries are still arriving." }
+  ],
+  "extraLocations": [
+    { "code": "ZONE-CHILL", "kind": "zone", "name": "Chill hall" },
+    { "code": "AISLE-Z1", "kind": "aisle", "name": "Pick aisle Z1", "parent": "ZONE-CHILL", "zone": "ZONE-CHILL", "aisle": "Z1" },
+    { "code": "RACK-Z1", "kind": "rack", "name": "Pick rack Z1", "parent": "AISLE-Z1", "zone": "ZONE-CHILL", "aisle": "Z1", "rack": "Z1" },
+    { "code": "LEVEL-Z1-A", "kind": "level", "name": "Ground level", "parent": "RACK-Z1", "zone": "ZONE-CHILL", "aisle": "Z1", "rack": "Z1", "level": "A" },
+    { "code": "BIN-PICK-01", "kind": "bin", "name": "Yoghurt pick face", "parent": "LEVEL-Z1-A", "zone": "ZONE-CHILL", "aisle": "Z1", "rack": "Z1", "level": "A", "bin": "01", "category": "YOG", "heightMm": 1800, "widthMm": 1000, "depthMm": 1200, "maxWeightKg": 800 }
+  ],
+  "holders": [
+    { "id": "H-PAL-01", "type": "pallet", "loc": "DOCK-IN", "clientId": "CL-DAIRY", "tareKg": 25, "lengthMm": 1200, "widthMm": 800, "heightMm": 150 },
+    { "id": "H-CRT-01", "type": "crate", "loc": "BIN-PICK-01", "clientId": "CL-CHEESE", "tareKg": 8, "lengthMm": 600, "widthMm": 400, "heightMm": 300 },
+    { "id": "H-TOT-01", "type": "tote", "loc": "BIN-PICK-01", "clientId": "CL-DAIRY", "tareKg": 2, "lengthMm": 600, "widthMm": 400, "heightMm": 280, "contents": [{ "itemNo": "Y1002", "qty": 6, "batch": "DEMO", "expiry": "2026-12-01" }] }
+  ],
+  "equipment": [
+    { "id": "EQ-PRESS", "name": "Hydraulic flip press", "kind": "machine", "location": "ST-PRESS", "stationId": "PRESS", "status": "running" },
+    { "id": "EQ-FOIL", "name": "Stretch wrapper", "kind": "machine", "location": "ST-FOIL", "stationId": "FOIL", "status": "running" },
+    { "id": "EQ-PLATE", "name": "Plate press", "kind": "machine", "location": "ST-PLATE", "stationId": "PLATE", "status": "idle" },
+    { "id": "EQ-WARM", "name": "Warm room", "kind": "room", "location": "ST-WARM", "stationId": "WARM", "status": "running" }
+  ],
+  "faults": [
+    { "equipmentId": "EQ-PRESS", "summary": "Clamp sensor does not see the pallet", "detail": "The interlock stays open after the load is centred. The line is stopped until maintenance clears it." }
+  ],
+  "maintenance": [
+    { "equipmentId": "EQ-FOIL", "note": "Replaced the film roll and cleaned the cutter.", "by": "tech" }
+  ],
   "customers": {
     "Fresh Market": [
       "No double-stacked pallets"

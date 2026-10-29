@@ -26,7 +26,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/barcode.js': 'src/barcode.js',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 

@@ -69,6 +69,10 @@
     for (const [id, categories] of [['HH01', ['YOG']], ['HH02', ['YOG']], ['HH03', ['CHE']], ['HH04', ['CHE']]]) {
       store.exec('addTruck', { id, categories }, 'seed');
     }
+    store.exec('assignOperator', { id: 'HH01', operator: 'operator' }, 'seed');
+    store.exec('assignOperator', { id: 'HH02', operator: 'operator' }, 'seed');
+    store.exec('assignOperator', { id: 'HH03', operator: 'operator' }, 'seed');
+    store.exec('assignOperator', { id: 'HH04', operator: 'machine' }, 'seed');
 
     // Two orders, and a delivery announced with its pallet list (one scan per pallet at the dock).
     const items = store.wh.stockSummary().filter((r) => r.available >= 2);
