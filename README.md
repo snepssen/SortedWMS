@@ -1,10 +1,12 @@
 # SortedWMS
 
-A working prototype of a reach-truck WMS for a chilled warehouse: yoghurt, cheese and (soon) protein drinks.
+A warehouse management system for a chilled site, with sign-in, a role for each job on the floor, and the reach-truck rules (receiving, put-away, FEFO, counts, dispatch) underneath.
 
-**A workflow demonstration, not a replacement proposal.** It uses made-up stock to show how admin setup, office decisions and scanner work could connect. For a coordinator presentation, use the [presenter guide](https://snepssen.github.io/SortedWMS/demo.html), then the guided scenarios. The [demo SOP](https://snepssen.github.io/SortedWMS/sop.html) explains the same workflows; it is not an approved site procedure.
+**Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. Each account lands on its own view at `/app`. Accounts, permissions and the default passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
-**Try the demo: https://snepssen.github.io/SortedWMS/**. It's a simulated shift that runs in the browser, on a computer or a phone.
+The guided simulation is still there for a coordinator walkthrough. It uses made-up stock to show how setup, office decisions and scanner work connect. For that presentation, use the [presenter guide](https://snepssen.github.io/SortedWMS/demo.html), then the guided scenarios. The [demo SOP](https://snepssen.github.io/SortedWMS/sop.html) explains the same workflows; it is not an approved site procedure. The Pages demo has no server, so it does not ask you to sign in.
+
+**Try the simulation: https://snepssen.github.io/SortedWMS/**. It runs in the browser, on a computer or a phone.
 
 To run it locally, open `index.html` in a browser. No install or server needed.
 
@@ -191,16 +193,44 @@ Checking a picked pallet sends a 4×6" shipping label to the label printer at th
 
 The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer's resolution is set in the site file and labels are scaled to it. The office can ask a printer for its status (paper, ribbon, head, pause). The handhelds are Zebra MC9401s: the handheld page has a compact layout for their screen, and Esc and F1–F5 work on their keypad. Setup for both is in [docs/HARDWARE.md](docs/HARDWARE.md).
 
+## What the WMS adds
+
+On top of the reach-truck rules already in `src/engine.js`:
+
+- **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator.
+- **Roles.** Administrator, manager / supervisor, office, technician, operator, machine operator. Permissions are a list an administrator can edit. Each role has its own view.
+- **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
+- **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
+- **Locations.** Zones, aisles, racks, levels, bins and block lanes. Height, width, depth and weight capacity. A load that does not fit is refused.
+- **Holders.** Pallets, crates and totes: what is on each one, and where it stands.
+- **Labels.** Pallet labels and master labels (SSCC / GS1-128) as ZPL and as a printable HTML page (the PDF path is the browser print dialog).
+- **Floor flows already in the engine, now behind a permission:** ASN receiving, put-away, replenishment moves, FEFO picking, packing notes, shipping, cycle counts, quantity adjustments with a reason, search, and CSV stock export. The journal is still the audit trail.
+- **Hardware, partially.** Keyboard-wedge scans, manual entry, and a simulated scan. Printers speak ZPL, can fall back to the browser page, or stay simulated until an address is configured.
+
 ## Running the WMS
 
-The prototype server shares one source of truth between handheld, desk and office screens. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node). Running it locally does not make it a production WMS.
+The server shares one source of truth between the role views, handheld, desk and office screens. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node). The same commands run on macOS and Linux.
 
 ```
-npm start              # an empty warehouse from server/site.example.json
-npm run start:demo     # the same, with made-up stock, 4 handhelds and 2 orders to try it with
+npm test
+npm start              # warehouse from server/site.example.json, plus the demo accounts
+npm run start:demo     # the same, with made-up stock, 4 handhelds and 2 orders
 ```
 
-Then open, on the same network:
+Then open `http://localhost:8080/login`.
+
+| Username | Password | View |
+| --- | --- | --- |
+| `admin` | `sorted-admin` | Users, roles, settings, audit |
+| `manager` | `sorted-manager` | KPIs, staff, tasks, exceptions, locations, holders |
+| `office` | `sorted-office` | Clients, items, orders, inbound, outbound, reports, labels |
+| `tech` | `sorted-tech` | Equipment, faults, maintenance, hardware |
+| `operator` | `sorted-operator` | Put-away, picking, moves, counts, task queue |
+| `machine` | `sorted-machine` | Line jobs, status, errors |
+
+`SORTED_ADMIN_USER` and `SORTED_ADMIN_PASSWORD` set the first administrator when the database has no users. `SORTED_DEMO_USERS=0` skips the other five accounts. Details are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+
+On the same network, the older screens are still there:
 - **`/handheld`** on the Android scanners. Enter the handheld ID once; the scanner sends Enter after each scan. The screen keeps the scan field focused and hides the on-screen keyboard (⌨ brings it back).
 - **`/keys`** on a new scanner, once: a key test. It shows every key press (key, code, keyCode), whether the Back key reaches the page, and how scans arrive (as key presses or as pasted text, with the symbology prefix and the GS1 separator if the scanner sends them), with a summary to copy. It needs no server: on Pages it's `keys.html`.
 - **`/card`**: the command card to print (also under Settings in the office).
@@ -214,9 +244,12 @@ Settings, through environment variables:
 | Variable | Default | |
 | --- | --- | --- |
 | `PORT` | 8080 | |
-| `SORTED_DB` | `data/sorted.db` | The database file. Back this file up. |
-| `SORTED_SITE` | `server/site.example.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, printer addresses. Read once, when the database is first created. |
-| `SORTED_TOKEN` | none | If set, every API call needs it. Handheld and office have token settings; station, desk and loading screens have a Connection form. Station/desk tokens are not saved and must be re-entered after reload. |
+| `SORTED_DB` | `data/sorted.db` | The database file. Back this file up. Users and sessions live in this file too. |
+| `SORTED_SITE` | `server/site.example.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, clients, printer addresses. Read once, when the database is first created. |
+| `SORTED_TOKEN` | none | Optional shared secret. If set, a call with header `x-token` is accepted as a service administrator. Sign-in still works without it. |
+| `SORTED_ADMIN_USER` | `admin` | Created when there are no users yet. |
+| `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
+| `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, operator and machine operator accounts. |
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 
@@ -230,9 +263,13 @@ Settings, through environment variables:
 | `src/workload.js` | Free play: random orders and deliveries over the stock and rack space there is, from a seed. |
 | `src/drivers.js` | Free play: what a driver on Auto scans next, and how long it takes to get there. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
-| `src/labels.js` | ZPL shipping and pallet labels, scaled to the printer's dpi. |
+| `src/labels.js` | ZPL shipping, pallet and master labels, plus printable HTML, scaled to the printer's dpi. |
 | `src/barcode.js` | Code 128 and GS1-128 as SVG, for the command card and the demo kit. |
-| `server/index.js` | The WMS server: JSON API, handheld and office pages, clock tick, printing. |
+| `server/index.js` | The WMS server: sign-in, JSON API, role pages, clock tick, printing. |
+| `server/auth.js` | Password hashes, sessions, the bootstrap administrator and the demo accounts. |
+| `server/permissions.js` | Roles and which permission each route needs. |
+| `server/hardware.js` | Wedge / manual / simulated scans, and simulated, browser or network printing. |
+| `src/foundation.js` | Clients, items, locations, holders, labels, equipment and adjustments. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.example.json` | Example site set-up; copy and edit for the real warehouse. |

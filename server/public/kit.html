@@ -91,6 +91,7 @@
       return r.body;
     }
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-operator': 'kit' }, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401 && location && typeof location.assign === 'function') location.assign('/login?next=' + encodeURIComponent(location.pathname || '/kit'));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { const e = new Error(data.error || res.statusText); e.status = res.status; throw e; }
     return data;

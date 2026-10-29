@@ -2,6 +2,17 @@
 
 What SortedWMS expects from the equipment on the floor, and how to set it up. Based on photos of the site's own equipment and pallets (October 2026).
 
+## Device modes (no scanner or printer required yet)
+
+The server keeps one accept path for scans and one send path for labels, so a real device can be attached later without a rewrite.
+
+| | What you have now | What plugs in later |
+| --- | --- | --- |
+| Scanner | Keyboard wedge (fast keystrokes, then Enter), typed manual entry, or the **Simulate scan** button | A DataWedge profile that types into the same field and sends Enter. The page does not need a new API. |
+| Printer | **Simulated** (job kept, nothing sent), **browser** (open the label HTML and print or save PDF), or **network** (ZPL on port 9100 via `Printers.send`) | A printer address in the site file, then set the mode to network. Scaling and `~HS` status stay as they are. |
+
+A technician or administrator sets the mode under Hardware or Settings. The default is wedge + simulated, which is what `npm run start:demo` uses.
+
 ## Handheld: Zebra MC9401
 
 A rugged Android gun-grip terminal with a 4.3" touch screen and a full keypad (Esc, letters, digits, F-keys under the blue key, P1/P2, arrows, ENT).
