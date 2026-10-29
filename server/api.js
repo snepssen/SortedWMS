@@ -50,7 +50,7 @@
     const ins = wh.trucks[id] ? wh.instruction(id) : { kind: d.taskId ? 'receive' : 'idle' };
     const task = d.taskId ? wh.tasks[d.taskId] : null;
     const out = {
-      id, kind: d.kind || 'truck', mode: d.mode, modes: Object.entries(TRUCK_MODES).map(([k, v]) => ({ id: k, label: v.label })),
+      id, kind: d.kind || 'truck', mode: d.mode, operator: d.operator || null, modes: Object.entries(TRUCK_MODES).map(([k, v]) => ({ id: k, label: v.label })),
       categories: d.categories, message: d.message ? { ok: d.message.ok, text: wh.display(d.message.text) } : null, stats: d.stats,
       instruction: { kind: ins.kind, task: taskView(wh, task) },
     };
@@ -122,7 +122,26 @@
    * handle(method, url, body, by) -> { status, body }. `store` needs wh, exec(op, args, by)
    * and journal(filter); `printers` needs flush(queue) and results.
    */
-  function createApi({ store, printers }) {
+  function locationView(wh, l) {
+    const occupied = l.kind === 'rack' && !l.structural ? (l.sscc ? 1 : 0) : (l.pallets ? l.pallets.length : 0);
+    return {
+      code: l.code, kind: l.structural && l.kind === 'rack' ? 'rack' : l.kind, name: l.name || null,
+      structural: Boolean(l.structural), custom: Boolean(l.custom),
+      zone: l.zone || null, aisle: l.aisle || null, rack: l.rack || null, level: l.level ?? null, bin: l.bin || null,
+      parent: l.parent || null, category: l.category || null, blocked: Boolean(l.blocked),
+      capacity: l.capacity || null, occupied, sscc: l.sscc || null,
+    };
+  }
+
+  function holderView(wh, h) {
+    return { ...h, contents: (h.contents || []).map((c) => ({ ...c, name: c.itemNo && wh.items[c.itemNo] ? wh.items[c.itemNo].name : null })) };
+  }
+
+  function csv(rows) {
+    return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  }
+
+  function createApi({ store, printers, hardware }) {
     const wh = () => store.wh;
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -271,6 +290,98 @@
     on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b }, by));
     on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
 
+    // Clients, items, locations, holders, labels, equipment, reports.
+    const clientView = (c) => {
+      const items = Object.values(wh().items).filter((i) => i.clientId === c.id);
+      const stock = wh().stockForClient(c.id).filter((p) => p.loc && p.status !== 'shipped');
+      return { ...c, items: items.length, pallets: stock.length, qty: stock.reduce((n, p) => n + (p.qty || 0), 0) };
+    };
+    on('GET', '/api/clients', (_, q) => Object.values(wh().clients || {}).filter((c) => q.archived === '1' || c.status !== 'archived').map(clientView));
+    on('GET', '/api/clients/:id', ({ id }) => {
+      const c = wh().clients[decodeURIComponent(id).toUpperCase()];
+      if (!c) return { status: 404, error: `Unknown client ${id}` };
+      return { ...clientView(c), itemList: Object.values(wh().items).filter((i) => i.clientId === c.id), stock: wh().stockForClient(c.id).filter((p) => p.status !== 'shipped').map((p) => palletView(wh(), p)) };
+    });
+    on('POST', '/api/clients', (_, q, b, by) => run('addClient', b, by));
+    on('POST', '/api/clients/:id', ({ id }, q, b, by) => run('updateClient', { ...b, id: decodeURIComponent(id) }, by));
+    on('POST', '/api/clients/:id/archive', ({ id }, q, b, by) => run('archiveClient', { id: decodeURIComponent(id) }, by));
+    on('POST', '/api/clients/:id/restore', ({ id }, q, b, by) => run('restoreClient', { id: decodeURIComponent(id) }, by));
+    on('POST', '/api/items', (_, q, b, by) => run('addItem', b, by));
+    on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => run('updateItem', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items/:itemNo/archive', ({ itemNo }, q, b, by) => run('archiveItem', { itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => run('removeItem', { itemNo: decodeURIComponent(itemNo) }, by));
+    on('GET', '/api/locations', (_, q) => {
+      let list = Object.values(wh().locations);
+      if (q.kind) list = list.filter((l) => l.kind === q.kind || (q.kind === 'rack' && l.structural));
+      if (q.custom === '1') list = list.filter((l) => l.custom || l.structural || l.capacity);
+      if (q.q) {
+        const s = String(q.q).toLowerCase();
+        list = list.filter((l) => `${l.code} ${l.name || ''} ${l.kind}`.toLowerCase().includes(s));
+      }
+      const total = list.length;
+      const limit = Math.min(Number(q.limit) || 200, 2000);
+      return { total, locations: list.slice(0, limit).map((l) => locationView(wh(), l)) };
+    });
+    on('POST', '/api/locations', (_, q, b, by) => run('createLocation', b, by));
+    on('POST', '/api/locations/:code/capacity', ({ code }, q, b, by) => run('setLocationCapacity', { ...b, code: decodeURIComponent(code) }, by));
+    on('POST', '/api/locations/:code/delete', ({ code }, q, b, by) => run('deleteLocation', { code: decodeURIComponent(code) }, by));
+    on('DELETE', '/api/locations/:code', ({ code }, q, b, by) => run('deleteLocation', { code: decodeURIComponent(code) }, by));
+    on('GET', '/api/holders', () => Object.values(wh().holders || {}).map((h) => holderView(wh(), h)));
+    on('POST', '/api/holders', (_, q, b, by) => run('addHolder', b, by));
+    on('POST', '/api/holders/:id', ({ id }, q, b, by) => run('updateHolder', { ...b, id: decodeURIComponent(id) }, by));
+    on('POST', '/api/holders/:id/move', ({ id }, q, b, by) => run('moveHolder', { id: decodeURIComponent(id), loc: b.loc }, by));
+    on('POST', '/api/holders/:id/load', ({ id }, q, b, by) => run('loadHolder', { ...b, id: decodeURIComponent(id) }, by));
+    on('POST', '/api/holders/:id/unload', ({ id }, q, b, by) => run('unloadHolder', { ...b, id: decodeURIComponent(id) }, by));
+    on('POST', '/api/holders/:id/remove', ({ id }, q, b, by) => run('removeHolder', { id: decodeURIComponent(id) }, by));
+    on('DELETE', '/api/holders/:id', ({ id }, q, b, by) => run('removeHolder', { id: decodeURIComponent(id) }, by));
+    const issue = (args, by) => {
+      const result = run('issueLabel', args, by);
+      if (hardware && result && result.zpl) hardware.note(result);
+      return result;
+    };
+    on('POST', '/api/labels/pallet', (_, q, b, by) => issue({ ...b, kind: 'pallet' }, by));
+    on('POST', '/api/labels/master', (_, q, b, by) => issue({ ...b, kind: 'master' }, by));
+    on('GET', '/api/labels/:id', ({ id }) => wh().labelDocument(decodeURIComponent(id)));
+    on('GET', '/api/labels/:id/html', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().labelDocument(decodeURIComponent(id)).html }));
+    on('GET', '/api/labels/:id/zpl', ({ id }) => ({ contentType: 'text/plain; charset=utf-8', raw: wh().labelDocument(decodeURIComponent(id)).zpl }));
+    on('POST', '/api/stock/adjust', (_, q, b, by) => run('adjustQuantity', b, by));
+    on('POST', '/api/replenish', (_, q, b, by) => run('replenish', b, by));
+    on('POST', '/api/orders/:id/pack', ({ id }, q, b, by) => run('recordPacking', { id: decodeURIComponent(id), note: b.note }, by));
+    on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null }, by));
+    on('GET', '/api/equipment', () => ({ equipment: Object.values(wh().equipment || {}), faults: wh().faults || [], maintenance: (wh().maintenance || []).slice(0, 100) }));
+    on('POST', '/api/equipment', (_, q, b, by) => run('addEquipment', b, by));
+    on('POST', '/api/equipment/:id/fault', ({ id }, q, b, by) => run('reportFault', { ...b, equipmentId: decodeURIComponent(id) }, by));
+    on('POST', '/api/equipment/:id/maintenance', ({ id }, q, b, by) => run('recordMaintenance', { ...b, equipmentId: decodeURIComponent(id) }, by));
+    on('POST', '/api/faults/:id/close', ({ id }, q, b, by) => run('closeFault', { id: decodeURIComponent(id), note: b.note }, by));
+    on('GET', '/api/search', (_, q) => wh().search(q.q || ''));
+    on('GET', '/api/exceptions', () => ({
+      held: Object.values(wh().tasks).filter((t) => t.status === 'held' && !t.replacedBy).map((t) => taskView(wh(), t)),
+      blocked: Object.values(wh().pallets).filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
+      lost: wh().lostPallets().map((p) => palletView(wh(), p)),
+      faults: (wh().faults || []).filter((f) => f.status === 'open'),
+      quality: Object.values(wh().pallets).filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
+    }));
+    on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
+    on('GET', '/api/reports/expiry', (_, q) => {
+      const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
+      return Object.values(wh().pallets).filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
+    });
+    on('GET', '/api/reports/orders', () => Object.values(wh().orders).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
+    on('GET', '/api/reports/stock.csv', () => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
+    }));
+    on('GET', '/api/hardware', () => (hardware ? hardware.recent() : { settings: { scanner: 'wedge', printer: 'simulated' }, scans: [], jobs: [], printers: printers.list ? printers.list() : [], modes: { scanner: ['wedge', 'manual', 'simulated'], printer: ['simulated', 'network', 'browser'] } }));
+    on('POST', '/api/hardware/mode', (_, q, b) => (hardware ? hardware.setMode(b) : { status: 400, error: 'Hardware service is not configured' }));
+    on('POST', '/api/hardware/scan', async (_, q, b, by) => {
+      if (!hardware) return { status: 400, error: 'Hardware service is not configured' };
+      const scan = hardware.recordScan(b);
+      if (b.deviceId) return { scan, result: run('scan', { id: b.deviceId, code: scan.code }, by) };
+      if (b.stationId) return { scan, result: run('stationScan', { id: b.stationId, code: scan.code }, by) };
+      return { scan };
+    });
+    on('POST', '/api/hardware/print', (_, q, b) => (hardware ? hardware.print({ printer: b.printer, zpl: b.zpl, html: b.html, kind: b.kind }) : { status: 400, error: 'Hardware service is not configured' }));
+
     // Answers to recent changes by request ID. A handheld on a slow network sends the same
     // request again when the answer is late; the repeat gets the first answer instead of
     // happening twice (a pallet scanned twice in Auto means "move it").
@@ -292,8 +403,9 @@
       const route = routes.find((r) => r.method === method && r.re.test(url.pathname));
       if (!route) return { status: 404, body: { error: `No route ${method} ${url.pathname}` } };
       const answer = (out) => {
-        if (out && out.status && out.error) return { status: out.status, body: { error: out.error } };
-        return { status: 200, body: out === undefined ? { ok: true } : out };
+      if (out && out.contentType) return { status: out.status || 200, body: out.raw != null ? out.raw : out.body, contentType: out.contentType };
+      if (out && out.status && out.error) return { status: out.status, body: { error: out.error } };
+      return { status: 200, body: out === undefined ? { ok: true } : out };
       };
       try {
         const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);

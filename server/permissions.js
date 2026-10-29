@@ -1,0 +1,208 @@
+/*
+ * Roles and the permission each HTTP route needs.
+ *
+ * Administrator always has every permission. Other roles start from the
+ * defaults below; an administrator can replace a role's list. A route that
+ * is not listed falls through: reads need wms.read, changes need wms.write.
+ * Operator and machine operator do not have wms.write, so their posts have
+ * to be listed here.
+ */
+'use strict';
+
+const PERMISSIONS = [
+  ['users.read', 'View users'],
+  ['users.write', 'Create and edit users'],
+  ['roles.read', 'View roles and permissions'],
+  ['roles.write', 'Edit what a role is allowed to do'],
+  ['settings.read', 'View system settings'],
+  ['settings.write', 'Change system settings'],
+  ['audit.read', 'View the audit log'],
+  ['clients.read', 'View clients'],
+  ['clients.write', 'Add, edit and archive clients'],
+  ['items.read', 'View items'],
+  ['items.write', 'Add, edit and remove items'],
+  ['locations.read', 'View locations'],
+  ['locations.write', 'Create, edit and delete locations'],
+  ['holders.read', 'View holders'],
+  ['holders.write', 'Add, move and load holders'],
+  ['stock.read', 'View stock'],
+  ['stock.adjust', 'Adjust stock with a reason'],
+  ['inbound.read', 'View inbound and ASNs'],
+  ['inbound.write', 'Create inbound deliveries'],
+  ['orders.read', 'View orders'],
+  ['orders.write', 'Create orders'],
+  ['outbound.read', 'View shipping'],
+  ['outbound.write', 'Pack and dispatch'],
+  ['picks.execute', 'Pick orders'],
+  ['putaway.execute', 'Put stock away and replenish'],
+  ['moves.execute', 'Move and transfer stock'],
+  ['counts.execute', 'Run cycle counts'],
+  ['tasks.read', 'View tasks'],
+  ['tasks.assign', 'Assign and prioritise tasks'],
+  ['approvals.write', 'Release holds and approve exceptions'],
+  ['equipment.read', 'View equipment'],
+  ['equipment.write', 'Log faults, maintenance and device mode'],
+  ['labels.print', 'Generate and print labels'],
+  ['reports.read', 'View and export reports'],
+  ['scans.execute', 'Scan from a handheld, desk or station'],
+  ['wms.read', 'Read warehouse screens'],
+  ['wms.write', 'Warehouse changes that have no finer permission'],
+];
+
+const ALL = PERMISSIONS.map(([id]) => id);
+
+const ROLES = [
+  ['administrator', 'Administrator'],
+  ['manager', 'Manager / supervisor'],
+  ['office', 'Office'],
+  ['technician', 'Technician'],
+  ['operator', 'Operator'],
+  ['machine', 'Machine operator'],
+];
+
+const ROLE_IDS = ROLES.map(([id]) => id);
+
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write']);
+
+const DEFAULTS = {
+  administrator: ALL,
+  manager: ALL.filter((id) => !EXCEPT.has(id)),
+  office: [
+    'clients.read', 'clients.write', 'items.read', 'items.write',
+    'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
+    'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
+    'stock.read', 'holders.read', 'locations.read', 'tasks.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read',
+  ],
+  technician: [
+    'equipment.read', 'equipment.write', 'locations.read', 'locations.write',
+    'stock.read', 'holders.read', 'wms.read', 'settings.read', 'labels.print',
+  ],
+  operator: [
+    'stock.read', 'holders.read', 'holders.write', 'locations.read', 'items.read',
+    'tasks.read', 'picks.execute', 'putaway.execute', 'moves.execute', 'counts.execute',
+    'scans.execute', 'labels.print', 'stock.adjust', 'wms.read', 'inbound.read', 'orders.read',
+  ],
+  machine: [
+    'equipment.read', 'equipment.write', 'scans.execute', 'tasks.read', 'wms.read',
+    'labels.print', 'stock.read', 'locations.read',
+  ],
+};
+
+// null permission means the route is public.
+const RULES = [
+  ['POST', '/api/login', null],
+  ['POST', '/api/logout', null],
+  ['GET', '/api/session', null],
+  ['GET', '/api/health', null],
+  ['GET', '/api/users', 'users.read'],
+  ['POST', '/api/users', 'users.write'],
+  ['POST', '/api/users/:id', 'users.write'],
+  ['GET', '/api/roles', 'roles.read'],
+  ['POST', '/api/roles/:role', 'roles.write'],
+  ['GET', '/api/auth-log', 'audit.read'],
+  ['GET', '/api/journal', 'audit.read'],
+  ['POST', '/api/config', 'settings.write'],
+  ['POST', '/api/naming', 'settings.write'],
+  ['POST', '/api/aisles/:aisle/direction', 'settings.write'],
+  ['POST', '/api/aisles/:aisle/cell', 'settings.write'],
+  ['GET', '/api/clients', 'clients.read'],
+  ['GET', '/api/clients/:id', 'clients.read'],
+  ['POST', '/api/clients', 'clients.write'],
+  ['POST', '/api/clients/:id', 'clients.write'],
+  ['POST', '/api/clients/:id/archive', 'clients.write'],
+  ['POST', '/api/clients/:id/restore', 'clients.write'],
+  ['GET', '/api/items', 'items.read'],
+  ['POST', '/api/items', 'items.write'],
+  ['POST', '/api/items/:itemNo', 'items.write'],
+  ['POST', '/api/items/:itemNo/archive', 'items.write'],
+  ['POST', '/api/items/:itemNo/remove', 'items.write'],
+  ['GET', '/api/locations', 'locations.read'],
+  ['POST', '/api/locations', 'locations.write'],
+  ['POST', '/api/locations/:code/capacity', 'locations.write'],
+  ['POST', '/api/locations/:code/delete', 'locations.write'],
+  ['DELETE', '/api/locations/:code', 'locations.write'],
+  ['GET', '/api/holders', 'holders.read'],
+  ['POST', '/api/holders', 'holders.write'],
+  ['POST', '/api/holders/:id', 'holders.write'],
+  ['POST', '/api/holders/:id/move', 'holders.write'],
+  ['POST', '/api/holders/:id/load', 'holders.write'],
+  ['POST', '/api/holders/:id/unload', 'holders.write'],
+  ['POST', '/api/holders/:id/remove', 'holders.write'],
+  ['DELETE', '/api/holders/:id', 'holders.write'],
+  ['POST', '/api/labels/pallet', 'labels.print'],
+  ['POST', '/api/labels/master', 'labels.print'],
+  ['GET', '/api/labels/:id', 'labels.print'],
+  ['GET', '/api/labels/:id/html', 'labels.print'],
+  ['GET', '/api/labels/:id/zpl', 'labels.print'],
+  ['GET', '/api/hardware', 'wms.read'],
+  ['POST', '/api/hardware/mode', 'equipment.write'],
+  ['POST', '/api/hardware/scan', 'scans.execute'],
+  ['POST', '/api/hardware/print', 'labels.print'],
+  ['POST', '/api/stock/adjust', 'stock.adjust'],
+  ['POST', '/api/replenish', 'putaway.execute'],
+  ['POST', '/api/orders/:id/pack', 'outbound.write'],
+  ['GET', '/api/reports/stock', 'reports.read'],
+  ['GET', '/api/reports/expiry', 'reports.read'],
+  ['GET', '/api/reports/orders', 'reports.read'],
+  ['GET', '/api/reports/stock.csv', 'reports.read'],
+  ['GET', '/api/search', 'wms.read'],
+  ['GET', '/api/exceptions', 'tasks.read'],
+  ['POST', '/api/equipment', 'equipment.write'],
+  ['POST', '/api/equipment/:id/fault', 'equipment.write'],
+  ['POST', '/api/equipment/:id/maintenance', 'equipment.write'],
+  ['POST', '/api/faults/:id/close', 'equipment.write'],
+  ['POST', '/api/devices', 'tasks.assign'],
+  ['POST', '/api/devices/:id/categories', 'tasks.assign'],
+  ['POST', '/api/devices/:id/operator', 'tasks.assign'],
+  ['POST', '/api/devices/:id/mode', 'scans.execute'],
+  ['POST', '/api/devices/:id/scan', 'scans.execute'],
+  ['POST', '/api/devices/:id/qty', 'scans.execute'],
+  ['POST', '/api/devices/:id/finish-receiving', 'scans.execute'],
+  ['POST', '/api/devices/:id/problem', 'scans.execute'],
+  ['POST', '/api/devices/:id/pending', 'scans.execute'],
+  ['POST', '/api/desks/:id/start', 'scans.execute'],
+  ['POST', '/api/desks/:id/enter', 'scans.execute'],
+  ['POST', '/api/stations/:id/scan', 'scans.execute'],
+  ['POST', '/api/orders/:id/loading/scan', 'scans.execute'],
+  ['POST', '/api/transfer', 'moves.execute'],
+  ['POST', '/api/plan/counts', 'counts.execute'],
+  ['POST', '/api/tasks/:taskId/urgent', 'tasks.assign'],
+  ['POST', '/api/tasks/:taskId/cancel', 'tasks.assign'],
+  ['POST', '/api/tasks/:taskId/release', 'approvals.write'],
+  ['POST', '/api/pallets/:sscc/status', 'approvals.write'],
+  ['POST', '/api/pallets/:sscc/quality-release', 'approvals.write'],
+  ['POST', '/api/pallets/:sscc/allow-short', 'approvals.write'],
+  ['POST', '/api/pallets/:sscc/temperature', 'approvals.write'],
+  ['POST', '/api/recalls', 'approvals.write'],
+  ['POST', '/api/recalls/release', 'approvals.write'],
+  ['POST', '/api/quarantine/request', 'approvals.write'],
+  ['POST', '/api/quarantine/release', 'approvals.write'],
+  ['POST', '/api/quarantine/locations', 'approvals.write'],
+  ['POST', '/api/orders', 'orders.write'],
+  ['POST', '/api/orders/:id/ship', 'outbound.write'],
+  ['POST', '/api/deliveries', 'inbound.write'],
+  ['GET', '/api/orders', 'orders.read'],
+  ['GET', '/api/deliveries', 'inbound.read'],
+  ['GET', '/api/stock', 'stock.read'],
+];
+
+const compiled = RULES.map(([method, pattern, perm]) => ({
+  method,
+  perm,
+  re: new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/:(\w+)/g, '[^/]+')}$`),
+}));
+
+function permissionFor(method, pathname) {
+  const hit = compiled.find((r) => r.method === method && r.re.test(pathname));
+  if (hit) return { public: hit.perm == null, permission: hit.perm };
+  if (method === 'GET' || method === 'HEAD') return { public: false, permission: 'wms.read' };
+  return { public: false, permission: 'wms.write' };
+}
+
+function roleLabel(id) {
+  const row = ROLES.find(([role]) => role === id);
+  return row ? row[1] : id;
+}
+
+module.exports = { PERMISSIONS, ALL, ROLES, ROLE_IDS, DEFAULTS, permissionFor, roleLabel };
