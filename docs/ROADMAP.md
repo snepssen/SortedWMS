@@ -48,7 +48,10 @@ That's a low-risk way to prove the rules on real data.
 - Replenishment to a maximum in units, splitting the source plate, plus a whole-pallet mode. Default plate padding is 7 and is set per series.
 - Inter-warehouse transfer through an in-transit location. A refusal returns the original plate.
 - A per-client 3PL tariff and printable period invoices. Backup and restore of the journal and accounts.
-- Volume tiers (all units at the tier rate, or graduated bands), seasonal overrides and surcharges, and rate-card versions. A period that crosses a boundary is split at midnight UTC. The invoice names the tier, season and version on each line. Older versions stay read-only in the journal.
+- Volume tiers (all units at the tier rate, or graduated bands), seasonal overrides and surcharges, and rate-card versions. A period that crosses a boundary is split at the warehouse's local midnight. The invoice names the tier, season and version on each line. Older versions stay read-only in the journal.
+- Each warehouse has a country and an IANA timezone, set in the setup wizard and in warehouse settings. Billing days and the journal follow that clock, including daylight saving.
+- A rate card chooses whether the monthly minimum is prorated, whether a season replaces the rate or adds a percent or a fixed amount, and whether tiers count per calendar month or per version. Dedicated space is a flat fee for a cell, aisle, bay, position, height, or the whole building.
+- A client login sees only that client's items, stock and orders. The client adds and deactivates items. Approval is optional. A technician builds locations from profiles and can bulk-create a range. Put-away respects the profile capacity.
 
 ## 3. Hardware
 
