@@ -386,6 +386,9 @@
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
+    on('GET', '/api/location-profiles', () => wh().locationProfilesView());
+    on('POST', '/api/location-profiles', (_, q, b, by) => run('saveLocationProfile', { profile: b }, by));
+    on('POST', '/api/locations/bulk', (_, q, b, by) => run('bulkLocations', b, by));
     on('GET', '/api/val', () => ({ stations: wh().valStations || [], kits: Object.values(wh().kits || {}), jobs: (wh().valJobs || []).slice(0, 20) }));
     on('POST', '/api/val/start', (_, q, b, by) => run('startVal', b, by));
     on('POST', '/api/holders/:id/pick', ({ id }, q, b, by) => run('pickHolder', { id: decodeURIComponent(id), orderId: b.orderId || null, qty: b.qty }, by));

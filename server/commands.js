@@ -167,6 +167,8 @@
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),
+    saveLocationProfile: (wh, a) => wh.saveLocationProfile(a.profile || a),
+    bulkLocations: (wh, a) => wh.bulkLocations(a),
     completeSetup: (wh) => wh.completeSetup(),
 
     // Clock tick: dwell timers, waiting trucks, escalations

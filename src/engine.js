@@ -708,6 +708,8 @@
         status, blockReason, loc: null, orderId: null, labelCode: null, checked: false,
         clientId: owner,
       };
+      const over = this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode !== 'warn') throw new Error(over);
       if (!this._fits(loc, pallet)) throw new Error(`Pallet …${sscc.slice(-6)} (${itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
       this.pallets[sscc] = pallet;
       this._place(pallet, code);
@@ -3515,9 +3517,42 @@
      * Footprint may rotate; height does not. Item dimensions are the full
      * stored unit (one pallet); weight and height scale with quantity.
      */
+    _capacityMessage(loc, pallet) {
+      const cap = loc && loc.capacity;
+      if (!cap || !pallet) return null;
+      const item = this.items[pallet.itemNo];
+      if (cap.maxUnits != null) {
+        const held = loc.kind === 'rack' ? (loc.sscc ? 1 : 0) : ((loc.pallets && loc.pallets.length) || 0);
+        if (held + 1 > cap.maxUnits) return `${loc.code} holds ${cap.maxUnits} and already has ${held}`;
+      }
+      if (cap.stackHeight != null) {
+        const held = (loc.pallets && loc.pallets.length) || 0;
+        if (held + 1 > cap.stackHeight) return `${loc.code} stacks ${cap.stackHeight} pallets high`;
+      }
+      if (cap.maxVolumeM3 != null && item && item.lengthMm && item.widthMm && item.heightMm) {
+        const one = (item.lengthMm * item.widthMm * item.heightMm) / 1e9;
+        let used = 0;
+        const ids = loc.kind === 'rack' ? (loc.sscc ? [loc.sscc] : []) : (loc.pallets || []);
+        for (const id of ids) {
+          const other = this.pallets[id];
+          const otherItem = other && this.items[other.itemNo];
+          if (otherItem && otherItem.lengthMm && otherItem.widthMm && otherItem.heightMm) used += (otherItem.lengthMm * otherItem.widthMm * otherItem.heightMm) / 1e9;
+        }
+        if (used + one > cap.maxVolumeM3) return `${loc.code} is over its volume of ${cap.maxVolumeM3} m3`;
+      }
+      if (cap.footprintLengthMm != null && cap.footprintWidthMm != null && item && item.lengthMm && item.widthMm) {
+        const load = [item.lengthMm, item.widthMm].sort((a, b) => a - b);
+        const floor = [cap.footprintLengthMm, cap.footprintWidthMm].sort((a, b) => a - b);
+        if (load[0] > floor[0] || load[1] > floor[1]) return `${loc.code} footprint is too small for ${item.itemNo}`;
+      }
+      return null;
+    }
+
     _fits(loc, pallet) {
       const cap = loc && loc.capacity;
       if (!cap || !pallet) return true;
+      const over = this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode !== 'warn') return false;
       const item = this.items[pallet.itemNo];
       if (!item) return true;
       const frac = item.palletQty ? (Number(pallet.qty) || item.palletQty) / item.palletQty : 1;
@@ -3532,6 +3567,12 @@
     }
 
     _assertFit(loc, pallet) {
+      const over = loc && this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode === 'warn') {
+        this.log(`Warning: ${over}`);
+        return;
+      }
+      if (over) throw new Error(over);
       if (!loc || this._fits(loc, pallet)) return;
       const item = this.items[pallet.itemNo];
       throw new Error(`Pallet …${pallet.sscc.slice(-6)} (${item ? item.itemNo : pallet.itemNo}) does not fit ${loc.code}: height, width, depth or weight`);

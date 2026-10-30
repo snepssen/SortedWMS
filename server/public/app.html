@@ -73,7 +73,7 @@
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
-    technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
+    technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
     client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
@@ -225,6 +225,16 @@
         <form data-act="tech-defaults"><table><tr><th>Type</th><th>H mm</th><th>W mm</th><th>D mm</th><th>Max kg</th></tr>${['rack', 'bin', 'mezzanine', 'virtual'].map(row).join('')}</table>
         <p><button class="primary">Save defaults</button></p></form>
         <p class="dim">Types: zone, aisle, rack, level, bin, mezzanine, virtual (consolidation, staging), block lane.</p></section>`;
+    },
+    async profiles() {
+      const profiles = await api('GET', '/api/location-profiles');
+      const opts = profiles.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      return `<section><h2>Location profiles</h2><p class="hint">A profile sets the storage type, temperature, security, put-away note and label, plus the capacity a location must have. Only technical staff edit these.</p>
+        ${table(['Profile', 'Storage', 'Temperature', 'Security', 'Capacity'], profiles.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.storageType)}</td><td>${esc(p.temperature || '')}</td><td>${esc(p.security || '')}</td><td>${esc(p.storageType === 'shelf' ? (p.capacity.maxUnits || '') + ' boxes' : p.storageType === 'block' ? (p.capacity.stackHeight || '') + ' high' : (p.capacity.positionsPerLevel || 1) + ' / level')}</td></tr>`))}
+        <h3>Custom profile</h3>
+        <form class="form" data-act="profile"><label>Name<input name="name" required placeholder="Secure cage"></label><label>Storage<select name="storageType"><option value="rack">Rack</option><option value="shelf">Shelf / box stack</option><option value="block">Block stack</option></select></label><label>Temperature<input name="temperature" value="ambient"></label><label>Security<input name="security" value="standard"></label><label>Put-away<input name="autoSort" placeholder="fefo"></label><label>Label<input name="label" placeholder="Label text"></label><label>When over<select name="capacityMode"><option value="refuse">Refuse</option><option value="warn">Warn</option></select></label><label>Boxes<input name="maxUnits" type="number" placeholder="shelf"></label><label>m3<input name="maxVolumeM3" type="number" step="0.1"></label><label>Positions / level<input name="positionsPerLevel" type="number" value="1"></label><label>H mm<input name="heightMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>D mm<input name="depthMm" type="number"></label><label>kg<input name="maxWeightKg" type="number"></label><label>Stack height<input name="stackHeight" type="number" placeholder="pallets"></label><label>Foot L mm<input name="footprintLengthMm" type="number"></label><label>Foot W mm<input name="footprintWidthMm" type="number"></label><button class="primary">Save profile</button></form></section>
+        <section><h2>Bulk create</h2><p class="hint">Build a range from a profile. Aisle 01–05, bay 01–20, height A–E is one example. Put-away refuses a move that would pass the profile's capacity, unless the profile is set to warn.</p>
+        <form class="form" data-act="bulk"><label>Profile<select name="profileId">${opts}</select></label><label>Aisle from<input name="aisleFrom" value="01"></label><label>Aisle to<input name="aisleTo" value="02"></label><label>Bay from<input name="bayFrom" value="01"></label><label>Bay to<input name="bayTo" value="02"></label><label>Height from<input name="heightFrom" value="A"></label><label>Height to<input name="heightTo" value="B"></label><button class="primary">Create locations</button></form></section>`;
     },
     async series() {
       const tech = await api('GET', '/api/technical');
@@ -796,6 +806,8 @@
       return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', body);
     }
     if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger), mode: data.mode });
+    if (name === 'profile') return api('POST', '/api/location-profiles', data);
+    if (name === 'bulk') return api('POST', '/api/locations/bulk', data);
     if (name === 'tech-sort') {
       const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
         const i = line.indexOf(':');
