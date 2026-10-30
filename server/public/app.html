@@ -22,7 +22,7 @@
   nav button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
   button.primary { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
   main { padding: 16px; max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
   h2 { font-size: 16px; margin: 0 0 8px; }
   .hint, .dim { color: var(--dim); }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
@@ -68,16 +68,17 @@
   'use strict';
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves' };
+  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
-    technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
   };
-  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator' };
+  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator', client: 'Client' };
   let me = null;
   let panel = '';
 
@@ -168,7 +169,7 @@
       return `<section><h2>Warehouses</h2><p class="hint">Each site has its own stock and its own plate counters. People can be limited to some sites. Shipping a transfer parks the original plate at IN-TRANSIT until the other site receives it.</p>
         <p>Current warehouse: <b>${esc(data.current)}</b></p>
         ${table(['Id', 'Name'], (data.sites || []).map((s) => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td></tr>`))}
-        <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
+        <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Country<input name="country" value="BE" maxlength="2"></label><label>Timezone<input name="timeZone" value="Europe/Brussels"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
         <form class="form" data-act="site-transfer"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>To<input name="to" required placeholder="NORTH"></label><button>Ship in transit</button></form>
         <form class="form" data-act="site-receive"><label>Transfer<input name="id" required placeholder="TR1"></label><label>From<input name="from" value="MAIN"></label><label>To<input name="to" required></label><button>Receive</button></form>
         <form class="form" data-act="site-cancel"><label>Transfer<input name="id" required></label><button>Refuse and return</button></form>
@@ -225,6 +226,16 @@
         <p><button class="primary">Save defaults</button></p></form>
         <p class="dim">Types: zone, aisle, rack, level, bin, mezzanine, virtual (consolidation, staging), block lane.</p></section>`;
     },
+    async profiles() {
+      const profiles = await api('GET', '/api/location-profiles');
+      const opts = profiles.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      return `<section><h2>Location profiles</h2><p class="hint">A profile sets the storage type, temperature, security, put-away note and label, plus the capacity a location must have. Only technical staff edit these.</p>
+        ${table(['Profile', 'Storage', 'Temperature', 'Security', 'Capacity'], profiles.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.storageType)}</td><td>${esc(p.temperature || '')}</td><td>${esc(p.security || '')}</td><td>${esc(p.storageType === 'shelf' ? (p.capacity.maxUnits || '') + ' boxes' : p.storageType === 'block' ? (p.capacity.stackHeight || '') + ' high' : (p.capacity.positionsPerLevel || 1) + ' / level')}</td></tr>`))}
+        <h3>Custom profile</h3>
+        <form class="form" data-act="profile"><label>Name<input name="name" required placeholder="Secure cage"></label><label>Storage<select name="storageType"><option value="rack">Rack</option><option value="shelf">Shelf / box stack</option><option value="block">Block stack</option></select></label><label>Temperature<input name="temperature" value="ambient"></label><label>Security<input name="security" value="standard"></label><label>Put-away<input name="autoSort" placeholder="fefo"></label><label>Label<input name="label" placeholder="Label text"></label><label>When over<select name="capacityMode"><option value="refuse">Refuse</option><option value="warn">Warn</option></select></label><label>Boxes<input name="maxUnits" type="number" placeholder="shelf"></label><label>m3<input name="maxVolumeM3" type="number" step="0.1"></label><label>Positions / level<input name="positionsPerLevel" type="number" value="1"></label><label>H mm<input name="heightMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>D mm<input name="depthMm" type="number"></label><label>kg<input name="maxWeightKg" type="number"></label><label>Stack height<input name="stackHeight" type="number" placeholder="pallets"></label><label>Foot L mm<input name="footprintLengthMm" type="number"></label><label>Foot W mm<input name="footprintWidthMm" type="number"></label><button class="primary">Save profile</button></form></section>
+        <section><h2>Bulk create</h2><p class="hint">Build a range from a profile. Aisle 01–05, bay 01–20, height A–E is one example. Put-away refuses a move that would pass the profile's capacity, unless the profile is set to warn.</p>
+        <form class="form" data-act="bulk"><label>Profile<select name="profileId">${opts}</select></label><label>Aisle from<input name="aisleFrom" value="01"></label><label>Aisle to<input name="aisleTo" value="02"></label><label>Bay from<input name="bayFrom" value="01"></label><label>Bay to<input name="bayTo" value="02"></label><label>Height from<input name="heightFrom" value="A"></label><label>Height to<input name="heightTo" value="B"></label><button class="primary">Create locations</button></form></section>`;
+    },
     async series() {
       const tech = await api('GET', '/api/technical');
       const rows = Object.entries(tech.holderSeries || {}).map(([k, s]) => `<tr><td>${esc(k)}</td><td><input name="prefix.${k}" value="${esc(s.prefix)}"></td><td><input name="pad.${k}" type="number" min="1" max="12" value="${esc(s.pad)}"></td><td>${esc(s.prefix)}${String(s.next).padStart(s.pad, '0')}</td><td>${esc(s.next)}</td></tr>`).join('');
@@ -240,10 +251,10 @@
     },
     async users() {
       const { users } = await api('GET', '/api/users');
-      const roles = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
+      const roles = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine', 'client'];
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
-      return `<section><h2>Users and roles</h2><p class="hint">Assign one of the six roles. The last administrator stays an administrator.</p>
-        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('operator')}</select></label><button class="primary">Add user</button></form>
+      return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
+        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('operator')}</select></label><label>Client id<input name="clientId" placeholder="CL-DAIRY, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
@@ -260,6 +271,10 @@
       const [summary, hw] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware')]);
       return `<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
         <form class="form" data-act="config"><label>Trucks per aisle<input name="aisleCap" type="number" min="1" value="${esc(summary.config.aisleCap)}"></label><button class="primary">Save</button></form>
+        <h3>Country and timezone</h3>
+        <p class="hint">Billing days, seasons, rate-card dates and the journal use this warehouse's local midnight. Daylight saving is included.</p>
+        <form class="form" data-act="approval"><label><input type="checkbox" name="itemApproval" ${summary.config.itemApproval ? 'checked' : ''}> Client items need warehouse approval</label><button>Save approval</button></form>
+        <form class="form" data-act="place" id="placeForm"><label>Country<select name="country" id="countryPick">${[['BE','Belgium','Europe/Brussels'],['NL','Netherlands','Europe/Amsterdam'],['DE','Germany','Europe/Berlin'],['FR','France','Europe/Paris'],['GB','United Kingdom','Europe/London'],['IE','Ireland','Europe/Dublin'],['ES','Spain','Europe/Madrid'],['IT','Italy','Europe/Rome'],['PL','Poland','Europe/Warsaw'],['SE','Sweden','Europe/Stockholm'],['CH','Switzerland','Europe/Zurich'],['US','United States','America/New_York'],['CA','Canada','America/Toronto'],['BR','Brazil','America/Sao_Paulo'],['ZA','South Africa','Africa/Johannesburg'],['AE','United Arab Emirates','Asia/Dubai'],['SG','Singapore','Asia/Singapore'],['JP','Japan','Asia/Tokyo'],['AU','Australia','Australia/Sydney'],['NZ','New Zealand','Pacific/Auckland']].map(([code, name, zone]) => `<option value="${code}" data-zone="${zone}" ${summary.config.country === code ? 'selected' : ''}>${code} ${name}</option>`).join('')}</select></label><label>Timezone<input name="timeZone" id="timeZone" value="${esc(summary.config.timeZone || 'Europe/Brussels')}" list="zones"></label><datalist id="zones">${['Europe/Brussels','Europe/Amsterdam','Europe/Berlin','Europe/Paris','Europe/London','Europe/Dublin','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Toronto','America/Sao_Paulo','Africa/Johannesburg','Asia/Dubai','Asia/Singapore','Asia/Tokyo','Australia/Sydney','Pacific/Auckland','UTC'].map((z) => `<option value="${z}">`).join('')}</datalist><button class="primary">Save place</button></form>
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
         <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p>
@@ -310,18 +325,40 @@
         <p><a href="/app#reports">Stock and expiry reports</a> · <a href="/loading">Loading</a></p></section></div>`;
     },
     async clients() { return PANELS.office(); },
+    async stock() {
+      if (me.role === 'client') {
+        const rows = await api('GET', '/api/stock');
+        return `<section><h2>Your stock</h2>${table(['Item', 'Name', 'Available', 'Short', 'Blocked'], rows.map((r) => `<tr><td>${esc(r.item.itemNo)}</td><td>${esc(r.item.name)}</td><td>${esc(r.available)}</td><td>${esc(r.short)}</td><td>${esc(r.blocked)}</td></tr>`))}</section>`;
+      }
+      return PANELS.reports();
+    },
     async items() {
+      if (me.role === 'client') {
+        const items = await api('GET', '/api/items');
+        const features = me.features || {};
+        const showFood = features.temperatureZones || features.lotExpiry;
+        const showFrozen = features.temperatureZones;
+        const showValue = features.highValueSecurity;
+        return `<section><h2>Your items</h2><p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
+          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<button class="primary">Add item</button></form>
+          ${table(['SKU', 'Description', 'Unit', 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td><td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
+      }
       const items = await api('GET', '/api/items');
       const clients = await api('GET', '/api/clients?archived=1');
       const opts = clients.filter((c) => c.status === 'active').map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
       return `<section><h2>Items</h2><form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><button class="primary">Add item</button></form>
-        ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'archived' ? 'archived' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
+        ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
     },
     async inbound() {
       const deliveries = await api('GET', '/api/deliveries');
       const clients = await api('GET', '/api/clients');
       return `<section><h2>Inbound and ASN</h2><form class="form" data-act="asn"><label>Id<input name="id" required></label><label>ASN<input name="asn"></label><label>Supplier<input name="supplier" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Pallets<input name="pallets" type="number" value="1"></label><label>Client<select name="clientId"><option value="">Any</option>${clients.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>Expected<input name="expectedAt" type="date"></label><button class="primary">Announce</button></form>
         ${table(['Delivery', 'Supplier', 'ASN', 'Expected', 'Received', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || '')}</td><td>${esc(d.expectedAt || '')}</td><td>${(d.received || []).length}/${esc(d.expected)}</td><td>${esc(d.status)}</td></tr>`))}</section>`;
+    },
+    async orders() {
+      const orders = await api('GET', '/api/orders');
+      if (me.role === 'client') return `<section><h2>Your orders</h2>${table(['Order', 'Customer', 'Status', 'Lane'], orders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td><td>${esc(o.lane)}</td></tr>`))}</section>`;
+      return PANELS.outbound();
     },
     async outbound() {
       const orders = await api('GET', '/api/orders');
@@ -337,11 +374,108 @@
         <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
         <p class="dim">${low.length} low-stock alert(s).</p>
         <h3>Tariff</h3>
-        <form class="form" data-act="tariff"><label>Client<input name="clientId" value="CL-DAIRY"></label><label>Storage basis<select name="storageBasis"><option>pallet-day</option><option>location-day</option><option>m3-day</option></select></label><label>Storage rate<input name="storageRate" type="number" value="1.5" step="0.01"></label><label>Inbound<select name="inboundBasis"><option>pallet</option><option>line</option></select></label><label>Inbound rate<input name="inboundRate" type="number" value="2" step="0.01"></label><label>Outbound<select name="outboundBasis"><option>order</option><option>line</option><option>carton</option></select></label><label>Outbound rate<input name="outboundRate" type="number" value="3" step="0.01"></label><label>VAL / unit<input name="valRate" type="number" value="0.4" step="0.01"></label><label>Minimum<input name="minimum" type="number" value="50" step="0.01"></label><button>Save tariff</button></form>
-        <p><a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a></p>
+        <p><a href="/app#tariff">Rate cards</a> set tiers, seasons and versions. <a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a> · <a href="/api/reports/invoice.csv?clientId=CL-DAIRY">Invoice CSV</a></p>
         <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)}</td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
         <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
         <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
+    },
+    async tariff() {
+      const clients = await api('GET', '/api/clients?archived=1');
+      const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+      const clientId = params.get('client') || (clients.find((c) => c.status !== 'archived') || clients[0] || {}).id || '';
+      const client = clientId ? await api('GET', '/api/clients/' + encodeURIComponent(clientId)) : null;
+      const versions = (client && client.tariffVersions) || [];
+      const latest = versions[versions.length - 1] || null;
+      const editing = Boolean(latest && !latest.readOnly);
+      const today = new Date().toISOString().slice(0, 10);
+      const from = params.get('from') || (today.slice(0, 8) + '01');
+      const to = params.get('to') || today;
+      const card = latest || {};
+      const writable = can('tariff.write');
+      const opt = (values, current) => values.map((v) => `<option value="${esc(v.id)}" ${v.id === current ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+      const basis = (name, values, current) => `<label>Basis<select name="${name}Basis">${values.map((v) => `<option ${v === (current || values[0]) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
+      const tierRows = (charge) => {
+        const tiers = card[charge + 'Tiers'] || [];
+        return [0, 1, 2].map((i) => {
+          const tier = tiers[i] || {};
+          const upTo = tier.upTo == null || tier.rate == null ? '' : tier.upTo;
+          const rate = tier.rate == null ? '' : tier.rate;
+          return `<tr><td><input name="${charge}UpTo${i}" type="number" min="0" step="0.01" value="${esc(upTo)}" placeholder="${i === 2 ? 'and above' : ''}"></td><td><input name="${charge}Rate${i}" type="number" min="0" step="0.01" value="${esc(rate)}"></td></tr>`;
+        }).join('');
+      };
+      const chargeBlock = (title, charge, bases) => {
+        const mode = card[charge + 'TierMode'] || '';
+        const rateName = charge === 'val' ? 'valRate' : charge + 'Rate';
+        const rate = card[rateName] == null ? '' : card[rateName];
+        return `<h3>${title}</h3><div class="form">${bases ? basis(charge, bases, card[charge + 'Basis']) : ''}<label>Flat rate<input name="${rateName}" type="number" min="0" step="0.01" value="${esc(rate)}"></label><label>Tiers<select name="${charge}TierMode"><option value="" ${mode ? '' : 'selected'}>Flat rate</option><option value="all" ${mode === 'all' ? 'selected' : ''}>All units at the tier rate</option><option value="graduated" ${mode === 'graduated' ? 'selected' : ''}>Graduated bands</option></select></label></div><table><tr><th>Up to</th><th>Rate</th></tr>${tierRows(charge)}</table>`;
+      };
+      const seasonCharge = (s) => {
+        const keys = Object.keys((s && s.charges) || {});
+        if (keys.length === 4) return 'all';
+        return keys[0] || 'storage';
+      };
+      const seasonRows = [0, 1, 2, 3].map((i) => {
+        const s = (card.seasons || [])[i] || {};
+        const charge = seasonCharge(s.charges ? s : null);
+        const spec = (s.charges && (s.charges[charge === 'all' ? 'storage' : charge])) || {};
+        const kind = s.months ? 'months' : 'dates';
+        const effectValue = spec.amount != null ? 'each' : (spec.effect === 'override' ? 'override' : 'surcharge');
+        return `<tr>
+          <td><input name="season${i}Label" autocomplete="off" value="${esc(s.label || '')}" placeholder="Name"></td>
+          <td><select name="season${i}Charge">${opt([{ id: 'storage', label: 'Storage' }, { id: 'inbound', label: 'Inbound' }, { id: 'outbound', label: 'Outbound' }, { id: 'val', label: 'VAL' }, { id: 'all', label: 'All charges' }], s.label ? charge : 'storage')}</select></td>
+          <td><select name="season${i}Kind"><option value="dates" ${kind === 'dates' ? 'selected' : ''}>Dates</option><option value="months" ${kind === 'months' ? 'selected' : ''}>Months each year</option></select></td>
+          <td><input name="season${i}From" type="date" value="${esc(s.from || '')}"></td>
+          <td><input name="season${i}To" type="date" value="${esc(s.to || '')}"></td>
+          <td><input name="season${i}Months" autocomplete="off" value="${esc((s.months || []).join(', '))}" placeholder="1–12"></td>
+          <td><select name="season${i}Effect"><option value="surcharge" ${effectValue === 'surcharge' ? 'selected' : ''}>Surcharge %</option><option value="each" ${effectValue === 'each' ? 'selected' : ''}>Surcharge per unit</option><option value="override" ${effectValue === 'override' ? 'selected' : ''}>Replace rate</option></select></td>
+          <td><input name="season${i}Percent" type="number" min="0" step="0.01" value="${esc(spec.percent == null ? '' : spec.percent)}"></td>
+          <td><input name="season${i}Rate" type="number" min="0" step="0.01" value="${esc(spec.rate == null ? '' : spec.rate)}"></td>
+        </tr>`;
+      }).join('');
+      let preview = '';
+      if (params.get('preview') === '1' && clientId) {
+        try {
+          const q = new URLSearchParams({ clientId });
+          if (from) q.set('from', from);
+          if (to) q.set('to', to);
+          const inv = await api('GET', '/api/reports/invoice?' + q.toString());
+          preview = `<h3>Preview ${esc(inv.periodFrom || '')} to ${esc(inv.periodTo || '')}</h3>${table(['Charge', 'Qty', 'Rate', 'Tier', 'Season', 'Version', 'Amount'], inv.lines.map((l) => `<tr><td>${esc(l.label)}</td><td>${esc(l.qty)}</td><td>${esc(l.rate)}</td><td>${esc(l.tier || '')}</td><td>${esc(l.season || '')}</td><td>${esc(l.version || '')}</td><td>${esc(l.amount)}</td></tr>`))}<p>Subtotal ${esc(inv.subtotal)}. Minimum ${esc(inv.minimum)}${inv.minimumVersion ? ` (${esc(inv.minimumVersion)})` : ''}. <b>Total ${esc(inv.total)}</b></p>`;
+        } catch (e) { preview = msg(e.message, false); }
+      }
+      const tooWide = latest && (['storage', 'inbound', 'outbound', 'val'].some((c) => (latest[c + 'Tiers'] || []).length > 3) || (latest.seasons || []).length > 4);
+      const versionTable = table(['Version', 'Effective', 'Saved by', 'Status'], versions.map((v) => `<tr><td>${esc(v.id)}</td><td>${esc(v.effectiveFrom || 'From the start')}</td><td>${esc(v.updatedBy || v.createdBy || '')}</td><td>${v.readOnly ? '<span class="tag">Read-only</span>' : '<span class="tag">Current</span>'}</td></tr>`));
+      const editor = writable ? `<form data-act="tariff-save" autocomplete="off">
+        <input type="hidden" name="clientId" value="${esc(clientId)}">
+        ${editing ? `<input type="hidden" name="versionId" value="${esc(latest.id)}">` : ''}
+        <div class="form"><label>Effective from<input name="effectiveFrom" type="date" value="${esc(editing ? (latest.effectiveFrom || '') : (latest ? today : ''))}"></label><label>Monthly minimum<input name="minimum" type="number" min="0" step="0.01" value="${esc(card.minimum == null ? 0 : card.minimum)}"></label></div>
+        <details><summary>Advanced</summary><div class="form"><label>Minimum<select name="minimumMode"><option value="full" ${card.minimumMode === 'prorate' ? '' : 'selected'}>Full amount</option><option value="prorate" ${card.minimumMode === 'prorate' ? 'selected' : ''}>Prorate by the days in the month</option></select></label><label>Tier volume<select name="tierScope"><option value="month" ${card.tierScope === 'version' ? '' : 'selected'}>Calendar month, across versions</option><option value="version" ${card.tierScope === 'version' ? 'selected' : ''}>This version only</option></select></label></div><p class="hint">Replace uses the season rate. Surcharge % multiplies the tier or flat rate. Surcharge per unit adds the rate column to each unit. Tier volume defaults to the calendar month.</p></details>
+        <p class="hint">${editing ? 'Save changes keeps this version. Save as new version needs a later effective date and leaves this one as it is.' : (latest ? `${esc(latest.id)} is read-only. Saving starts a new version on the effective date.` : 'Leave the date blank for a card that covers every earlier day. The next dated version makes this one read-only.')}</p>
+        ${chargeBlock('Storage', 'storage', ['pallet-day', 'location-day', 'm3-day'])}
+        <h3>Seasons</h3>
+        <p class="hint">A date range, or months that repeat every year. Surcharge adds a percent to the tier or flat rate. Override replaces the rate on those days. Two seasons cannot cover the same charge on the same day.</p>
+        <div style="overflow-x:auto"><table><tr><th>Name</th><th>Charge</th><th>When</th><th>From</th><th>To</th><th>Months</th><th>Effect</th><th>Percent</th><th>Rate</th></tr>${seasonRows}</table></div>
+        ${chargeBlock('Inbound', 'inbound', ['pallet', 'line'])}
+        ${chargeBlock('Outbound', 'outbound', ['order', 'line', 'carton'])}
+        ${chargeBlock('VAL / kitting', 'val', null)}
+        <p class="hint">All units: the whole quantity uses the band it falls in, and the top of a band is included. Graduated: each band is charged on its own, earliest days first. Leave the last up-to blank.</p>
+        ${tooWide ? '<p class="msg bad">This card has more tiers or seasons than the form. Saving from here would drop the extra rows.</p>' : ''}
+        <p>${editing ? '<button class="primary">Save changes</button> <button type="submit" data-new="1">Save as new version</button>' : `<button class="primary" data-new="1">${latest ? 'Save as new version' : 'Save rate card'}</button>`}</p>
+      </form>` : '<p class="hint">Editing a rate card is for the office and a manager.</p>';
+      const q = new URLSearchParams({ clientId });
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      return `<section><h2>Rate card${client ? ' · ' + esc(client.name) : ''}</h2>
+        <p class="hint">Versions stay in the journal with the person who saved them. A period that crosses a season or a new version is split at this warehouse's local midnight. The monthly minimum comes from the card in effect on the last day.</p>
+        <label>Client <select id="tariffClient">${clients.map((c) => `<option value="${esc(c.id)}" ${c.id === clientId ? 'selected' : ''}>${esc(c.id)} ${esc(c.name)}</option>`).join('')}</select></label>
+        ${versionTable}</section>
+        <section><h2>${editing ? 'Edit ' + esc(latest.id) : (latest ? 'New version' : 'New rate card')}</h2>${editor}</section>
+        <section><h2>Invoice preview</h2>
+        <form class="form" data-act="tariff-preview"><input type="hidden" name="clientId" value="${esc(clientId)}"><label>From<input name="from" type="date" value="${esc(from)}"></label><label>To<input name="to" type="date" value="${esc(to)}"></label><button class="primary">Preview invoice</button></form>
+        <p><a href="/api/reports/billing.html?${q.toString()}" target="_blank">Printable invoice</a> · <a href="/api/reports/invoice.csv?${q.toString()}">Invoice CSV</a></p>
+        ${preview}</section>
+        <section><h2>Dedicated space</h2><p class="hint">A client can rent a cell, an aisle, a bay, a position, a height, or the whole warehouse. The fee is charged once per invoice, beside the usage lines.</p>
+        ${table(['Space', 'Fee'], (client && client.spaces || []).map((s) => `<tr><td>${esc(s.label || s.scope)}</td><td>${esc(s.fee)}</td></tr>`))}
+        <form class="form" data-act="space"><input type="hidden" name="clientId" value="${esc(clientId)}"><label>Scope<select name="scope"><option value="">None</option><option value="warehouse">Whole warehouse</option><option value="cell">Cell</option><option value="aisle">Aisle</option><option value="bay">Bay</option><option value="position">Position</option><option value="height">Height</option></select></label><label>Cell<input name="cell" placeholder="A"></label><label>Aisle<input name="aisle" placeholder="01"></label><label>Bay<input name="bay" type="number"></label><label>Position<input name="pos" type="number"></label><label>Height<input name="level" placeholder="A or 0"></label><label>Fee<input name="fee" type="number" min="0" step="0.01" value="0"></label><button>Save space</button></form></section>`;
     },
     async labels() {
       const holders = await api('GET', '/api/holders');
@@ -434,7 +568,7 @@
       ...journal.map((j) => ({ t: j.t, who: j.by, what: j.op })),
       ...authLog.map((j) => ({ t: j.t, who: j.by, what: 'account: ' + j.action })),
     ].sort((a, b) => b.t - a.t).slice(0, limit);
-    return table(['When', 'Who', 'What'], rows.map((r) => `<tr><td>${new Date(r.t).toLocaleString()}</td><td>${esc(r.who || '')}</td><td>${esc(r.what)}</td></tr>`));
+    return table(['When', 'Who', 'What'], rows.map((r) => `<tr><td>${esc(r.local || new Date(r.t).toISOString())}</td><td>${esc(r.who || '')}</td><td>${esc(r.what)}</td></tr>`));
   }
   async function operatorWork(queueOnly) {
     const devices = await api('GET', '/api/devices');
@@ -494,6 +628,7 @@
         return;
       }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
+      if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'loc-del') { await api('POST', '/api/locations/' + encodeURIComponent(b.dataset.id) + '/delete', {}); return draw(); }
       if (act === 'holder-del') { await api('POST', '/api/holders/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'urgent') { await api('POST', '/api/tasks/' + b.dataset.id + '/urgent', { urgent: true }); return draw(); }
@@ -504,6 +639,12 @@
     if (e.target.id === 'devicePick') { sessionStorage.setItem('device', e.target.value); draw(); }
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
+    if (e.target.id === 'tariffClient') { history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'countryPick') {
+      const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
+      const field = document.getElementById('timeZone');
+      if (zone && field) field.value = zone;
+    }
   };
   $('#main').onsubmit = async (e) => {
     const form = e.target;
@@ -511,6 +652,14 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
+      if (form.dataset.act === 'tariff-preview') {
+        const q = new URLSearchParams({ client: data.clientId, from: data.from || '', to: data.to || '', preview: '1' });
+        history.replaceState(null, '', '/app#tariff?' + q.toString());
+        panel = 'tariff';
+        draw();
+        return;
+      }
+      if (form.dataset.act === 'tariff-save') data.asNew = (e.submitter && e.submitter.dataset.new) || '';
       if (form.dataset.act === 'history') {
       const q = new URLSearchParams();
       if (data.user) q.set('user', data.user);
@@ -560,12 +709,15 @@
     if (el) el.innerHTML = msg(`${source}: ${text}`, out.result ? out.result.ok !== false : true);
   }
   async function act(name, data) {
-    if (name === 'user-create') return api('POST', '/api/users', data);
     if (name === 'role-save') {
       const permissions = [...document.querySelectorAll('input[name=perm]:checked')].map((n) => n.value);
       return api('POST', '/api/roles/' + data.role, { permissions });
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
+    if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
+    if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
+    if (name === 'client-item') return api('POST', '/api/items', { ...data, palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' });
+    if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null });
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') return api('POST', '/api/devices/' + encodeURIComponent(data.id) + '/operator', { operator: data.operator });
     if (name === 'client-add') return api('POST', '/api/clients', data);
@@ -606,7 +758,13 @@
     if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});
     if (name === 'return-receive') return api('POST', '/api/returns', { id: data.id, orderId: data.orderId, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { grade: data.grade, to: data.to || null });
-    if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null });
+    if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null, country: data.country || null, timeZone: data.timeZone || null });
+    if (name === 'space') {
+      const spaces = data.scope ? [{ scope: data.scope, cell: data.cell, aisle: data.aisle, bay: data.bay, pos: data.pos, level: data.level, fee: Number(data.fee || 0) }] : [];
+      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      panel = 'tariff';
+      return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/space', { spaces });
+    }
     if (name === 'site-transfer') return api('POST', '/api/sites/transfer', { itemNo: data.itemNo, qty: Number(data.qty), to: data.to });
     if (name === 'site-receive') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/receive', { from: data.from, to: data.to });
     if (name === 'site-cancel') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/cancel', {});
@@ -614,7 +772,42 @@
     if (name === 'scan-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/scan', { code: data.code });
     if (name === 'dispatch-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/dispatch', {});
     if (name === 'tariff') return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', data);
+    if (name === 'tariff-save') {
+      const body = { minimum: data.minimum, seasons: [] };
+      if (data.effectiveFrom) body.effectiveFrom = data.effectiveFrom;
+      if (data.minimumMode) body.minimumMode = data.minimumMode;
+      if (data.tierScope) body.tierScope = data.tierScope;
+      if (data.asNew !== '1' && data.versionId) body.versionId = data.versionId;
+      for (const c of ['storage', 'inbound', 'outbound', 'val']) {
+        if (c !== 'val') body[c + 'Basis'] = data[c + 'Basis'];
+        body[c + 'Rate'] = data[c + 'Rate'];
+        if (data[c + 'TierMode']) body[c + 'TierMode'] = data[c + 'TierMode'];
+        const tiers = [];
+        for (let i = 0; i < 3; i++) {
+          const rate = data[c + 'Rate' + i];
+          if (rate === '' || rate == null) continue;
+          const upTo = data[c + 'UpTo' + i];
+          tiers.push({ upTo: upTo === '' || upTo == null ? null : Number(upTo), rate: Number(rate) });
+        }
+        if (tiers.length) body[c + 'Tiers'] = tiers;
+      }
+      for (let i = 0; i < 4; i++) {
+        if (!data['season' + i + 'Label']) continue;
+        const row = { label: data['season' + i + 'Label'], charge: data['season' + i + 'Charge'], effect: data['season' + i + 'Effect'] };
+        if (data['season' + i + 'Kind'] === 'months') row.months = String(data['season' + i + 'Months'] || '').split(/[^0-9]+/).filter(Boolean).map(Number);
+        else { row.from = data['season' + i + 'From']; row.to = data['season' + i + 'To']; }
+        if (row.effect === 'override' || row.effect === 'each') row.rate = data['season' + i + 'Rate'];
+        else row.percent = data['season' + i + 'Percent'];
+        if (row.effect === 'each') row.amount = data['season' + i + 'Rate'];
+        body.seasons.push(row);
+      }
+      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      panel = 'tariff';
+      return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', body);
+    }
     if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger), mode: data.mode });
+    if (name === 'profile') return api('POST', '/api/location-profiles', data);
+    if (name === 'bulk') return api('POST', '/api/locations/bulk', data);
     if (name === 'tech-sort') {
       const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
         const i = line.indexOf(':');
@@ -646,9 +839,9 @@
   const DEMO_NAV_ROLES = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
   function demoUser(role) {
     const permissions = {
-      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute'],
-      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read'],
-      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'items.read'],
+      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write'],
+      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read', 'clients.read', 'tariff.write'],
+      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'clients.write', 'tariff.write', 'items.read'],
       technician: ['wms.read', 'sites.switch', 'technical.write', 'labels.print'],
       operator: ['wms.read', 'sites.switch', 'picks.execute', 'val.execute', 'inbound.write', 'outbound.write', 'orders.read', 'labels.print', 'holders.write'],
       machine: ['wms.read', 'sites.switch', 'putaway.execute', 'moves.execute', 'labels.print'],
@@ -695,6 +888,8 @@
     }
     const session = await api('GET', '/api/session');
     me = session.user;
+    me.features = session.features || {};
+    me.itemApproval = Boolean(session.itemApproval);
     if (me.mustChangePassword) {
       document.body.dataset.role = me.role;
       $('#title').textContent = 'Change password';

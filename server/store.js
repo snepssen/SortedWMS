@@ -94,13 +94,17 @@ class Store {
     return wh;
   }
 
-  createSite({ id, name, preset } = {}) {
+  createSite({ id, name, preset, country, timeZone } = {}) {
     const siteId = String(id || '').trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9_-]{0,15}$/.test(siteId)) throw new Error('A warehouse id starts with a letter and uses letters, digits, hyphen or underscore');
     if (siteId === 'MAIN') throw new Error('MAIN is the first warehouse');
     if (this.db.prepare('SELECT id FROM extra_sites WHERE id = ?').get(siteId)) throw new Error(`Warehouse ${siteId} already exists`);
     const wh = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: this.clock });
     if (preset) wh.applyPreset(preset);
+    const place = {};
+    if (country) place.country = country;
+    if (timeZone) place.timeZone = timeZone;
+    if (Object.keys(place).length) wh.setConfig(place);
     wh.siteId = siteId;
     const label = String(name || siteId).trim() || siteId;
     this.db.prepare('INSERT INTO extra_sites (id, name, created_at, state) VALUES (?, ?, ?, ?)').run(siteId, label, this.now(), JSON.stringify(wh));

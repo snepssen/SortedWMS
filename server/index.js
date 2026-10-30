@@ -77,7 +77,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (access.public && req.method === 'GET' && url.pathname === '/api/health') return send(200, { ok: true, auth: Boolean(auth) });
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
-        return send(200, { user: sessionUser });
+        return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
       }
 
       let by;
@@ -153,7 +153,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && req.method === 'GET' && url.pathname === '/api/auth-log') return send(200, auth.audit(url.searchParams.get('limit')));
 
       const requestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']).slice(0, 80) : null;
-      Promise.resolve(api.handle(req.method, req.url, body, by, requestId)).then((out) => {
+      Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor)).then((out) => {
         if (out.contentType) return send(out.status, out.body, out.contentType);
         send(out.status, out.body);
       });

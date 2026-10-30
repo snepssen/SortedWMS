@@ -46,6 +46,15 @@
     <p class="hint" id="adminLine">Sign in as the administrator created on first start, then shape the warehouse here. You can run this again later.</p>
   </section>
   <section>
+    <h2>Where this warehouse is</h2>
+    <p class="hint">Billing days, seasons, rate cards and the journal use local midnight here, including daylight saving.</p>
+    <form id="place" class="level">
+      <label>Country <select name="country" id="countryPick"><option value="BE" data-zone="Europe/Brussels">BE Belgium</option><option value="NL" data-zone="Europe/Amsterdam">NL Netherlands</option><option value="DE" data-zone="Europe/Berlin">DE Germany</option><option value="FR" data-zone="Europe/Paris">FR France</option><option value="GB" data-zone="Europe/London">GB United Kingdom</option><option value="US" data-zone="America/New_York">US United States</option><option value="AU" data-zone="Australia/Sydney">AU Australia</option></select></label>
+      <label>Timezone <input name="timeZone" id="timeZone" value="Europe/Brussels"></label>
+      <button type="submit">Save place</button>
+    </form>
+  </section>
+  <section>
     <h2>2. Warehouse type</h2>
     <p class="hint">A preset turns features on or off and suggests a location plan. It does not delete stock you already have.</p>
     <div class="cards" id="presets"></div>
@@ -183,6 +192,16 @@
     if (!b || !state) return;
     const ex = state.examples.find((item) => item.id === b.dataset.example);
     if (ex) fillPlan(ex.plan);
+  };
+  document.getElementById('countryPick').onchange = (e) => {
+    const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
+    if (zone) document.getElementById('timeZone').value = zone;
+  };
+  document.getElementById('place').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try { await api('POST', '/api/config', data); say('Place saved. Days use ' + data.timeZone + '.', true); }
+    catch (err) { say(err.message, false); }
   };
   document.getElementById('saveFeatures').onclick = async () => {
     const features = {};

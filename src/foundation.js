@@ -19,6 +19,57 @@
   const HOLDER_TYPES = ['pallet', 'crate', 'tote'];
   const ADJUST_REASONS = ['damage', 'expiry', 'found', 'recount', 'correction', 'other'];
   const EQUIPMENT_STATUS = ['running', 'idle', 'fault', 'down', 'maintenance'];
+  const PROFILE_PRESETS = {
+    'high-value': { name: 'High value', storageType: 'rack', temperature: 'ambient', security: 'high', autoSort: 'secure nearest', label: 'High-value plate', capacity: { heightMm: 1600, widthMm: 1000, depthMm: 1200, maxWeightKg: 600, positionsPerLevel: 1 } },
+    'food-chilled': { name: 'Food / chilled', storageType: 'rack', temperature: 'chilled', security: 'standard', autoSort: 'fefo', label: 'Chilled food', capacity: { heightMm: 1800, widthMm: 1000, depthMm: 1200, maxWeightKg: 1000, positionsPerLevel: 1 } },
+    frozen: { name: 'Frozen', storageType: 'rack', temperature: 'frozen', security: 'standard', autoSort: 'fefo', label: 'Frozen', capacity: { heightMm: 1800, widthMm: 1000, depthMm: 1200, maxWeightKg: 1000, positionsPerLevel: 1 } },
+    'low-value': { name: 'Low value', storageType: 'shelf', temperature: 'ambient', security: 'low', autoSort: 'nearest', label: 'Bin', capacity: { maxUnits: 24, maxWeightKg: 250, maxVolumeM3: 1.2 } },
+    home: { name: 'Home / small maker', storageType: 'shelf', temperature: 'ambient', security: 'low', autoSort: 'nearest', label: 'Home shelf', capacity: { maxUnits: 8, maxWeightKg: 40, maxVolumeM3: 0.3 } },
+  };
+
+  function profileRange(from, to, label) {
+    const a = String(from == null ? '' : from).trim();
+    const b = String(to == null || to === '' ? a : to).trim();
+    if (!a) throw new Error(`${label} needs a from and to`);
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+      const width = Math.max(a.length, b.length);
+      const out = [];
+      for (let n = Number(a); n <= Number(b); n++) out.push(String(n).padStart(width, '0'));
+      if (!out.length || out.length > 40) throw new Error(`${label} range is empty or too long`);
+      return out;
+    }
+    if (/^[A-Za-z]$/.test(a) && /^[A-Za-z]$/.test(b)) {
+      const out = [];
+      for (let c = a.toUpperCase().charCodeAt(0); c <= b.toUpperCase().charCodeAt(0); c++) out.push(String.fromCharCode(c));
+      if (!out.length || out.length > 26) throw new Error(`${label} range is empty or too long`);
+      return out;
+    }
+    throw new Error(`${label} is a number range or a letter range`);
+  }
+
+  function profileCapacity(storageType, raw) {
+    const src = raw || {};
+    const n = (value, label) => {
+      if (value == null || value === '') return null;
+      const num = Number(value);
+      if (!Number.isFinite(num) || num <= 0) throw new Error(`${label} must be a number above 0`);
+      return num;
+    };
+    if (storageType === 'shelf') {
+      const cap = { maxUnits: n(src.maxUnits, 'Boxes'), maxVolumeM3: n(src.maxVolumeM3, 'Volume'), maxWeightKg: n(src.maxWeightKg, 'Weight') };
+      if (cap.maxUnits == null && cap.maxVolumeM3 == null && cap.maxWeightKg == null) throw new Error('A shelf needs a box count, a volume or a weight');
+      return cap;
+    }
+    if (storageType === 'block') {
+      const cap = { stackHeight: n(src.stackHeight, 'Stack height'), footprintLengthMm: n(src.footprintLengthMm, 'Footprint length'), footprintWidthMm: n(src.footprintWidthMm, 'Footprint width'), maxWeightKg: n(src.maxWeightKg, 'Weight') };
+      if (cap.stackHeight == null || cap.footprintLengthMm == null || cap.footprintWidthMm == null) throw new Error('A block stack needs a footprint and a stack height in pallets');
+      return cap;
+    }
+    if (storageType !== 'rack') throw new Error('Storage is shelf, rack or block');
+    const cap = { positionsPerLevel: n(src.positionsPerLevel, 'Positions per level') || 1, heightMm: n(src.heightMm, 'Height'), widthMm: n(src.widthMm, 'Width'), depthMm: n(src.depthMm, 'Depth'), maxWeightKg: n(src.maxWeightKg, 'Weight') };
+    if (cap.heightMm == null || cap.widthMm == null || cap.maxWeightKg == null) throw new Error('A rack needs positions per level plus height, width and weight');
+    return cap;
+  }
 
   function num(v, label) {
     if (v == null || v === '') return null;
@@ -184,7 +235,12 @@
       }
       if (patch.minShipDays != null) this.setMinShipDays(itemNo, Number(patch.minShipDays));
       if (patch.status === 'archived' || patch.status === 'active') item.status = patch.status;
-      this.log(`Item ${itemNo} updated`);
+      for (const key of ['food', 'frozen', 'highValue']) if (key in patch) {
+        item.flags = item.flags || {};
+        item.flags[key] = Boolean(patch[key]);
+      }
+      const actor = this._actor || 'unknown';
+      this.log(`Item ${itemNo} updated by ${actor}`, { by: actor });
       return item;
     };
 
@@ -192,7 +248,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       item.status = 'archived';
-      this.log(`Item ${itemNo} archived`);
+      this.log(`Item ${itemNo} archived by ${this._actor || 'unknown'}`, { by: this._actor || 'unknown' });
       return item;
     };
 
@@ -276,6 +332,83 @@
       loc.capacity = cap;
       this.log(`Capacity of ${loc.code} updated`);
       return loc;
+    };
+
+    proto.locationProfilesView = function () {
+      const saved = this.locationProfiles || {};
+      const ids = new Set([...Object.keys(PROFILE_PRESETS), ...Object.keys(saved)]);
+      return [...ids].map((id) => {
+        const profile = { ...(PROFILE_PRESETS[id] || {}), ...(saved[id] || {}), id };
+        profile.builtin = Boolean(PROFILE_PRESETS[id]);
+        profile.custom = Boolean(saved[id]) && !PROFILE_PRESETS[id];
+        return profile;
+      });
+    };
+
+    proto.saveLocationProfile = function (input = {}) {
+      const id = String(input.id || input.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+      if (!id) throw new Error('A profile needs a name');
+      const storageType = String(input.storageType || (PROFILE_PRESETS[id] && PROFILE_PRESETS[id].storageType) || '').trim();
+      const capacity = profileCapacity(storageType, input.capacity || input);
+      const profile = {
+        id, name: String(input.name || (PROFILE_PRESETS[id] && PROFILE_PRESETS[id].name) || id).trim(),
+        storageType, temperature: String(input.temperature || 'ambient').trim(),
+        security: String(input.security || 'standard').trim(),
+        autoSort: String(input.autoSort || '').trim(),
+        label: String(input.label || '').trim(),
+        capacityMode: input.capacityMode === 'warn' ? 'warn' : 'refuse',
+        capacity,
+      };
+      if (!profile.name) throw new Error('A profile needs a name');
+      this.locationProfiles = this.locationProfiles || {};
+      this.locationProfiles[id] = profile;
+      const actor = this._actor || 'unknown';
+      this.log(`Location profile ${id} saved by ${actor}`, { by: actor });
+      return profile;
+    };
+
+    proto.bulkLocations = function ({ profileId, aisleFrom, aisleTo, bayFrom, bayTo, heightFrom, heightTo } = {}) {
+      const key = String(profileId || '').trim().toLowerCase();
+      const known = this.locationProfilesView().find((p) => p.id === key);
+      if (!known) throw new Error(`Unknown location profile ${profileId}`);
+      const profile = (this.locationProfiles && this.locationProfiles[key]) || known;
+      const aisles = profileRange(aisleFrom, aisleTo, 'Aisle');
+      const bays = profileRange(bayFrom, bayTo, 'Bay');
+      const heights = profileRange(heightFrom, heightTo, 'Height');
+      const positions = profile.storageType === 'rack' ? Math.max(1, Math.round(profile.capacity.positionsPerLevel || 1)) : 1;
+      if (aisles.length * bays.length * heights.length * positions > 2000) throw new Error('That range would create more than 2000 locations');
+      let created = 0;
+      for (const aisle of aisles) for (const bay of bays) for (const height of heights) {
+        for (let pos = 1; pos <= positions; pos++) {
+          const code = profile.storageType === 'rack'
+            ? `${aisle}-${bay}-${height}-${String(pos).padStart(2, '0')}`
+            : profile.storageType === 'block' ? `BLK-${aisle}-${bay}-${height}` : `SH-${aisle}-${bay}-${height}`;
+          if (this.locations[code]) continue;
+          const kind = profile.storageType === 'rack' ? 'rack' : 'bin';
+          const cap = profile.capacity || {};
+          const loc = this.createLocation({
+            code, kind, name: profile.name, aisle, bay, level: height,
+            heightMm: cap.heightMm, widthMm: cap.widthMm, depthMm: cap.depthMm, maxWeightKg: cap.maxWeightKg,
+          });
+          loc.profileId = profile.id;
+          loc.storageType = profile.storageType;
+          if (kind === 'rack') loc.structural = false;
+          loc.temperature = profile.temperature;
+          loc.security = profile.security;
+          loc.capacityMode = profile.capacityMode || 'refuse';
+          loc.capacity = { ...(loc.capacity || {}), ...cap };
+          if (kind === 'block') {
+            loc.pallets = loc.pallets || [];
+            loc.height = cap.stackHeight;
+            loc.lane = code;
+          }
+          if (kind === 'bin' && !loc.pallets) loc.pallets = [];
+          created += 1;
+        }
+      }
+      const actor = this._actor || 'unknown';
+      this.log(`Bulk locations from ${profile.id}: ${created} created by ${actor}`, { by: actor });
+      return { created, profileId: profile.id };
     };
 
     proto.deleteLocation = function (code) {

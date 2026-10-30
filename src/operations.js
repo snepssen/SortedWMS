@@ -22,6 +22,598 @@
     return n;
   }
 
+  /*
+   * 3PL rate cards. A client keeps every version. A version starts on an
+   * effective date, or from the beginning when it is the only card, and it
+   * is read-only once a later card exists or its start date is in the past.
+   * Dates are UTC days. Storage that crosses a season or a version is split
+   * at midnight, and the parts add up to the unsplit quantity. Tiers apply
+   * to the quantity on that one version inside the invoice: "all" prices
+   * every unit at the band the total falls in (the top of a band is included);
+   * "graduated" fills the bands from the start of the period. A season
+   * replaces the rate or adds a percent, and two seasons cannot cover the
+   * same charge on the same day. The monthly minimum is the full amount on
+   * the card in effect on the last day of the period.
+   */
+  const DAY = 86400000;
+  const CHARGE_IDS = ['storage', 'inbound', 'outbound', 'val'];
+
+  function tariffNumber(value, label) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
+    return n;
+  }
+
+  function rateOrZero(value, label) {
+    if (value == null || value === '') return 0;
+    return tariffNumber(value, label);
+  }
+
+  function parseDay(value, label) {
+    const s = String(value == null ? '' : value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`${label} is a date YYYY-MM-DD`);
+    const t = Date.parse(`${s}T00:00:00Z`);
+    if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== s) throw new Error(`${label} is not a real date`);
+    return s;
+  }
+
+  const zoneFormats = new Map();
+
+  function zoneFormat(timeZone) {
+    let fmt = zoneFormats.get(timeZone);
+    if (!fmt) {
+      try {
+        fmt = new Intl.DateTimeFormat('en-US', {
+          timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+        });
+      } catch (e) {
+        throw new Error(`Unknown time zone ${timeZone}`);
+      }
+      zoneFormats.set(timeZone, fmt);
+    }
+    return fmt;
+  }
+
+  function localParts(ms, timeZone) {
+    const bag = {};
+    for (const part of zoneFormat(timeZone).formatToParts(new Date(ms))) bag[part.type] = part.value;
+    if (bag.hour === '24') bag.hour = '00';
+    return bag;
+  }
+
+  function localDay(ms, timeZone) {
+    const p = localParts(ms, timeZone);
+    return `${p.year}-${p.month}-${p.day}`;
+  }
+
+  function addCalendarDays(day, n) {
+    const t = Date.parse(`${day}T00:00:00Z`) + n * DAY;
+    return new Date(t).toISOString().slice(0, 10);
+  }
+
+  function daysInMonth(day) {
+    const y = Number(day.slice(0, 4));
+    const m = Number(day.slice(5, 7));
+    return new Date(Date.UTC(y, m, 0)).getUTCDate();
+  }
+
+  /** UTC instant of local midnight. A short or long civil day (DST) is the gap to the next midnight. */
+  function zonedMidnight(day, timeZone) {
+    let ms = Date.parse(`${day}T00:00:00Z`);
+    for (let i = 0; i < 6; i++) {
+      const p = localParts(ms, timeZone);
+      const seen = Date.parse(`${p.year}-${p.month}-${p.day}T${String(p.hour).padStart(2, '0')}:${p.minute}:${p.second}Z`);
+      const want = Date.parse(`${day}T00:00:00Z`);
+      if (seen === want) return ms;
+      ms += want - seen;
+    }
+    return ms;
+  }
+
+  function bound(value, end, timeZone) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new Error('Use dates as YYYY-MM-DD');
+      return end ? value + 1 : value;
+    }
+    const day = parseDay(value, end ? 'Period end' : 'Period start');
+    return zonedMidnight(end ? addCalendarDays(day, 1) : day, timeZone);
+  }
+
+  function calendarDays(start, end, timeZone) {
+    const first = localDay(start, timeZone);
+    const last = localDay(end - 1, timeZone);
+    const a = Date.parse(`${first}T00:00:00Z`);
+    const b = Date.parse(`${last}T00:00:00Z`);
+    return Math.round((b - a) / DAY) + 1;
+  }
+
+  function inWindow(t, start, end) {
+    if (t == null || Number.isNaN(t)) return false;
+    if (start != null && t < start) return false;
+    if (end != null && t >= end) return false;
+    return true;
+  }
+
+  function normalizeTiers(list, mode, label) {
+    const name = label.toLowerCase();
+    if (mode == null || mode === '' || mode === 'flat') {
+      if (Array.isArray(list) && list.length) throw new Error(`${label} tiers need a mode of all or graduated`);
+      return { mode: null, tiers: [] };
+    }
+    if (mode !== 'all' && mode !== 'graduated') throw new Error(`${label} tier mode is all or graduated`);
+    if (!Array.isArray(list) || !list.length) throw new Error(`${label} tiers need at least one band`);
+    const tiers = [];
+    let prev = 0;
+    for (let i = 0; i < list.length; i++) {
+      const raw = list[i] || {};
+      const last = i === list.length - 1;
+      let upTo = raw.upTo;
+      if (upTo == null || upTo === '') upTo = null;
+      else {
+        upTo = Number(upTo);
+        if (!Number.isFinite(upTo) || upTo <= prev) throw new Error(`${label} tier limits have to increase`);
+      }
+      if (!last && upTo == null) throw new Error(`Only the last ${name} tier has no upper limit`);
+      if (last && upTo != null) throw new Error(`The last ${name} tier has no upper limit`);
+      tiers.push({ upTo, rate: tariffNumber(raw.rate, `${label} tier rate`) });
+      if (upTo != null) prev = upTo;
+    }
+    return { mode, tiers };
+  }
+
+  function normalizeEffect(spec, label) {
+    let effect = spec && (spec.effect || spec.seasonEffect);
+    if (effect === 'replace') effect = 'override';
+    if (effect === 'multiply') effect = 'surcharge';
+    if (effect !== 'override' && effect !== 'surcharge' && effect !== 'each') throw new Error(`Season "${label}" overrides the rate or adds a surcharge`);
+    if (effect === 'override') return { effect, rate: tariffNumber(spec.rate, `Season "${label}" rate`), percent: null, amount: null };
+    if (effect === 'each' || spec.amountMode === 'each' || (spec.amount != null && spec.amount !== '' && (spec.percent == null || spec.percent === ''))) {
+      return { effect: 'surcharge', rate: null, percent: null, amount: tariffNumber(spec.amount != null && spec.amount !== '' ? spec.amount : spec.rate, `Season "${label}" amount`) };
+    }
+    return { effect: 'surcharge', rate: null, percent: tariffNumber(spec.percent, `Season "${label}" percent`), amount: null };
+  }
+
+  function monthsTouched(from, to) {
+    let y = Number(from.slice(0, 4));
+    let m = Number(from.slice(5, 7));
+    const endY = Number(to.slice(0, 4));
+    const endM = Number(to.slice(5, 7));
+    const span = (endY - y) * 12 + (endM - m);
+    if (span >= 11) return new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const out = new Set();
+    for (let i = 0; i <= span; i++) {
+      out.add(m);
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    return out;
+  }
+
+  function seasonDaysOverlap(a, b) {
+    if (a.months && b.months) return a.months.some((m) => b.months.includes(m));
+    if (!a.months && !b.months) return a.from <= b.to && b.from <= a.to;
+    const dated = a.months ? b : a;
+    const months = a.months || b.months;
+    const touched = monthsTouched(dated.from, dated.to);
+    return months.some((m) => touched.has(m));
+  }
+
+  function normalizeSeasons(list) {
+    if (list == null || list === '') return [];
+    if (!Array.isArray(list)) throw new Error('Seasons are a list');
+    const out = [];
+    const ids = new Set();
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') throw new Error('A season needs a label and dates or months');
+      const label = String(raw.label || '').trim();
+      if (!label) throw new Error('A season needs a label');
+      const hasMonths = raw.months != null && raw.months !== '' && !(Array.isArray(raw.months) && !raw.months.length);
+      const hasRange = (raw.from != null && raw.from !== '') || (raw.to != null && raw.to !== '');
+      if (hasMonths && hasRange) throw new Error(`Season "${label}" is either a date range or months of the year`);
+      if (!hasMonths && !hasRange) throw new Error(`Season "${label}" needs a date range or months of the year`);
+      let from = null;
+      let to = null;
+      let months = null;
+      if (hasMonths) {
+        const src = Array.isArray(raw.months) ? raw.months : String(raw.months).split(/[^0-9]+/);
+        months = [...new Set(src.map((n) => Number(n)).filter((n) => n))];
+        if (!months.length || months.some((n) => !Number.isInteger(n) || n < 1 || n > 12)) throw new Error(`Season "${label}" months are 1 to 12`);
+        months.sort((a, b) => a - b);
+      } else {
+        from = parseDay(raw.from, `Season "${label}" start`);
+        to = parseDay(raw.to, `Season "${label}" end`);
+        if (from > to) throw new Error(`Season "${label}" ends before it starts`);
+      }
+      const charges = {};
+      if (raw.charges && typeof raw.charges === 'object' && !Array.isArray(raw.charges)) {
+        for (const [key, spec] of Object.entries(raw.charges)) {
+          if (!CHARGE_IDS.includes(key)) throw new Error(`Unknown charge ${key}`);
+          charges[key] = normalizeEffect(spec, label);
+        }
+      } else {
+        const charge = raw.charge || 'storage';
+        if (charge !== 'all' && !CHARGE_IDS.includes(charge)) throw new Error(`Unknown charge ${charge}`);
+        const effect = normalizeEffect(raw, label);
+        for (const key of (charge === 'all' ? CHARGE_IDS : [charge])) charges[key] = effect;
+      }
+      if (!Object.keys(charges).length) throw new Error(`Season "${label}" does not name a charge`);
+      let id = String(raw.id || '').trim().toLowerCase();
+      if (!id) id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24);
+      if (!/^[a-z0-9][a-z0-9-]{0,24}$/.test(id)) throw new Error(`Season "${label}" needs an id of letters, digits and hyphens`);
+      if (ids.has(id)) throw new Error(`Season id ${id} is used twice`);
+      ids.add(id);
+      out.push({ id, label, from, to, months, charges });
+    }
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        if (!seasonDaysOverlap(out[i], out[j])) continue;
+        const shared = Object.keys(out[i].charges).filter((c) => out[j].charges[c]);
+        if (shared.length) throw new Error(`Seasons "${out[i].label}" and "${out[j].label}" both cover ${shared[0]} on the same days`);
+      }
+    }
+    return out;
+  }
+
+  function chargeInput(input, name) {
+    const nested = input.charges && input.charges[name];
+    if (nested && typeof nested === 'object') {
+      return {
+        basis: nested.basis,
+        rate: nested.rate,
+        tierMode: nested.tierMode,
+        tiers: nested.tiers,
+      };
+    }
+    return {
+      basis: input[`${name}Basis`],
+      rate: name === 'val' ? input.valRate : input[`${name}Rate`],
+      tierMode: input[`${name}TierMode`],
+      tiers: input[`${name}Tiers`],
+    };
+  }
+
+  function tariffFields(input) {
+    const storage = chargeInput(input, 'storage');
+    const inbound = chargeInput(input, 'inbound');
+    const outbound = chargeInput(input, 'outbound');
+    const val = chargeInput(input, 'val');
+    const storageBasis = storage.basis || 'pallet-day';
+    const inboundBasis = inbound.basis || 'pallet';
+    const outboundBasis = outbound.basis || 'order';
+    if (!['pallet-day', 'location-day', 'm3-day'].includes(storageBasis)) throw new Error('Storage is charged per pallet-day, location-day or m3-day');
+    if (!['pallet', 'line'].includes(inboundBasis)) throw new Error('Inbound is charged per pallet or line');
+    if (!['order', 'line', 'carton'].includes(outboundBasis)) throw new Error('Outbound is charged per order, line or carton');
+    const storageTiers = normalizeTiers(storage.tiers, storage.tierMode, 'Storage');
+    const inboundTiers = normalizeTiers(inbound.tiers, inbound.tierMode, 'Inbound');
+    const outboundTiers = normalizeTiers(outbound.tiers, outbound.tierMode, 'Outbound');
+    const valTiers = normalizeTiers(val.tiers, val.tierMode, 'VAL');
+    return {
+      storageBasis,
+      storageRate: rateOrZero(storage.rate, 'Storage rate'),
+      storageTierMode: storageTiers.mode,
+      storageTiers: storageTiers.tiers,
+      inboundBasis,
+      inboundRate: rateOrZero(inbound.rate, 'Inbound rate'),
+      inboundTierMode: inboundTiers.mode,
+      inboundTiers: inboundTiers.tiers,
+      outboundBasis,
+      outboundRate: rateOrZero(outbound.rate, 'Outbound rate'),
+      outboundTierMode: outboundTiers.mode,
+      outboundTiers: outboundTiers.tiers,
+      valRate: rateOrZero(val.rate, 'VAL rate'),
+      valTierMode: valTiers.mode,
+      valTiers: valTiers.tiers,
+      minimum: rateOrZero(input.minimum, 'Minimum charge'),
+      minimumMode: input.minimumMode === 'prorate' ? 'prorate' : 'full',
+      tierScope: input.tierScope === 'version' ? 'version' : 'month',
+      seasons: normalizeSeasons(input.seasons),
+    };
+  }
+
+  function sortVersions(list) {
+    return list.slice().sort((a, b) => {
+      if (a.effectiveFrom == null && b.effectiveFrom == null) return 0;
+      if (a.effectiveFrom == null) return -1;
+      if (b.effectiveFrom == null) return 1;
+      return a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0;
+    });
+  }
+
+  function assertOrder(list) {
+    const ordered = sortVersions(list);
+    if (ordered.filter((v) => v.effectiveFrom == null).length > 1) throw new Error('Only one rate card can start from the beginning');
+    let prev = null;
+    for (const v of ordered) {
+      if (v.effectiveFrom != null && prev && prev.effectiveFrom != null && v.effectiveFrom <= prev.effectiveFrom) {
+        throw new Error(`A new rate card has to start after ${prev.id} (${prev.effectiveFrom})`);
+      }
+      prev = v;
+    }
+    return ordered;
+  }
+
+  function isReadOnly(list, version, today) {
+    const latest = list[list.length - 1];
+    if (!latest || version.id !== latest.id) return true;
+    if (version.effectiveFrom == null) return list.length !== 1;
+    return version.effectiveFrom < today;
+  }
+
+  function nextVersionId(list) {
+    const n = list.reduce((m, v) => Math.max(m, Number(String(v.id).replace(/^v/, '')) || 0), 0) + 1;
+    return `v${n}`;
+  }
+
+  function versionAt(versions, t, timeZone) {
+    let chosen = null;
+    for (const v of versions) {
+      if (v.effectiveFrom == null) { chosen = v; continue; }
+      const start = zonedMidnight(v.effectiveFrom, timeZone);
+      if (t >= start) chosen = v;
+      else break;
+    }
+    return chosen;
+  }
+
+  function blankCard(client) {
+    return {
+      id: 'v1', effectiveFrom: null, createdBy: null, updatedBy: null,
+      storageBasis: 'pallet-day', storageRate: Number(client && client.storageRate) || 0, storageTierMode: null, storageTiers: [],
+      inboundBasis: 'pallet', inboundRate: 0, inboundTierMode: null, inboundTiers: [],
+      outboundBasis: 'order', outboundRate: Number(client && client.handlingRate) || 0, outboundTierMode: null, outboundTiers: [],
+      valRate: 0, valTierMode: null, valTiers: [],
+      minimum: 0, minimumMode: 'full', tierScope: 'month', seasons: [],
+    };
+  }
+
+  function savedVersions(client) {
+    if (Array.isArray(client.tariffVersions) && client.tariffVersions.length) return client.tariffVersions;
+    if (client.tariff && typeof client.tariff === 'object') {
+      const card = blankCard(client);
+      return [{ ...card, ...client.tariff, id: client.tariff.versionId || client.tariff.id || 'v1', seasons: client.tariff.seasons || card.seasons, storageTiers: client.tariff.storageTiers || [], inboundTiers: client.tariff.inboundTiers || [], outboundTiers: client.tariff.outboundTiers || [], valTiers: client.tariff.valTiers || [] }];
+    }
+    return [];
+  }
+
+  function versionList(client) {
+    const saved = savedVersions(client);
+    return saved.length ? saved : [blankCard(client)];
+  }
+
+  function chargeSpec(version, code) {
+    if (code === 'storage') return { basis: version.storageBasis, rate: version.storageRate, mode: version.storageTierMode, tiers: version.storageTiers || [], label: `Storage (${version.storageBasis})` };
+    if (code === 'inbound') return { basis: version.inboundBasis, rate: version.inboundRate, mode: version.inboundTierMode, tiers: version.inboundTiers || [], label: `Inbound (${version.inboundBasis})` };
+    if (code === 'outbound') return { basis: version.outboundBasis, rate: version.outboundRate, mode: version.outboundTierMode, tiers: version.outboundTiers || [], label: `Outbound (${version.outboundBasis})` };
+    return { basis: 'unit', rate: version.valRate, mode: version.valTierMode, tiers: version.valTiers || [], label: 'VAL / kitting (unit)' };
+  }
+
+  function withFrom(tiers) {
+    let from = 0;
+    return (tiers || []).map((tier) => {
+      const band = { from, upTo: tier.upTo == null ? null : tier.upTo, rate: tier.rate };
+      from = band.upTo == null ? Infinity : band.upTo;
+      return band;
+    });
+  }
+
+  function bandFor(bands, qty) {
+    for (const band of bands) if (band.upTo == null || qty <= band.upTo) return band;
+    return bands[bands.length - 1];
+  }
+
+  function tierText(mode, band) {
+    if (!mode || !band) return '';
+    const where = band.upTo == null
+      ? (band.from ? `above ${band.from}` : 'all quantities')
+      : (band.from ? `${band.from} to ${band.upTo}` : `up to ${band.upTo}`);
+    return `${mode === 'all' ? 'all units' : 'band'} ${where} at ${band.rate}`;
+  }
+
+  function graduate(bands, used, qty) {
+    const out = [];
+    let left = qty;
+    let cursor = used;
+    for (const band of bands) {
+      const end = band.upTo == null ? Infinity : band.upTo;
+      if (cursor >= end) continue;
+      const take = Math.min(left, end - cursor);
+      if (take > 0) {
+        out.push({ qty: take, rate: band.rate, band });
+        cursor += take;
+        left -= take;
+      }
+      if (left <= 1e-12) break;
+    }
+    if (left > 1e-9 && bands.length) out.push({ qty: left, rate: bands[bands.length - 1].rate, band: bands[bands.length - 1] });
+    return out;
+  }
+
+  function seasonAt(version, charge, t, timeZone) {
+    const day = localDay(t, timeZone);
+    const month = Number(day.slice(5, 7));
+    let found = null;
+    for (const season of version.seasons || []) {
+      const spec = season.charges && season.charges[charge];
+      if (!spec) continue;
+      const on = season.months ? season.months.includes(month) : day >= season.from && day <= season.to;
+      if (on) found = { id: season.id, label: season.label, spec };
+    }
+    return found;
+  }
+
+  function seasonText(season) {
+    if (!season) return '';
+    if (season.spec.effect === 'override') return `${season.label} override ${season.spec.rate}`;
+    if (season.spec.amount != null) return `${season.label} +${season.spec.amount} each`;
+    return `${season.label} +${season.spec.percent}%`;
+  }
+
+  function seasonRate(base, season) {
+    if (!season) return base;
+    if (season.spec.effect === 'override') return season.spec.rate;
+    if (season.spec.amount != null) return base + season.spec.amount;
+    return base * (1 + (season.spec.percent || 0) / 100);
+  }
+
+  function versionLabel(version) {
+    if (!version) return '';
+    return version.effectiveFrom ? `${version.id} ${version.effectiveFrom}` : version.id;
+  }
+
+  function money(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function priceSequence(rows, code, timeZone) {
+    const groups = [];
+    let used = 0;
+    for (const row of rows) {
+      const version = row.version;
+      const spec = chargeSpec(version, code);
+      const bands = withFrom(spec.tiers);
+      const season = seasonAt(version, code, row.t, timeZone);
+      const pool = row.poolQty;
+      const portions = spec.mode === 'graduated'
+        ? graduate(bands, used, row.qty)
+        : [{ qty: row.qty, rate: spec.mode === 'all' ? bandFor(bands, pool).rate : spec.rate, band: spec.mode === 'all' ? bandFor(bands, pool) : null }];
+      if (spec.mode === 'graduated') used += row.qty;
+      for (const portion of portions) {
+        const rate = seasonRate(portion.rate, season);
+        const shown = Math.round(rate * 10000) / 10000;
+        const key = [version.id, season ? season.id : '', portion.band ? `${portion.band.from}:${portion.band.upTo}` : '', shown].join('|');
+        const last = groups[groups.length - 1];
+        if (last && last.key === key) last.qty += portion.qty;
+        else groups.push({
+          key, qty: portion.qty, rate: shown, code, label: spec.label,
+          tier: tierText(spec.mode, portion.band), tierMode: spec.mode,
+          season: seasonText(season), seasonId: season ? season.id : null,
+          seasonEffect: season ? season.spec.effect : null,
+          version: versionLabel(version), versionId: version.id,
+        });
+      }
+    }
+    return groups.map((g) => {
+      const qty = money(g.qty);
+      const line = { ...g, qty, amount: money(qty * g.rate) };
+      delete line.key;
+      return line;
+    }).filter((g) => g.qty !== 0);
+  }
+
+  function priceRows(versions, rows, code, timeZone) {
+    const sorted = rows.filter((row) => row.qty > 0).map((row) => ({ ...row, version: versionAt(versions, row.t, timeZone) })).filter((row) => row.version).sort((a, b) => a.t - b.t);
+    const byVersion = new Map();
+    const byMonth = new Map();
+    for (const row of sorted) {
+      if (row.version.tierScope === 'version') {
+        if (!byVersion.has(row.version.id)) byVersion.set(row.version.id, []);
+        byVersion.get(row.version.id).push(row);
+      } else {
+        const key = localDay(row.t, timeZone).slice(0, 7);
+        if (!byMonth.has(key)) byMonth.set(key, []);
+        byMonth.get(key).push(row);
+      }
+    }
+    const lines = [];
+    for (const group of [...byVersion.values(), ...byMonth.values()]) {
+      const pool = group.reduce((s, row) => s + row.qty, 0);
+      lines.push(...priceSequence(group.map((row) => ({ ...row, poolQty: pool })), code, timeZone));
+    }
+    return lines;
+  }
+
+  function zeroLine(version, code) {
+    const spec = chargeSpec(version, code);
+    return {
+      code, label: spec.label, qty: 0, rate: spec.rate, amount: 0,
+      tier: '', tierMode: spec.mode, season: '', seasonId: null, seasonEffect: null,
+      version: versionLabel(version), versionId: version ? version.id : null,
+    };
+  }
+
+  function boundaryPoints(min, max, versions, timeZone) {
+    const points = [min, max];
+    let recurring = false;
+    for (const v of versions) {
+      if (v.effectiveFrom) {
+        const t = zonedMidnight(v.effectiveFrom, timeZone);
+        if (t > min && t < max) points.push(t);
+      }
+      for (const season of v.seasons || []) {
+        if (season.from) {
+          const a = zonedMidnight(season.from, timeZone);
+          const b = zonedMidnight(addCalendarDays(season.to, 1), timeZone);
+          if (a > min && a < max) points.push(a);
+          if (b > min && b < max) points.push(b);
+        }
+        if (season.months) recurring = true;
+      }
+    }
+    if (recurring || versions.some((v) => v.tierScope !== 'version')) {
+      let day = localDay(min, timeZone).slice(0, 8) + '01';
+      for (let i = 0; i < 480; i++) {
+        const t = zonedMidnight(day, timeZone);
+        if (t >= max) break;
+        if (t > min) points.push(t);
+        day = addCalendarDays(day, daysInMonth(day));
+      }
+    }
+    return [...new Set(points)].sort((a, b) => a - b);
+  }
+
+  function padAisle(value) {
+    const s = String(value || '').trim();
+    if (/^\d+$/.test(s)) return s.padStart(2, '0');
+    return s.toUpperCase();
+  }
+
+  function normalizeSpace(wh, raw, index) {
+    if (!raw || typeof raw !== 'object') throw new Error('Dedicated space needs a scope and a fee');
+    const scope = String(raw.scope || '').trim().toLowerCase();
+    if (!['warehouse', 'cell', 'aisle', 'bay', 'position', 'height'].includes(scope)) throw new Error('Dedicated space is the warehouse, a cell, an aisle, a bay, a position or a height');
+    const fee = tariffNumber(raw.fee, 'Space fee');
+    const space = { id: String(raw.id || `S${index + 1}`).slice(0, 12), scope, fee };
+    const aisles = (wh.layout && wh.layout.aisles) || [];
+    if (scope === 'cell') {
+      space.cell = String(raw.cell || raw.ref || '').trim().toUpperCase();
+      if (!space.cell) throw new Error('Name the cell');
+      const known = new Set(Object.values((wh.naming && wh.naming.cellOf) || {}));
+      if (known.size && !known.has(space.cell)) throw new Error(`No cell ${space.cell}`);
+      space.label = `Dedicated space (cell ${space.cell})`;
+    } else if (scope === 'warehouse') {
+      space.label = 'Dedicated space (warehouse)';
+    } else {
+      space.aisle = padAisle(raw.aisle);
+      if (aisles.length && !aisles.includes(space.aisle) && !(wh.layout.blocks || []).includes(space.aisle)) throw new Error(`No aisle ${space.aisle}`);
+      space.label = `Dedicated space (aisle ${space.aisle})`;
+      if (scope !== 'aisle') {
+        const bay = Number(raw.bay);
+        if (!Number.isInteger(bay) || bay < 1) throw new Error('Bay is a whole number above 0');
+        space.bay = bay;
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${bay})`;
+      }
+      if (scope === 'position' || scope === 'height') {
+        const pos = Number(raw.pos != null ? raw.pos : raw.position);
+        if (!Number.isFinite(pos)) throw new Error('Name the position');
+        space.pos = pos;
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${space.bay} position ${pos})`;
+      }
+      if (scope === 'height') {
+        const level = raw.level != null && raw.level !== '' ? raw.level : raw.height;
+        if (level == null || level === '') throw new Error('Name the height');
+        space.level = /^\d+$/.test(String(level)) ? Number(level) : String(level).toUpperCase();
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${space.bay} position ${space.pos} height ${space.level})`;
+      }
+    }
+    return space;
+  }
+
+  function csvCell(value) {
+    return `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+  }
+
   function install(Warehouse, deps) {
     const Labels = (deps && deps.Labels) || (typeof globalThis !== 'undefined' && globalThis.Labels) || null;
     const proto = Warehouse.prototype;
@@ -566,104 +1158,233 @@
       return this.importStock(payload);
     };
 
-    function tariffNumber(value, label) {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
-      return n;
-    }
-
-    proto.setTariff = function (clientId, tariff = {}) {
-      const client = this._client(clientId);
-      const storageBasis = tariff.storageBasis || 'pallet-day';
-      const inboundBasis = tariff.inboundBasis || 'pallet';
-      const outboundBasis = tariff.outboundBasis || 'order';
-      if (!['pallet-day', 'location-day', 'm3-day'].includes(storageBasis)) throw new Error('Storage is charged per pallet-day, location-day or m3-day');
-      if (!['pallet', 'line'].includes(inboundBasis)) throw new Error('Inbound is charged per pallet or line');
-      if (!['order', 'line', 'carton'].includes(outboundBasis)) throw new Error('Outbound is charged per order, line or carton');
-      client.tariff = {
-        storageBasis, storageRate: tariffNumber(tariff.storageRate || 0, 'Storage rate'),
-        inboundBasis, inboundRate: tariffNumber(tariff.inboundRate || 0, 'Inbound rate'),
-        outboundBasis, outboundRate: tariffNumber(tariff.outboundRate || 0, 'Outbound rate'),
-        valRate: tariffNumber(tariff.valRate || 0, 'VAL rate'),
-        minimum: tariffNumber(tariff.minimum || 0, 'Minimum charge'),
-      };
-      this.log(`Tariff for ${client.id} updated`);
-      return client.tariff;
+    proto.timeZone = function () {
+      return (this.config && this.config.timeZone) || 'Europe/Brussels';
     };
 
-    function inPeriod(t, from, to) {
-      if (from != null && t < from) return false;
-      if (to != null && t > to) return false;
-      return true;
-    }
+    proto.localDay = function (ms = this.now()) {
+      return localDay(ms, this.timeZone());
+    };
+
+    proto.zonedMidnight = function (day) {
+      return zonedMidnight(day, this.timeZone());
+    };
+
+    proto.formatLocal = function (ms) {
+      const p = localParts(ms, this.timeZone());
+      return `${p.year}-${p.month}-${p.day} ${String(p.hour).padStart(2, '0')}:${p.minute}:${p.second}`;
+    };
+
+    proto.decorateTariff = function (client) {
+      const list = assertOrder(savedVersions(client).slice());
+      const today = this.localDay();
+      return list.map((v) => ({ ...v, readOnly: isReadOnly(list, v, today) }));
+    };
+
+    proto.setTariff = function (clientId, input = {}, by) {
+      const client = this._client(clientId);
+      const actor = by || this._actor || 'unknown';
+      const fields = tariffFields(input);
+      const hasDate = input.effectiveFrom != null && input.effectiveFrom !== '';
+      const effectiveFrom = hasDate ? parseDay(input.effectiveFrom, 'Effective date') : undefined;
+      const versionId = input.versionId ? String(input.versionId).trim() : '';
+      const existing = Array.isArray(client.tariffVersions) ? client.tariffVersions.slice() : [];
+      const today = this.localDay();
+      let version;
+      let next;
+      if (versionId) {
+        const idx = existing.findIndex((v) => v.id === versionId);
+        if (idx < 0) throw new Error(`Unknown rate card ${versionId}`);
+        if (isReadOnly(assertOrder(existing), existing[idx], today)) throw new Error(`Rate card ${versionId} is read-only`);
+        version = { ...existing[idx], ...fields, effectiveFrom: effectiveFrom === undefined ? existing[idx].effectiveFrom : effectiveFrom, updatedAt: this.now(), updatedBy: actor };
+        next = existing.slice();
+        next[idx] = version;
+      } else if (!existing.length && effectiveFrom === undefined) {
+        version = { id: 'v1', effectiveFrom: null, createdAt: this.now(), createdBy: actor, updatedAt: this.now(), updatedBy: actor, ...fields };
+        next = [version];
+      } else if (effectiveFrom === undefined && existing.length === 1 && existing[0].effectiveFrom == null) {
+        if (isReadOnly(existing, existing[0], today)) throw new Error(`Rate card ${existing[0].id} is read-only`);
+        version = { ...existing[0], ...fields, updatedAt: this.now(), updatedBy: actor };
+        next = [version];
+      } else if (effectiveFrom === undefined) {
+        throw new Error('Name the date this rate card starts');
+      } else {
+        const clash = existing.find((v) => v.effectiveFrom === effectiveFrom);
+        if (clash) {
+          if (isReadOnly(assertOrder(existing), clash, today)) throw new Error(`Rate card ${clash.id} is read-only`);
+          const idx = existing.findIndex((v) => v.id === clash.id);
+          version = { ...clash, ...fields, effectiveFrom, updatedAt: this.now(), updatedBy: actor };
+          next = existing.slice();
+          next[idx] = version;
+        } else {
+          const latest = assertOrder(existing)[existing.length - 1];
+          if (latest && latest.effectiveFrom && effectiveFrom <= latest.effectiveFrom) throw new Error(`A new rate card has to start after ${latest.id} (${latest.effectiveFrom})`);
+          version = { id: nextVersionId(existing), effectiveFrom, createdAt: this.now(), createdBy: actor, updatedAt: this.now(), updatedBy: actor, ...fields };
+          next = existing.concat(version);
+        }
+      }
+      client.tariffVersions = assertOrder(next);
+      const current = versionAt(client.tariffVersions, this.now(), this.timeZone()) || client.tariffVersions[client.tariffVersions.length - 1];
+      client.tariff = { ...current };
+      this.log(`Tariff ${client.id} ${version.id} (${version.effectiveFrom || 'from the start'}) saved by ${actor}`, { by: actor });
+      return this.decorateTariff(client);
+    };
+
+    proto.setSpaces = function (clientId, spaces = [], by) {
+      const client = this._client(clientId);
+      if (!Array.isArray(spaces)) throw new Error('Dedicated space is a list');
+      const list = spaces.map((raw, i) => normalizeSpace(this, raw, i));
+      client.spaces = list;
+      const actor = by || this._actor || 'unknown';
+      this.log(`Dedicated space for ${client.id} saved by ${actor}`, { by: actor });
+      return client.spaces;
+    };
 
     proto.invoice = function ({ clientId, from = null, to = null } = {}) {
       const client = this._client(clientId);
-      const tariff = client.tariff || {
-        storageBasis: 'pallet-day', storageRate: Number(client.storageRate) || 0,
-        inboundBasis: 'pallet', inboundRate: 0,
-        outboundBasis: 'order', outboundRate: Number(client.handlingRate) || 0,
-        valRate: 0, minimum: 0,
-      };
-      const start = from == null || from === '' ? null : (typeof from === 'number' ? from : Date.parse(`${from}T00:00:00Z`));
-      const end = to == null || to === '' ? null : (typeof to === 'number' ? to : Date.parse(`${to}T23:59:59Z`));
-      if (Number.isNaN(start) || Number.isNaN(end)) throw new Error('Use dates as YYYY-MM-DD');
-      const day = 86400000;
+      const tz = this.timeZone();
+      const versions = assertOrder(versionList(client).slice());
+      const start = bound(from, false, tz);
+      const end = bound(to, true, tz);
+      if (start != null && end != null && end <= start) throw new Error('The billing period ends before it starts');
       const now = this.now();
-      let palletDays = 0;
-      let locationDays = 0;
-      let cubicDays = 0;
-      let inboundPallets = 0;
-      for (const p of Object.values(this.pallets)) {
-        const owner = p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
-        if (owner !== client.id || !p.receivedAt) continue;
-        let stop = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
-        const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
-        const b = Math.min(stop, end == null ? stop : end);
-        const days = Math.max(0, (b - a) / day);
-        palletDays += days;
-        locationDays += days;
-        const item = this.items[p.itemNo];
-        if (item && item.lengthMm && item.widthMm && item.heightMm) cubicDays += days * (item.lengthMm * item.widthMm * item.heightMm) / 1e9;
-        if (inPeriod(p.receivedAt, start, end)) inboundPallets += 1;
-      }
+      const ownerOfPallet = (p) => p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
       const ownedMove = (m) => {
         const pallet = m.sscc && this.pallets[m.sscc];
-        const holder = m.holder && this.holders[m.holder];
-        const owner = (pallet && (pallet.clientId || (this.items[pallet.itemNo] && this.items[pallet.itemNo].clientId))) || (holder && holder.clientId);
-        return owner === client.id && inPeriod(m.t, start, end);
+        const holder = m.holder && this.holders && this.holders[m.holder];
+        const owner = (pallet && ownerOfPallet(pallet)) || (holder && holder.clientId);
+        return owner === client.id && inWindow(m.t, start, end);
       };
+      const stays = [];
+      let palletDays = 0;
+      for (const p of Object.values(this.pallets)) {
+        if (ownerOfPallet(p) !== client.id || !p.receivedAt) continue;
+        const shipped = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
+        const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
+        const b = Math.min(shipped, end == null ? shipped : end);
+        if (b <= a) continue;
+        const item = this.items[p.itemNo];
+        const cubic = item && item.lengthMm && item.widthMm && item.heightMm ? (item.lengthMm * item.widthMm * item.heightMm) / 1e9 : 0;
+        stays.push({ a, b, cubic });
+        palletDays += (b - a) / DAY;
+      }
+      const storageRows = [];
+      if (stays.length) {
+        const min = Math.min(...stays.map((s) => s.a));
+        const max = Math.max(...stays.map((s) => s.b));
+        const points = boundaryPoints(min, max, versions, tz);
+        for (const stay of stays) { points.push(stay.a, stay.b); }
+        const cuts = [...new Set(points)].filter((t) => t >= min && t <= max).sort((a, b) => a - b);
+        for (let i = 0; i < cuts.length - 1; i++) {
+          const a = cuts[i];
+          const b = cuts[i + 1];
+          let days = 0;
+          let cubicDays = 0;
+          for (const stay of stays) {
+            const left = Math.max(a, stay.a);
+            const right = Math.min(b, stay.b);
+            if (right <= left) continue;
+            const part = (right - left) / DAY;
+            days += part;
+            cubicDays += part * stay.cubic;
+          }
+          if (days > 0) storageRows.push({ t: a, days, cubicDays });
+        }
+      }
+      const storageQtyRows = [];
+      for (const row of storageRows) {
+        const version = versionAt(versions, row.t, tz);
+        if (!version) continue;
+        const qty = version.storageBasis === 'm3-day' ? row.cubicDays : row.days;
+        if (qty > 0) storageQtyRows.push({ t: row.t, qty });
+      }
+      const storageLines = priceRows(versions, storageQtyRows, 'storage', tz);
+      const inboundEvents = [];
+      for (const p of Object.values(this.pallets)) {
+        if (ownerOfPallet(p) !== client.id || !p.receivedAt || !inWindow(p.receivedAt, start, end)) continue;
+        inboundEvents.push({ t: p.receivedAt, byBasis: { pallet: 1 } });
+      }
+      for (const m of this.movements || []) {
+        if (m.event === 'received' && ownedMove(m)) inboundEvents.push({ t: m.t, byBasis: { line: 1 } });
+      }
+      const orders = Object.values(this.orders).filter((o) => o.clientId === client.id && o.shippedAt && inWindow(o.shippedAt, start, end));
+      const outboundEvents = orders.map((o) => ({
+        t: o.shippedAt,
+        byBasis: {
+          order: 1,
+          line: o.lines.length,
+          carton: (this.shipments || []).filter((s) => s.orderId === o.id).reduce((n, s) => n + (s.cartons || []).length, 0),
+        },
+      }));
+      const valEvents = (this.movements || []).filter((m) => m.event === 'kitted' && ownedMove(m)).map((m) => ({ t: m.t, byBasis: { unit: 1 } }));
+      const eventRows = (events, code) => events.flatMap((event) => {
+        const version = versionAt(versions, event.t, tz);
+        if (!version) return [];
+        const qty = event.byBasis[chargeSpec(version, code).basis] || 0;
+        return qty > 0 ? [{ t: event.t, qty }] : [];
+      });
+      const minAt = end == null ? now : end - 1;
+      const minVersion = versionAt(versions, minAt, tz);
+      const lines = [];
+      const priced = {
+        storage: storageLines,
+        inbound: priceRows(versions, eventRows(inboundEvents, 'inbound'), 'inbound', tz),
+        outbound: priceRows(versions, eventRows(outboundEvents, 'outbound'), 'outbound', tz),
+        val: priceRows(versions, eventRows(valEvents, 'val'), 'val', tz),
+      };
+      for (const code of CHARGE_IDS) {
+        if (priced[code].length) lines.push(...priced[code]);
+        else lines.push(zeroLine(minVersion || versions[versions.length - 1], code));
+      }
+      for (const space of client.spaces || []) {
+        lines.push({
+          code: 'space', label: space.label, qty: 1, rate: space.fee, amount: space.fee,
+          tier: '', tierMode: null, season: '', seasonId: null, seasonEffect: null,
+          version: versionLabel(minVersion), versionId: minVersion ? minVersion.id : null,
+        });
+      }
+      const subtotal = money(lines.reduce((s, l) => s + l.amount, 0));
+      let minimum = minVersion ? (minVersion.minimum || 0) : 0;
+      if (minVersion && minVersion.minimumMode === 'prorate' && start != null && end != null && minimum > 0) {
+        const days = calendarDays(start, end, tz);
+        minimum = money(minimum * days / daysInMonth(localDay(minAt, tz)));
+      }
+      const topup = money(minimum - subtotal);
+      if (topup > 0) {
+        lines.push({
+          code: 'minimum', label: 'Monthly minimum', qty: 1, rate: topup, amount: topup,
+          tier: '', tierMode: null, season: '', seasonId: null, seasonEffect: null,
+          version: versionLabel(minVersion), versionId: minVersion ? minVersion.id : null,
+        });
+      }
       const moves = (this.movements || []).filter((m) => ownedMove(m) && ['moved', 'picked', 'consolidated', 'shipped', 'received', 'packed', 'transferred'].includes(m.event));
-      const inboundLines = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'received').length;
-      const orders = Object.values(this.orders).filter((o) => o.clientId === client.id && o.shippedAt && inPeriod(o.shippedAt, start, end));
-      const outboundLines = orders.reduce((s, o) => s + o.lines.length, 0);
-      const outboundCartons = (this.shipments || []).filter((s) => orders.some((o) => o.id === s.orderId)).reduce((n, s) => n + (s.cartons || []).length, 0);
-      const valUnits = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'kitted').length;
-      const storageQty = tariff.storageBasis === 'location-day' ? locationDays : tariff.storageBasis === 'm3-day' ? cubicDays : palletDays;
-      const inboundQty = tariff.inboundBasis === 'line' ? inboundLines : inboundPallets;
-      const outboundQty = tariff.outboundBasis === 'line' ? outboundLines : tariff.outboundBasis === 'carton' ? outboundCartons : orders.length;
-      const lines = [
-        { code: 'storage', label: `Storage (${tariff.storageBasis})`, qty: Math.round(storageQty * 100) / 100, rate: tariff.storageRate },
-        { code: 'inbound', label: `Inbound (${tariff.inboundBasis})`, qty: inboundQty, rate: tariff.inboundRate },
-        { code: 'outbound', label: `Outbound (${tariff.outboundBasis})`, qty: outboundQty, rate: tariff.outboundRate },
-        { code: 'val', label: 'VAL / kitting (unit)', qty: valUnits, rate: tariff.valRate },
-      ].map((l) => ({ ...l, amount: Math.round(l.qty * l.rate * 100) / 100 }));
-      const subtotal = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
-      const total = Math.round(Math.max(tariff.minimum || 0, subtotal) * 100) / 100;
+      const tariff = minVersion || versions[versions.length - 1];
       return {
-        clientId: client.id, name: client.name, from: start, to: end, tariff, lines, subtotal,
-        minimum: tariff.minimum || 0, total, palletDays: Math.round(palletDays * 100) / 100, moves: moves.length,
+        clientId: client.id, name: client.name, from: start, to: end == null ? null : end - 1,
+        periodFrom: typeof from === 'string' ? from : null, periodTo: typeof to === 'string' ? to : null,
+        timeZone: tz, country: (this.config && this.config.country) || null,
+        tariff, lines, subtotal, minimum, minimumVersion: versionLabel(minVersion),
+        total: money(Math.max(minimum, subtotal)), palletDays: money(palletDays), moves: moves.length,
       };
     };
 
     proto.invoiceHtml = function (opts) {
       const inv = this.invoice(opts);
-      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
+      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.tier || '')}</td><td>${htmlEscape(l.season || '')}</td><td>${htmlEscape(l.version || '')}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
+      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} to ${htmlEscape(inv.periodTo || '…')} (${htmlEscape(inv.timeZone || '')})` : 'Open period, up to the current time';
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${htmlEscape(inv.clientId)}</title>
-        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}.total{font-size:18px;font-weight:700}@media print{body{margin:12px}}</style></head>
-        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p>
-        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>${rows}</table>
-        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}.</p><p class="total">Total ${htmlEscape(inv.total)}</p></body></html>`;
+        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.total{font-size:18px;font-weight:700}.note{color:#5d6b76;font-size:13px;max-width:46rem}@media print{body{margin:12px}}</style></head>
+        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p><p>${period}</p>
+        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Tier</th><th>Season</th><th>Version</th><th>Amount</th></tr>${rows}</table>
+        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}${inv.minimumVersion ? ` (${htmlEscape(inv.minimumVersion)})` : ''}.</p><p class="total">Total ${htmlEscape(inv.total)}</p>
+        <p class="note">Dates are local midnights in ${htmlEscape(inv.timeZone || 'the warehouse timezone')}. Storage that crosses a season or a new rate card is split there. An inbound, outbound or kitting event uses the card in effect at its own time. The monthly minimum is taken from the card in effect on the last day.</p></body></html>`;
+    };
+
+    proto.invoiceCsv = function (opts) {
+      const inv = this.invoice(opts);
+      const rows = [['charge', 'label', 'qty', 'rate', 'amount', 'tier', 'season', 'version']];
+      for (const l of inv.lines) rows.push([l.code, l.label, l.qty, l.rate, l.amount, l.tier || '', l.season || '', l.version || '']);
+      return rows.map((r) => r.map(csvCell).join(',')).join('\n');
     };
 
     proto.availability = function () {

@@ -69,6 +69,7 @@
 
     // Master data and imports
     addItem: (wh, a) => wh.addItem(a),
+    approveItem: (wh, a) => wh.approveItem(req(a.itemNo, 'itemNo')),
     importItems: (wh, a) => (a.rows || []).map((r) => (wh.items[r.itemNo] ? null : wh.addItem(r))).filter(Boolean).length,
     importLocations: (wh, a) => wh.importLocations(a.rows || []),
     // Orders from a spreadsheet: one row per line (orderId, customer, lane, itemNo, pallets, process).
@@ -161,10 +162,13 @@
     stageShipment: (wh, a, by) => wh.stageShipment({ orderId: req(a.orderId, 'orderId'), truck: a.truck || null, by }),
     scanShipment: (wh, a, by) => wh.scanShipment({ orderId: req(a.orderId, 'orderId'), code: req(a.code, 'code'), by }),
     dispatchShipment: (wh, a, by) => wh.dispatchShipment({ orderId: req(a.orderId, 'orderId'), by }),
-    setTariff: (wh, a) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a),
+    setTariff: (wh, a, by) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a, by),
+    setSpaces: (wh, a, by) => wh.setSpaces(req(a.clientId, 'clientId'), a.spaces || [], by),
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),
+    saveLocationProfile: (wh, a) => wh.saveLocationProfile(a.profile || a),
+    bulkLocations: (wh, a) => wh.bulkLocations(a),
     completeSetup: (wh) => wh.completeSetup(),
 
     // Clock tick: dwell timers, waiting trucks, escalations

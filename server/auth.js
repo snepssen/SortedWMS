@@ -155,6 +155,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
   add('users', 'totp_secret', 'TEXT');
   add('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
   add('users', 'sites', 'TEXT');
+  add('users', 'client_id', 'TEXT');
   add('sessions', 'last_seen', 'INTEGER');
   const dummy = hashPassword('not-a-real-password');
 
@@ -174,6 +175,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
       mustChangePassword: Boolean(row.must_change),
       totpEnabled: Boolean(row.totp_enabled),
       sites: row.sites ? JSON.parse(row.sites) : null,
+      clientId: row.client_id || null,
       permissions: permissionsFor(row.role),
     };
   }
@@ -195,16 +197,18 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     return db.prepare('SELECT * FROM users WHERE username = ?').get(String(username || '').trim().toLowerCase());
   }
 
-  function insertUser({ username, password, role, displayName }) {
+  function insertUser({ username, password, role, displayName, clientId = null }) {
     const name = String(username || '').trim().toLowerCase();
     if (!/^[a-z][a-z0-9._-]{1,31}$/.test(name)) throw new Error('Username: start with a letter, then letters, digits, dot, underscore or hyphen');
     if (String(password || '').length < 8) throw new Error('Password must be at least 8 characters');
     if (!ROLE_IDS.includes(role)) throw new Error(`Role is one of ${ROLE_IDS.join(', ')}`);
+    const owner = clientId ? String(clientId).trim().toUpperCase() : null;
+    if (role === 'client' && !owner) throw new Error('A client login needs a client id');
     const display = String(displayName || name).trim();
     if (!display) throw new Error('A display name is required');
     if (getUser(name)) throw new Error(`User ${name} already exists`);
     const t = now();
-    const result = db.prepare('INSERT INTO users (username, display_name, password_hash, role, active, created_at) VALUES (?, ?, ?, ?, 1, ?)').run(name, display, hashPassword(password), role, t);
+    const result = db.prepare('INSERT INTO users (username, display_name, password_hash, role, active, created_at, client_id) VALUES (?, ?, ?, ?, 1, ?, ?)').run(name, display, hashPassword(password), role, t, owner);
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(Number(result.lastInsertRowid)));
   }
 
@@ -302,6 +306,9 @@ function createAuth(db, { now = () => Date.now() } = {}) {
       mustChange = 0;
     }
     let sites = row.sites;
+    let clientId = row.client_id;
+    if ('clientId' in patch) clientId = patch.clientId ? String(patch.clientId).trim().toUpperCase() : null;
+    if (role === 'client' && !clientId) throw new Error('A client login needs a client id');
     if ('sites' in patch) {
       if (patch.sites == null || patch.sites === '') sites = null;
       else {
@@ -309,7 +316,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
         sites = JSON.stringify([...new Set(patch.sites.map((s) => s.trim().toUpperCase()))]);
       }
     }
-    db.prepare('UPDATE users SET display_name = ?, role = ?, active = ?, password_hash = ?, must_change = ?, sites = ? WHERE id = ?').run(display, role, active ? 1 : 0, hash, mustChange, sites, row.id);
+    db.prepare('UPDATE users SET display_name = ?, role = ?, active = ?, password_hash = ?, must_change = ?, sites = ?, client_id = ? WHERE id = ?').run(display, role, active ? 1 : 0, hash, mustChange, sites, clientId, row.id);
     if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
     record('user-updated', patch.by || null, { id: row.id, username: row.username, role, active });
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));

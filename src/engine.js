@@ -88,7 +88,8 @@
     aisleCap: 2,
     escalateAfterMin: 20, // a job waiting this long jumps the queue; 0 = never
     schedule: [], // job order by time of day: [{ from: '06:00', to: '10:00', priority: [...] }]; outside them, priority
-    timeZone: 'Europe/Brussels', // the site's clock, for the schedule
+    timeZone: 'Europe/Brussels', // the site's clock: schedule, billing days and the journal
+    country: 'BE',
     travelOptimise: true, // same priority: nearest job first
     allowSlotOverride: true, // Auto-Shift/put-away: driver may scan another suitable free slot
     groundNextPerItem: 1, // keep the next N pallets out of every item on ground level; 0 = off
@@ -526,7 +527,7 @@
      * numbers that mean this item, such as a supplier's article number,
      * printed as "(91)40012009" on the label.
      */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active' }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
@@ -551,11 +552,24 @@
       this.items[itemNo] = {
         itemNo, gtin: gtin14, name, category, palletQty, minShipDays, storage,
         unitGtin: unitGtin ? GS1.gtin14(unitGtin) : null, unitsPerCase: unitGtin ? Number(unitsPerCase) : null, codes: list,
-        clientId: owner, uom: uom || 'case', status: status === 'archived' ? 'archived' : 'active',
+        clientId: owner, uom: uom || 'case', status: status === 'archived' ? 'archived' : status === 'pending' ? 'pending' : 'active',
         lengthMm: measure(lengthMm, 'Length'), widthMm: measure(widthMm, 'Width'), heightMm: measure(heightMm, 'Height'), weightKg: measure(weightKg, 'Weight'),
         barcodes: barcodeList,
+        flags: { food: Boolean(food), frozen: Boolean(frozen), highValue: Boolean(highValue) },
       };
+      this.log(`Item ${itemNo} added by ${this._actor || 'unknown'}`, { by: this._actor || 'unknown' });
       return this.items[itemNo];
+    }
+
+    approveItem(itemNo) {
+      const item = this.items[itemNo];
+      if (!item) throw new Error(`Unknown item ${itemNo}`);
+      if (item.status !== 'pending') throw new Error(`${itemNo} is not waiting for approval`);
+      item.status = 'active';
+      item.approvedBy = this._actor || 'unknown';
+      item.approvedAt = this.now();
+      this.log(`Item ${itemNo} approved by ${item.approvedBy}`, { by: item.approvedBy });
+      return item;
     }
 
     /** Manager setting: days of shelf life a pallet must have left to be shipped. */
@@ -677,6 +691,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       if (item.status === 'archived') throw new Error(`Item ${itemNo} is archived`);
+      if (item.status === 'pending') throw new Error(`Item ${itemNo} is waiting for approval`);
       const owner = clientId ? String(clientId).trim().toUpperCase() : (item.clientId || null);
       if (owner && item.clientId && owner !== item.clientId) throw new Error(`Item ${itemNo} belongs to another client`);
       const client = owner && this.clients && this.clients[owner];
@@ -693,6 +708,8 @@
         status, blockReason, loc: null, orderId: null, labelCode: null, checked: false,
         clientId: owner,
       };
+      const over = this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode !== 'warn') throw new Error(over);
       if (!this._fits(loc, pallet)) throw new Error(`Pallet …${sscc.slice(-6)} (${itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
       this.pallets[sscc] = pallet;
       this._place(pallet, code);
@@ -1006,6 +1023,12 @@
       if (patch.timeZone !== undefined) {
         try { new Intl.DateTimeFormat('en-GB', { timeZone: patch.timeZone }); } catch (e) { throw new Error(`Unknown time zone ${patch.timeZone}`); }
       }
+      if (patch.country !== undefined) {
+        const country = String(patch.country || '').trim().toUpperCase();
+        if (!/^[A-Z]{2}$/.test(country)) throw new Error('Country is a two-letter code');
+        patch = { ...patch, country };
+      }
+      if (patch.itemApproval !== undefined) patch = { ...patch, itemApproval: Boolean(patch.itemApproval) };
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
       }
@@ -1104,6 +1127,7 @@
         if (!line || !this.items[line.itemNo]) throw new Error(`Unknown item ${line?.itemNo}`);
         const item = this.items[line.itemNo];
         if (item.status === 'archived') throw new Error(`Item ${line.itemNo} is archived`);
+        if (item.status === 'pending') throw new Error(`Item ${line.itemNo} is waiting for approval`);
         const owner = item.clientId && this.clients && this.clients[item.clientId];
         if (owner && owner.status === 'archived') throw new Error(`Client ${owner.name} is archived`);
         if (clientId && item.clientId && item.clientId !== clientId) throw new Error(`Item ${line.itemNo} belongs to another client`);
@@ -3493,9 +3517,42 @@
      * Footprint may rotate; height does not. Item dimensions are the full
      * stored unit (one pallet); weight and height scale with quantity.
      */
+    _capacityMessage(loc, pallet) {
+      const cap = loc && loc.capacity;
+      if (!cap || !pallet) return null;
+      const item = this.items[pallet.itemNo];
+      if (cap.maxUnits != null) {
+        const held = loc.kind === 'rack' ? (loc.sscc ? 1 : 0) : ((loc.pallets && loc.pallets.length) || 0);
+        if (held + 1 > cap.maxUnits) return `${loc.code} holds ${cap.maxUnits} and already has ${held}`;
+      }
+      if (cap.stackHeight != null) {
+        const held = (loc.pallets && loc.pallets.length) || 0;
+        if (held + 1 > cap.stackHeight) return `${loc.code} stacks ${cap.stackHeight} pallets high`;
+      }
+      if (cap.maxVolumeM3 != null && item && item.lengthMm && item.widthMm && item.heightMm) {
+        const one = (item.lengthMm * item.widthMm * item.heightMm) / 1e9;
+        let used = 0;
+        const ids = loc.kind === 'rack' ? (loc.sscc ? [loc.sscc] : []) : (loc.pallets || []);
+        for (const id of ids) {
+          const other = this.pallets[id];
+          const otherItem = other && this.items[other.itemNo];
+          if (otherItem && otherItem.lengthMm && otherItem.widthMm && otherItem.heightMm) used += (otherItem.lengthMm * otherItem.widthMm * otherItem.heightMm) / 1e9;
+        }
+        if (used + one > cap.maxVolumeM3) return `${loc.code} is over its volume of ${cap.maxVolumeM3} m3`;
+      }
+      if (cap.footprintLengthMm != null && cap.footprintWidthMm != null && item && item.lengthMm && item.widthMm) {
+        const load = [item.lengthMm, item.widthMm].sort((a, b) => a - b);
+        const floor = [cap.footprintLengthMm, cap.footprintWidthMm].sort((a, b) => a - b);
+        if (load[0] > floor[0] || load[1] > floor[1]) return `${loc.code} footprint is too small for ${item.itemNo}`;
+      }
+      return null;
+    }
+
     _fits(loc, pallet) {
       const cap = loc && loc.capacity;
       if (!cap || !pallet) return true;
+      const over = this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode !== 'warn') return false;
       const item = this.items[pallet.itemNo];
       if (!item) return true;
       const frac = item.palletQty ? (Number(pallet.qty) || item.palletQty) / item.palletQty : 1;
@@ -3510,6 +3567,12 @@
     }
 
     _assertFit(loc, pallet) {
+      const over = loc && this._capacityMessage(loc, pallet);
+      if (over && loc.capacityMode === 'warn') {
+        this.log(`Warning: ${over}`);
+        return;
+      }
+      if (over) throw new Error(over);
       if (!loc || this._fits(loc, pallet)) return;
       const item = this.items[pallet.itemNo];
       throw new Error(`Pallet …${pallet.sscc.slice(-6)} (${item ? item.itemNo : pallet.itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
