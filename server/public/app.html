@@ -168,7 +168,7 @@
       return `<section><h2>Warehouses</h2><p class="hint">Each site has its own stock and its own plate counters. People can be limited to some sites. Shipping a transfer parks the original plate at IN-TRANSIT until the other site receives it.</p>
         <p>Current warehouse: <b>${esc(data.current)}</b></p>
         ${table(['Id', 'Name'], (data.sites || []).map((s) => `<tr><td>${esc(s.id)}</td><td>${esc(s.name)}</td></tr>`))}
-        <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
+        <form class="form" data-act="site-add"><label>Id<input name="id" required placeholder="NORTH"></label><label>Name<input name="name" placeholder="North store"></label><label>Country<input name="country" value="BE" maxlength="2"></label><label>Timezone<input name="timeZone" value="Europe/Brussels"></label><label>Preset<select name="preset"><option value="">none</option><option>chilled-dc</option><option>high-value</option><option>home-garage</option><option>small-maker</option></select></label><button class="primary">Add warehouse</button></form>
         <form class="form" data-act="site-transfer"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>To<input name="to" required placeholder="NORTH"></label><button>Ship in transit</button></form>
         <form class="form" data-act="site-receive"><label>Transfer<input name="id" required placeholder="TR1"></label><label>From<input name="from" value="MAIN"></label><label>To<input name="to" required></label><button>Receive</button></form>
         <form class="form" data-act="site-cancel"><label>Transfer<input name="id" required></label><button>Refuse and return</button></form>
@@ -260,6 +260,9 @@
       const [summary, hw] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware')]);
       return `<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
         <form class="form" data-act="config"><label>Trucks per aisle<input name="aisleCap" type="number" min="1" value="${esc(summary.config.aisleCap)}"></label><button class="primary">Save</button></form>
+        <h3>Country and timezone</h3>
+        <p class="hint">Billing days, seasons, rate-card dates and the journal use this warehouse's local midnight. Daylight saving is included.</p>
+        <form class="form" data-act="place" id="placeForm"><label>Country<select name="country" id="countryPick">${[['BE','Belgium','Europe/Brussels'],['NL','Netherlands','Europe/Amsterdam'],['DE','Germany','Europe/Berlin'],['FR','France','Europe/Paris'],['GB','United Kingdom','Europe/London'],['IE','Ireland','Europe/Dublin'],['ES','Spain','Europe/Madrid'],['IT','Italy','Europe/Rome'],['PL','Poland','Europe/Warsaw'],['SE','Sweden','Europe/Stockholm'],['CH','Switzerland','Europe/Zurich'],['US','United States','America/New_York'],['CA','Canada','America/Toronto'],['BR','Brazil','America/Sao_Paulo'],['ZA','South Africa','Africa/Johannesburg'],['AE','United Arab Emirates','Asia/Dubai'],['SG','Singapore','Asia/Singapore'],['JP','Japan','Asia/Tokyo'],['AU','Australia','Australia/Sydney'],['NZ','New Zealand','Pacific/Auckland']].map(([code, name, zone]) => `<option value="${code}" data-zone="${zone}" ${summary.config.country === code ? 'selected' : ''}>${code} ${name}</option>`).join('')}</select></label><label>Timezone<input name="timeZone" id="timeZone" value="${esc(summary.config.timeZone || 'Europe/Brussels')}" list="zones"></label><datalist id="zones">${['Europe/Brussels','Europe/Amsterdam','Europe/Berlin','Europe/Paris','Europe/London','Europe/Dublin','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Toronto','America/Sao_Paulo','Africa/Johannesburg','Asia/Dubai','Asia/Singapore','Asia/Tokyo','Australia/Sydney','Pacific/Auckland','UTC'].map((z) => `<option value="${z}">`).join('')}</datalist><button class="primary">Save place</button></form>
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
         <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p>
@@ -382,6 +385,7 @@
         const charge = seasonCharge(s.charges ? s : null);
         const spec = (s.charges && (s.charges[charge === 'all' ? 'storage' : charge])) || {};
         const kind = s.months ? 'months' : 'dates';
+        const effectValue = spec.amount != null ? 'each' : (spec.effect === 'override' ? 'override' : 'surcharge');
         return `<tr>
           <td><input name="season${i}Label" autocomplete="off" value="${esc(s.label || '')}" placeholder="Name"></td>
           <td><select name="season${i}Charge">${opt([{ id: 'storage', label: 'Storage' }, { id: 'inbound', label: 'Inbound' }, { id: 'outbound', label: 'Outbound' }, { id: 'val', label: 'VAL' }, { id: 'all', label: 'All charges' }], s.label ? charge : 'storage')}</select></td>
@@ -389,7 +393,7 @@
           <td><input name="season${i}From" type="date" value="${esc(s.from || '')}"></td>
           <td><input name="season${i}To" type="date" value="${esc(s.to || '')}"></td>
           <td><input name="season${i}Months" autocomplete="off" value="${esc((s.months || []).join(', '))}" placeholder="1–12"></td>
-          <td><select name="season${i}Effect"><option value="surcharge" ${spec.effect === 'override' ? '' : 'selected'}>Surcharge %</option><option value="override" ${spec.effect === 'override' ? 'selected' : ''}>Override rate</option></select></td>
+          <td><select name="season${i}Effect"><option value="surcharge" ${effectValue === 'surcharge' ? 'selected' : ''}>Surcharge %</option><option value="each" ${effectValue === 'each' ? 'selected' : ''}>Surcharge per unit</option><option value="override" ${effectValue === 'override' ? 'selected' : ''}>Replace rate</option></select></td>
           <td><input name="season${i}Percent" type="number" min="0" step="0.01" value="${esc(spec.percent == null ? '' : spec.percent)}"></td>
           <td><input name="season${i}Rate" type="number" min="0" step="0.01" value="${esc(spec.rate == null ? '' : spec.rate)}"></td>
         </tr>`;
@@ -410,6 +414,7 @@
         <input type="hidden" name="clientId" value="${esc(clientId)}">
         ${editing ? `<input type="hidden" name="versionId" value="${esc(latest.id)}">` : ''}
         <div class="form"><label>Effective from<input name="effectiveFrom" type="date" value="${esc(editing ? (latest.effectiveFrom || '') : (latest ? today : ''))}"></label><label>Monthly minimum<input name="minimum" type="number" min="0" step="0.01" value="${esc(card.minimum == null ? 0 : card.minimum)}"></label></div>
+        <details><summary>Advanced</summary><div class="form"><label>Minimum<select name="minimumMode"><option value="full" ${card.minimumMode === 'prorate' ? '' : 'selected'}>Full amount</option><option value="prorate" ${card.minimumMode === 'prorate' ? 'selected' : ''}>Prorate by the days in the month</option></select></label><label>Tier volume<select name="tierScope"><option value="month" ${card.tierScope === 'version' ? '' : 'selected'}>Calendar month, across versions</option><option value="version" ${card.tierScope === 'version' ? 'selected' : ''}>This version only</option></select></label></div><p class="hint">Replace uses the season rate. Surcharge % multiplies the tier or flat rate. Surcharge per unit adds the rate column to each unit. Tier volume defaults to the calendar month.</p></details>
         <p class="hint">${editing ? 'Save changes keeps this version. Save as new version needs a later effective date and leaves this one as it is.' : (latest ? `${esc(latest.id)} is read-only. Saving starts a new version on the effective date.` : 'Leave the date blank for a card that covers every earlier day. The next dated version makes this one read-only.')}</p>
         ${chargeBlock('Storage', 'storage', ['pallet-day', 'location-day', 'm3-day'])}
         <h3>Seasons</h3>
@@ -426,14 +431,17 @@
       if (from) q.set('from', from);
       if (to) q.set('to', to);
       return `<section><h2>Rate card${client ? ' · ' + esc(client.name) : ''}</h2>
-        <p class="hint">Versions stay in the journal with the person who saved them. A period that crosses a season or a new version is split at midnight UTC. The monthly minimum is the one in effect on the last day.</p>
+        <p class="hint">Versions stay in the journal with the person who saved them. A period that crosses a season or a new version is split at this warehouse's local midnight. The monthly minimum comes from the card in effect on the last day.</p>
         <label>Client <select id="tariffClient">${clients.map((c) => `<option value="${esc(c.id)}" ${c.id === clientId ? 'selected' : ''}>${esc(c.id)} ${esc(c.name)}</option>`).join('')}</select></label>
         ${versionTable}</section>
         <section><h2>${editing ? 'Edit ' + esc(latest.id) : (latest ? 'New version' : 'New rate card')}</h2>${editor}</section>
         <section><h2>Invoice preview</h2>
         <form class="form" data-act="tariff-preview"><input type="hidden" name="clientId" value="${esc(clientId)}"><label>From<input name="from" type="date" value="${esc(from)}"></label><label>To<input name="to" type="date" value="${esc(to)}"></label><button class="primary">Preview invoice</button></form>
         <p><a href="/api/reports/billing.html?${q.toString()}" target="_blank">Printable invoice</a> · <a href="/api/reports/invoice.csv?${q.toString()}">Invoice CSV</a></p>
-        ${preview}</section>`;
+        ${preview}</section>
+        <section><h2>Dedicated space</h2><p class="hint">A client can rent a cell, an aisle, a bay, a position, a height, or the whole warehouse. The fee is charged once per invoice, beside the usage lines.</p>
+        ${table(['Space', 'Fee'], (client && client.spaces || []).map((s) => `<tr><td>${esc(s.label || s.scope)}</td><td>${esc(s.fee)}</td></tr>`))}
+        <form class="form" data-act="space"><input type="hidden" name="clientId" value="${esc(clientId)}"><label>Scope<select name="scope"><option value="">None</option><option value="warehouse">Whole warehouse</option><option value="cell">Cell</option><option value="aisle">Aisle</option><option value="bay">Bay</option><option value="position">Position</option><option value="height">Height</option></select></label><label>Cell<input name="cell" placeholder="A"></label><label>Aisle<input name="aisle" placeholder="01"></label><label>Bay<input name="bay" type="number"></label><label>Position<input name="pos" type="number"></label><label>Height<input name="level" placeholder="A or 0"></label><label>Fee<input name="fee" type="number" min="0" step="0.01" value="0"></label><button>Save space</button></form></section>`;
     },
     async labels() {
       const holders = await api('GET', '/api/holders');
@@ -526,7 +534,7 @@
       ...journal.map((j) => ({ t: j.t, who: j.by, what: j.op })),
       ...authLog.map((j) => ({ t: j.t, who: j.by, what: 'account: ' + j.action })),
     ].sort((a, b) => b.t - a.t).slice(0, limit);
-    return table(['When', 'Who', 'What'], rows.map((r) => `<tr><td>${new Date(r.t).toLocaleString()}</td><td>${esc(r.who || '')}</td><td>${esc(r.what)}</td></tr>`));
+    return table(['When', 'Who', 'What'], rows.map((r) => `<tr><td>${esc(r.local || new Date(r.t).toISOString())}</td><td>${esc(r.who || '')}</td><td>${esc(r.what)}</td></tr>`));
   }
   async function operatorWork(queueOnly) {
     const devices = await api('GET', '/api/devices');
@@ -597,6 +605,11 @@
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
     if (e.target.id === 'tariffClient') { history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'countryPick') {
+      const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
+      const field = document.getElementById('timeZone');
+      if (zone && field) field.value = zone;
+    }
   };
   $('#main').onsubmit = async (e) => {
     const form = e.target;
@@ -667,6 +680,7 @@
       return api('POST', '/api/roles/' + data.role, { permissions });
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
+    if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') return api('POST', '/api/devices/' + encodeURIComponent(data.id) + '/operator', { operator: data.operator });
     if (name === 'client-add') return api('POST', '/api/clients', data);
@@ -707,7 +721,13 @@
     if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});
     if (name === 'return-receive') return api('POST', '/api/returns', { id: data.id, orderId: data.orderId, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { grade: data.grade, to: data.to || null });
-    if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null });
+    if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null, country: data.country || null, timeZone: data.timeZone || null });
+    if (name === 'space') {
+      const spaces = data.scope ? [{ scope: data.scope, cell: data.cell, aisle: data.aisle, bay: data.bay, pos: data.pos, level: data.level, fee: Number(data.fee || 0) }] : [];
+      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      panel = 'tariff';
+      return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/space', { spaces });
+    }
     if (name === 'site-transfer') return api('POST', '/api/sites/transfer', { itemNo: data.itemNo, qty: Number(data.qty), to: data.to });
     if (name === 'site-receive') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/receive', { from: data.from, to: data.to });
     if (name === 'site-cancel') return api('POST', '/api/sites/transfers/' + encodeURIComponent(data.id) + '/cancel', {});
@@ -718,6 +738,8 @@
     if (name === 'tariff-save') {
       const body = { minimum: data.minimum, seasons: [] };
       if (data.effectiveFrom) body.effectiveFrom = data.effectiveFrom;
+      if (data.minimumMode) body.minimumMode = data.minimumMode;
+      if (data.tierScope) body.tierScope = data.tierScope;
       if (data.asNew !== '1' && data.versionId) body.versionId = data.versionId;
       for (const c of ['storage', 'inbound', 'outbound', 'val']) {
         if (c !== 'val') body[c + 'Basis'] = data[c + 'Basis'];
@@ -737,8 +759,9 @@
         const row = { label: data['season' + i + 'Label'], charge: data['season' + i + 'Charge'], effect: data['season' + i + 'Effect'] };
         if (data['season' + i + 'Kind'] === 'months') row.months = String(data['season' + i + 'Months'] || '').split(/[^0-9]+/).filter(Boolean).map(Number);
         else { row.from = data['season' + i + 'From']; row.to = data['season' + i + 'To']; }
-        if (row.effect === 'override') row.rate = data['season' + i + 'Rate'];
+        if (row.effect === 'override' || row.effect === 'each') row.rate = data['season' + i + 'Rate'];
         else row.percent = data['season' + i + 'Percent'];
+        if (row.effect === 'each') row.amount = data['season' + i + 'Rate'];
         body.seasons.push(row);
       }
       history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));

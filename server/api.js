@@ -230,7 +230,7 @@
     });
     on('GET', '/api/process-log', () => wh().processLog.slice(0, 200));
     on('GET', '/api/events', () => wh().events.slice(0, 200).map((e) => ({ ...e, text: wh().display(e.text) })));
-    on('GET', '/api/journal', (_, q) => store.journal({ limit: q.limit, op: q.op, by: q.by, before: q.before }));
+    on('GET', '/api/journal', (_, q) => store.journal({ limit: q.limit, op: q.op, by: q.by, before: q.before }).map((row) => ({ ...row, local: wh().formatLocal ? wh().formatLocal(row.t) : null })));
     on('GET', '/api/printers', () => (printers.list ? printers.list() : []));
     on('GET', '/api/printers/:name/status', ({ name }) => (printers.status ? printers.status(decodeURIComponent(name)) : { status: 404, error: 'No printers here' }));
     on('GET', '/api/print-queue', () => ({ jobs: wh().printQueue.slice(0, 50).map((j) => ({ id: j.id, printer: j.printer, at: j.at, label: j.label })), results: printers.results.slice(0, 50) }));
@@ -417,6 +417,7 @@
     });
     on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
+    on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
     on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
     on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: q.clientId, from: q.from || null, to: q.to || null }));
     on('GET', '/api/reports/invoice.csv', (_, q) => ({

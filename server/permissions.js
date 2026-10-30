@@ -193,6 +193,7 @@ const RULES = [
   ['GET', '/api/orders/:id/shipment', 'orders.read'],
   ['GET', '/api/orders/:id/delivery-note', 'orders.read'],
   ['POST', '/api/clients/:id/tariff', 'tariff.write'],
+  ['POST', '/api/clients/:id/space', 'tariff.write'],
   ['GET', '/api/reports/invoice', 'reports.read'],
   ['GET', '/api/reports/invoice.csv', 'reports.read'],
   ['GET', '/api/reports/billing.html', 'reports.read'],

@@ -162,6 +162,7 @@
     scanShipment: (wh, a, by) => wh.scanShipment({ orderId: req(a.orderId, 'orderId'), code: req(a.code, 'code'), by }),
     dispatchShipment: (wh, a, by) => wh.dispatchShipment({ orderId: req(a.orderId, 'orderId'), by }),
     setTariff: (wh, a, by) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a, by),
+    setSpaces: (wh, a, by) => wh.setSpaces(req(a.clientId, 'clientId'), a.spaces || [], by),
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),

@@ -88,7 +88,8 @@
     aisleCap: 2,
     escalateAfterMin: 20, // a job waiting this long jumps the queue; 0 = never
     schedule: [], // job order by time of day: [{ from: '06:00', to: '10:00', priority: [...] }]; outside them, priority
-    timeZone: 'Europe/Brussels', // the site's clock, for the schedule
+    timeZone: 'Europe/Brussels', // the site's clock: schedule, billing days and the journal
+    country: 'BE',
     travelOptimise: true, // same priority: nearest job first
     allowSlotOverride: true, // Auto-Shift/put-away: driver may scan another suitable free slot
     groundNextPerItem: 1, // keep the next N pallets out of every item on ground level; 0 = off
@@ -1006,6 +1007,12 @@
       if (patch.timeZone !== undefined) {
         try { new Intl.DateTimeFormat('en-GB', { timeZone: patch.timeZone }); } catch (e) { throw new Error(`Unknown time zone ${patch.timeZone}`); }
       }
+      if (patch.country !== undefined) {
+        const country = String(patch.country || '').trim().toUpperCase();
+        if (!/^[A-Z]{2}$/.test(country)) throw new Error('Country is a two-letter code');
+        patch = { ...patch, country };
+      }
+      if (patch.itemApproval !== undefined) patch = { ...patch, itemApproval: Boolean(patch.itemApproval) };
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
       }

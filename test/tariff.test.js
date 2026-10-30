@@ -13,7 +13,7 @@ const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'si
 
 function whAt(t) {
   let now = t;
-  const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => now });
+  const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => now, config: { timeZone: 'UTC', country: 'BE' } });
   w.setFeatures({ lotExpiry: true, fefo: true });
   w.addClient({ id: 'CL-1', name: 'North Shop' });
   w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1' });
@@ -68,7 +68,7 @@ test('a season that straddles the period is prorated, and overlapping seasons ar
   const w = whAt(Date.UTC(2026, 9, 20));
   const tiers = [{ upTo: 15, rate: 2 }, { upTo: null, rate: 1 }];
   const card = {
-    storageBasis: 'pallet-day', storageRate: 0, storageTierMode: 'graduated', storageTiers: tiers,
+    storageBasis: 'pallet-day', storageRate: 0, storageTierMode: 'graduated', storageTiers: tiers, tierScope: 'version',
     inboundRate: 0, outboundRate: 0, valRate: 0, minimum: 0,
   };
   w.setTariff('CL-1', {
@@ -230,6 +230,67 @@ test('tariff changes are journaled with the user, and an old version cannot be r
   } finally {
     store.close();
   }
+});
+
+test('billing days follow the warehouse timezone, including a short and a long DST day', () => {
+  const spring = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], outLanes: 1, config: { timeZone: 'Europe/Brussels', country: 'BE' }, clock: () => Date.UTC(2026, 3, 1, 12) });
+  spring.addClient({ id: 'CL-1', name: 'North Shop' });
+  spring.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1' });
+  const start = spring.zonedMidnight('2026-03-29');
+  const next = spring.zonedMidnight('2026-03-30');
+  assert.equal(next - start, 23 * 3600000);
+  spring.setTariff('CL-1', { storageBasis: 'pallet-day', storageRate: 24, inboundRate: 0, outboundRate: 0, valRate: 0, minimum: 0 });
+  spring.stockPallet('01-01-0-10', { itemNo: 'SKU1', batch: 'B', expiry: '2027-01-01', qty: 10, clientId: 'CL-1', receivedAt: start });
+  const short = spring.invoice({ clientId: 'CL-1', from: '2026-03-29', to: '2026-03-29' });
+  assert.equal(short.palletDays, 0.96);
+
+  const autumn = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], outLanes: 1, config: { timeZone: 'Europe/Brussels', country: 'BE' }, clock: () => Date.UTC(2026, 9, 26, 12) });
+  assert.equal(autumn.zonedMidnight('2026-10-26') - autumn.zonedMidnight('2026-10-25'), 25 * 3600000);
+  const ny = new Warehouse({ config: { timeZone: 'America/New_York', country: 'US' }, clock: () => Date.UTC(2026, 2, 9, 12) });
+  assert.equal(ny.zonedMidnight('2026-03-09') - ny.zonedMidnight('2026-03-08'), 23 * 3600000);
+
+  spring.setTariff('CL-1', { effectiveFrom: '2026-03-30', storageBasis: 'pallet-day', storageRate: 48, inboundRate: 0, outboundRate: 0, valRate: 0, minimum: 0 });
+  const split = spring.invoice({ clientId: 'CL-1', from: '2026-03-29', to: '2026-03-30' });
+  const parts = split.lines.filter((l) => l.code === 'storage');
+  assert.equal(parts[0].version, 'v1');
+  assert.equal(parts[1].version, 'v2 2026-03-30');
+  assert.equal(parts[0].qty, 0.96);
+  assert.equal(parts[1].qty, 1);
+});
+
+test('a rate card chooses minimum proration, a fixed surcharge, and whether tiers reset each month', () => {
+  const w = whAt(Date.UTC(2026, 9, 20));
+  w.setTariff('CL-1', {
+    storageBasis: 'pallet-day', storageRate: 2, inboundRate: 0, outboundRate: 0, valRate: 0,
+    minimum: 310, minimumMode: 'prorate', tierScope: 'month',
+    seasons: [{ label: 'Peak', months: [10], charge: 'storage', effect: 'each', amount: 0.5 }],
+  });
+  w.stockPallet('01-01-0-10', { itemNo: 'SKU1', batch: 'B', expiry: '2027-01-01', qty: 10, clientId: 'CL-1', receivedAt: Date.UTC(2026, 9, 1) });
+  const ten = w.invoice({ clientId: 'CL-1', from: '2026-10-01', to: '2026-10-10' });
+  assert.equal(storageLines(ten)[0].qty, 10);
+  assert.equal(storageLines(ten)[0].rate, 2.5);
+  assert.match(storageLines(ten)[0].season, /\+0\.5 each/);
+  assert.equal(ten.minimum, 100);
+  assert.equal(ten.subtotal, 25);
+  assert.equal(ten.total, 100);
+
+  w.setTariff('CL-1', {
+    storageBasis: 'pallet-day', storageRate: 0, storageTierMode: 'graduated', tierScope: 'month',
+    storageTiers: [{ upTo: 15, rate: 2 }, { upTo: null, rate: 1 }],
+    inboundRate: 0, outboundRate: 0, valRate: 0, minimum: 0, minimumMode: 'full',
+  });
+  const pallet = w.pallets[Object.keys(w.pallets)[0]];
+  pallet.receivedAt = Date.UTC(2026, 8, 20);
+  const month = w.invoice({ clientId: 'CL-1', from: '2026-09-20', to: '2026-10-10' });
+  const parts = storageLines(month);
+  assert.deepEqual(parts.map((l) => l.amount), [22, 20]);
+  w.setSpaces('CL-1', [{ scope: 'cell', cell: 'A', fee: 80 }], 'mina');
+  const withSpace = w.invoice({ clientId: 'CL-1', from: '2026-09-20', to: '2026-10-10' });
+  const space = withSpace.lines.find((l) => l.code === 'space');
+  assert.equal(space.amount, 80);
+  assert.match(space.label, /cell A/);
+  assert.equal(withSpace.subtotal, 122);
+  assert.throws(() => w.setSpaces('CL-1', [{ scope: 'cell', cell: 'Z', fee: 1 }]), /No cell/);
 });
 
 test('tariff editing is tariff.write for office and manager', async () => {

@@ -57,19 +57,76 @@
     return s;
   }
 
-  function utcDay(t) {
+  const zoneFormats = new Map();
+
+  function zoneFormat(timeZone) {
+    let fmt = zoneFormats.get(timeZone);
+    if (!fmt) {
+      try {
+        fmt = new Intl.DateTimeFormat('en-US', {
+          timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+        });
+      } catch (e) {
+        throw new Error(`Unknown time zone ${timeZone}`);
+      }
+      zoneFormats.set(timeZone, fmt);
+    }
+    return fmt;
+  }
+
+  function localParts(ms, timeZone) {
+    const bag = {};
+    for (const part of zoneFormat(timeZone).formatToParts(new Date(ms))) bag[part.type] = part.value;
+    if (bag.hour === '24') bag.hour = '00';
+    return bag;
+  }
+
+  function localDay(ms, timeZone) {
+    const p = localParts(ms, timeZone);
+    return `${p.year}-${p.month}-${p.day}`;
+  }
+
+  function addCalendarDays(day, n) {
+    const t = Date.parse(`${day}T00:00:00Z`) + n * DAY;
     return new Date(t).toISOString().slice(0, 10);
   }
 
-  function bound(value, end) {
+  function daysInMonth(day) {
+    const y = Number(day.slice(0, 4));
+    const m = Number(day.slice(5, 7));
+    return new Date(Date.UTC(y, m, 0)).getUTCDate();
+  }
+
+  /** UTC instant of local midnight. A short or long civil day (DST) is the gap to the next midnight. */
+  function zonedMidnight(day, timeZone) {
+    let ms = Date.parse(`${day}T00:00:00Z`);
+    for (let i = 0; i < 6; i++) {
+      const p = localParts(ms, timeZone);
+      const seen = Date.parse(`${p.year}-${p.month}-${p.day}T${String(p.hour).padStart(2, '0')}:${p.minute}:${p.second}Z`);
+      const want = Date.parse(`${day}T00:00:00Z`);
+      if (seen === want) return ms;
+      ms += want - seen;
+    }
+    return ms;
+  }
+
+  function bound(value, end, timeZone) {
     if (value == null || value === '') return null;
     if (typeof value === 'number') {
       if (!Number.isFinite(value)) throw new Error('Use dates as YYYY-MM-DD');
       return end ? value + 1 : value;
     }
     const day = parseDay(value, end ? 'Period end' : 'Period start');
-    const t = Date.parse(`${day}T00:00:00Z`);
-    return end ? t + DAY : t;
+    return zonedMidnight(end ? addCalendarDays(day, 1) : day, timeZone);
+  }
+
+  function calendarDays(start, end, timeZone) {
+    const first = localDay(start, timeZone);
+    const last = localDay(end - 1, timeZone);
+    const a = Date.parse(`${first}T00:00:00Z`);
+    const b = Date.parse(`${last}T00:00:00Z`);
+    return Math.round((b - a) / DAY) + 1;
   }
 
   function inWindow(t, start, end) {
@@ -107,10 +164,15 @@
   }
 
   function normalizeEffect(spec, label) {
-    const effect = spec && (spec.effect || spec.seasonEffect);
-    if (effect !== 'override' && effect !== 'surcharge') throw new Error(`Season "${label}" overrides the rate or adds a surcharge`);
-    if (effect === 'override') return { effect, rate: tariffNumber(spec.rate, `Season "${label}" rate`), percent: null };
-    return { effect, rate: null, percent: tariffNumber(spec.percent, `Season "${label}" percent`) };
+    let effect = spec && (spec.effect || spec.seasonEffect);
+    if (effect === 'replace') effect = 'override';
+    if (effect === 'multiply') effect = 'surcharge';
+    if (effect !== 'override' && effect !== 'surcharge' && effect !== 'each') throw new Error(`Season "${label}" overrides the rate or adds a surcharge`);
+    if (effect === 'override') return { effect, rate: tariffNumber(spec.rate, `Season "${label}" rate`), percent: null, amount: null };
+    if (effect === 'each' || spec.amountMode === 'each' || (spec.amount != null && spec.amount !== '' && (spec.percent == null || spec.percent === ''))) {
+      return { effect: 'surcharge', rate: null, percent: null, amount: tariffNumber(spec.amount != null && spec.amount !== '' ? spec.amount : spec.rate, `Season "${label}" amount`) };
+    }
+    return { effect: 'surcharge', rate: null, percent: tariffNumber(spec.percent, `Season "${label}" percent`), amount: null };
   }
 
   function monthsTouched(from, to) {
@@ -244,6 +306,8 @@
       valTierMode: valTiers.mode,
       valTiers: valTiers.tiers,
       minimum: rateOrZero(input.minimum, 'Minimum charge'),
+      minimumMode: input.minimumMode === 'prorate' ? 'prorate' : 'full',
+      tierScope: input.tierScope === 'version' ? 'version' : 'month',
       seasons: normalizeSeasons(input.seasons),
     };
   }
@@ -282,11 +346,11 @@
     return `v${n}`;
   }
 
-  function versionAt(versions, t) {
+  function versionAt(versions, t, timeZone) {
     let chosen = null;
     for (const v of versions) {
       if (v.effectiveFrom == null) { chosen = v; continue; }
-      const start = Date.parse(`${v.effectiveFrom}T00:00:00Z`);
+      const start = zonedMidnight(v.effectiveFrom, timeZone);
       if (t >= start) chosen = v;
       else break;
     }
@@ -300,7 +364,7 @@
       inboundBasis: 'pallet', inboundRate: 0, inboundTierMode: null, inboundTiers: [],
       outboundBasis: 'order', outboundRate: Number(client && client.handlingRate) || 0, outboundTierMode: null, outboundTiers: [],
       valRate: 0, valTierMode: null, valTiers: [],
-      minimum: 0, seasons: [],
+      minimum: 0, minimumMode: 'full', tierScope: 'month', seasons: [],
     };
   }
 
@@ -366,8 +430,8 @@
     return out;
   }
 
-  function seasonAt(version, charge, t) {
-    const day = utcDay(t);
+  function seasonAt(version, charge, t, timeZone) {
+    const day = localDay(t, timeZone);
     const month = Number(day.slice(5, 7));
     let found = null;
     for (const season of version.seasons || []) {
@@ -382,7 +446,15 @@
   function seasonText(season) {
     if (!season) return '';
     if (season.spec.effect === 'override') return `${season.label} override ${season.spec.rate}`;
+    if (season.spec.amount != null) return `${season.label} +${season.spec.amount} each`;
     return `${season.label} +${season.spec.percent}%`;
+  }
+
+  function seasonRate(base, season) {
+    if (!season) return base;
+    if (season.spec.effect === 'override') return season.spec.rate;
+    if (season.spec.amount != null) return base + season.spec.amount;
+    return base * (1 + (season.spec.percent || 0) / 100);
   }
 
   function versionLabel(version) {
@@ -394,21 +466,21 @@
     return Math.round(n * 100) / 100;
   }
 
-  function priceVersion(version, slices) {
-    const code = slices.code;
-    const spec = chargeSpec(version, code);
-    const bands = withFrom(spec.tiers);
-    const total = slices.rows.reduce((s, row) => s + row.qty, 0);
+  function priceSequence(rows, code, timeZone) {
     const groups = [];
     let used = 0;
-    for (const row of slices.rows) {
-      const season = seasonAt(version, code, row.t);
+    for (const row of rows) {
+      const version = row.version;
+      const spec = chargeSpec(version, code);
+      const bands = withFrom(spec.tiers);
+      const season = seasonAt(version, code, row.t, timeZone);
+      const pool = row.poolQty;
       const portions = spec.mode === 'graduated'
         ? graduate(bands, used, row.qty)
-        : [{ qty: row.qty, rate: spec.mode === 'all' ? bandFor(bands, total).rate : spec.rate, band: spec.mode === 'all' ? bandFor(bands, total) : null }];
+        : [{ qty: row.qty, rate: spec.mode === 'all' ? bandFor(bands, pool).rate : spec.rate, band: spec.mode === 'all' ? bandFor(bands, pool) : null }];
       if (spec.mode === 'graduated') used += row.qty;
       for (const portion of portions) {
-        const rate = season ? (season.spec.effect === 'override' ? season.spec.rate : portion.rate * (1 + season.spec.percent / 100)) : portion.rate;
+        const rate = seasonRate(portion.rate, season);
         const shown = Math.round(rate * 10000) / 10000;
         const key = [version.id, season ? season.id : '', portion.band ? `${portion.band.from}:${portion.band.upTo}` : '', shown].join('|');
         const last = groups[groups.length - 1];
@@ -430,17 +502,25 @@
     }).filter((g) => g.qty !== 0);
   }
 
-  function priceRows(versions, rows, code) {
-    const sorted = rows.filter((row) => row.qty > 0).sort((a, b) => a.t - b.t);
-    const groups = new Map();
+  function priceRows(versions, rows, code, timeZone) {
+    const sorted = rows.filter((row) => row.qty > 0).map((row) => ({ ...row, version: versionAt(versions, row.t, timeZone) })).filter((row) => row.version).sort((a, b) => a.t - b.t);
+    const byVersion = new Map();
+    const byMonth = new Map();
     for (const row of sorted) {
-      const version = versionAt(versions, row.t);
-      if (!version) continue;
-      if (!groups.has(version.id)) groups.set(version.id, { version, code, rows: [] });
-      groups.get(version.id).rows.push(row);
+      if (row.version.tierScope === 'version') {
+        if (!byVersion.has(row.version.id)) byVersion.set(row.version.id, []);
+        byVersion.get(row.version.id).push(row);
+      } else {
+        const key = localDay(row.t, timeZone).slice(0, 7);
+        if (!byMonth.has(key)) byMonth.set(key, []);
+        byMonth.get(key).push(row);
+      }
     }
     const lines = [];
-    for (const group of groups.values()) lines.push(...priceVersion(group.version, group));
+    for (const group of [...byVersion.values(), ...byMonth.values()]) {
+      const pool = group.reduce((s, row) => s + row.qty, 0);
+      lines.push(...priceSequence(group.map((row) => ({ ...row, poolQty: pool })), code, timeZone));
+    }
     return lines;
   }
 
@@ -453,37 +533,81 @@
     };
   }
 
-  function boundaryPoints(min, max, versions) {
+  function boundaryPoints(min, max, versions, timeZone) {
     const points = [min, max];
     let recurring = false;
     for (const v of versions) {
       if (v.effectiveFrom) {
-        const t = Date.parse(`${v.effectiveFrom}T00:00:00Z`);
+        const t = zonedMidnight(v.effectiveFrom, timeZone);
         if (t > min && t < max) points.push(t);
       }
       for (const season of v.seasons || []) {
         if (season.from) {
-          const a = Date.parse(`${season.from}T00:00:00Z`);
-          const b = Date.parse(`${season.to}T00:00:00Z`) + DAY;
+          const a = zonedMidnight(season.from, timeZone);
+          const b = zonedMidnight(addCalendarDays(season.to, 1), timeZone);
           if (a > min && a < max) points.push(a);
           if (b > min && b < max) points.push(b);
         }
         if (season.months) recurring = true;
       }
     }
-    if (recurring) {
-      const start = new Date(min);
-      let y = start.getUTCFullYear();
-      let m = start.getUTCMonth();
+    if (recurring || versions.some((v) => v.tierScope !== 'version')) {
+      let day = localDay(min, timeZone).slice(0, 8) + '01';
       for (let i = 0; i < 480; i++) {
-        const t = Date.UTC(y, m, 1);
+        const t = zonedMidnight(day, timeZone);
         if (t >= max) break;
         if (t > min) points.push(t);
-        m += 1;
-        if (m > 11) { m = 0; y += 1; }
+        day = addCalendarDays(day, daysInMonth(day));
       }
     }
     return [...new Set(points)].sort((a, b) => a - b);
+  }
+
+  function padAisle(value) {
+    const s = String(value || '').trim();
+    if (/^\d+$/.test(s)) return s.padStart(2, '0');
+    return s.toUpperCase();
+  }
+
+  function normalizeSpace(wh, raw, index) {
+    if (!raw || typeof raw !== 'object') throw new Error('Dedicated space needs a scope and a fee');
+    const scope = String(raw.scope || '').trim().toLowerCase();
+    if (!['warehouse', 'cell', 'aisle', 'bay', 'position', 'height'].includes(scope)) throw new Error('Dedicated space is the warehouse, a cell, an aisle, a bay, a position or a height');
+    const fee = tariffNumber(raw.fee, 'Space fee');
+    const space = { id: String(raw.id || `S${index + 1}`).slice(0, 12), scope, fee };
+    const aisles = (wh.layout && wh.layout.aisles) || [];
+    if (scope === 'cell') {
+      space.cell = String(raw.cell || raw.ref || '').trim().toUpperCase();
+      if (!space.cell) throw new Error('Name the cell');
+      const known = new Set(Object.values((wh.naming && wh.naming.cellOf) || {}));
+      if (known.size && !known.has(space.cell)) throw new Error(`No cell ${space.cell}`);
+      space.label = `Dedicated space (cell ${space.cell})`;
+    } else if (scope === 'warehouse') {
+      space.label = 'Dedicated space (warehouse)';
+    } else {
+      space.aisle = padAisle(raw.aisle);
+      if (aisles.length && !aisles.includes(space.aisle) && !(wh.layout.blocks || []).includes(space.aisle)) throw new Error(`No aisle ${space.aisle}`);
+      space.label = `Dedicated space (aisle ${space.aisle})`;
+      if (scope !== 'aisle') {
+        const bay = Number(raw.bay);
+        if (!Number.isInteger(bay) || bay < 1) throw new Error('Bay is a whole number above 0');
+        space.bay = bay;
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${bay})`;
+      }
+      if (scope === 'position' || scope === 'height') {
+        const pos = Number(raw.pos != null ? raw.pos : raw.position);
+        if (!Number.isFinite(pos)) throw new Error('Name the position');
+        space.pos = pos;
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${space.bay} position ${pos})`;
+      }
+      if (scope === 'height') {
+        const level = raw.level != null && raw.level !== '' ? raw.level : raw.height;
+        if (level == null || level === '') throw new Error('Name the height');
+        space.level = /^\d+$/.test(String(level)) ? Number(level) : String(level).toUpperCase();
+        space.label = `Dedicated space (aisle ${space.aisle} bay ${space.bay} position ${space.pos} height ${space.level})`;
+      }
+    }
+    return space;
   }
 
   function csvCell(value) {
@@ -1034,9 +1158,26 @@
       return this.importStock(payload);
     };
 
+    proto.timeZone = function () {
+      return (this.config && this.config.timeZone) || 'Europe/Brussels';
+    };
+
+    proto.localDay = function (ms = this.now()) {
+      return localDay(ms, this.timeZone());
+    };
+
+    proto.zonedMidnight = function (day) {
+      return zonedMidnight(day, this.timeZone());
+    };
+
+    proto.formatLocal = function (ms) {
+      const p = localParts(ms, this.timeZone());
+      return `${p.year}-${p.month}-${p.day} ${String(p.hour).padStart(2, '0')}:${p.minute}:${p.second}`;
+    };
+
     proto.decorateTariff = function (client) {
       const list = assertOrder(savedVersions(client).slice());
-      const today = utcDay(this.now());
+      const today = this.localDay();
       return list.map((v) => ({ ...v, readOnly: isReadOnly(list, v, today) }));
     };
 
@@ -1048,7 +1189,7 @@
       const effectiveFrom = hasDate ? parseDay(input.effectiveFrom, 'Effective date') : undefined;
       const versionId = input.versionId ? String(input.versionId).trim() : '';
       const existing = Array.isArray(client.tariffVersions) ? client.tariffVersions.slice() : [];
-      const today = utcDay(this.now());
+      const today = this.localDay();
       let version;
       let next;
       if (versionId) {
@@ -1083,17 +1224,28 @@
         }
       }
       client.tariffVersions = assertOrder(next);
-      const current = versionAt(client.tariffVersions, this.now()) || client.tariffVersions[client.tariffVersions.length - 1];
+      const current = versionAt(client.tariffVersions, this.now(), this.timeZone()) || client.tariffVersions[client.tariffVersions.length - 1];
       client.tariff = { ...current };
       this.log(`Tariff ${client.id} ${version.id} (${version.effectiveFrom || 'from the start'}) saved by ${actor}`, { by: actor });
       return this.decorateTariff(client);
     };
 
+    proto.setSpaces = function (clientId, spaces = [], by) {
+      const client = this._client(clientId);
+      if (!Array.isArray(spaces)) throw new Error('Dedicated space is a list');
+      const list = spaces.map((raw, i) => normalizeSpace(this, raw, i));
+      client.spaces = list;
+      const actor = by || this._actor || 'unknown';
+      this.log(`Dedicated space for ${client.id} saved by ${actor}`, { by: actor });
+      return client.spaces;
+    };
+
     proto.invoice = function ({ clientId, from = null, to = null } = {}) {
       const client = this._client(clientId);
+      const tz = this.timeZone();
       const versions = assertOrder(versionList(client).slice());
-      const start = bound(from, false);
-      const end = bound(to, true);
+      const start = bound(from, false, tz);
+      const end = bound(to, true, tz);
       if (start != null && end != null && end <= start) throw new Error('The billing period ends before it starts');
       const now = this.now();
       const ownerOfPallet = (p) => p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
@@ -1120,7 +1272,7 @@
       if (stays.length) {
         const min = Math.min(...stays.map((s) => s.a));
         const max = Math.max(...stays.map((s) => s.b));
-        const points = boundaryPoints(min, max, versions);
+        const points = boundaryPoints(min, max, versions, tz);
         for (const stay of stays) { points.push(stay.a, stay.b); }
         const cuts = [...new Set(points)].filter((t) => t >= min && t <= max).sort((a, b) => a - b);
         for (let i = 0; i < cuts.length - 1; i++) {
@@ -1139,21 +1291,14 @@
           if (days > 0) storageRows.push({ t: a, days, cubicDays });
         }
       }
-      const storageLines = [];
-      const storageByVersion = new Map();
+      const storageQtyRows = [];
       for (const row of storageRows) {
-        const version = versionAt(versions, row.t);
+        const version = versionAt(versions, row.t, tz);
         if (!version) continue;
-        const basis = version.storageBasis;
-        const qty = basis === 'm3-day' ? row.cubicDays : row.days;
-        if (qty <= 0) continue;
-        if (!storageByVersion.has(version.id)) storageByVersion.set(version.id, []);
-        storageByVersion.get(version.id).push({ t: row.t, qty });
+        const qty = version.storageBasis === 'm3-day' ? row.cubicDays : row.days;
+        if (qty > 0) storageQtyRows.push({ t: row.t, qty });
       }
-      for (const [id, rows] of storageByVersion) {
-        const version = versions.find((v) => v.id === id);
-        storageLines.push(...priceVersion(version, { code: 'storage', rows }));
-      }
+      const storageLines = priceRows(versions, storageQtyRows, 'storage', tz);
       const inboundEvents = [];
       for (const p of Object.values(this.pallets)) {
         if (ownerOfPallet(p) !== client.id || !p.receivedAt || !inWindow(p.receivedAt, start, end)) continue;
@@ -1173,26 +1318,37 @@
       }));
       const valEvents = (this.movements || []).filter((m) => m.event === 'kitted' && ownedMove(m)).map((m) => ({ t: m.t, byBasis: { unit: 1 } }));
       const eventRows = (events, code) => events.flatMap((event) => {
-        const version = versionAt(versions, event.t);
+        const version = versionAt(versions, event.t, tz);
         if (!version) return [];
         const qty = event.byBasis[chargeSpec(version, code).basis] || 0;
         return qty > 0 ? [{ t: event.t, qty }] : [];
       });
       const minAt = end == null ? now : end - 1;
-      const minVersion = versionAt(versions, minAt);
+      const minVersion = versionAt(versions, minAt, tz);
       const lines = [];
       const priced = {
         storage: storageLines,
-        inbound: priceRows(versions, eventRows(inboundEvents, 'inbound'), 'inbound'),
-        outbound: priceRows(versions, eventRows(outboundEvents, 'outbound'), 'outbound'),
-        val: priceRows(versions, eventRows(valEvents, 'val'), 'val'),
+        inbound: priceRows(versions, eventRows(inboundEvents, 'inbound'), 'inbound', tz),
+        outbound: priceRows(versions, eventRows(outboundEvents, 'outbound'), 'outbound', tz),
+        val: priceRows(versions, eventRows(valEvents, 'val'), 'val', tz),
       };
       for (const code of CHARGE_IDS) {
         if (priced[code].length) lines.push(...priced[code]);
         else lines.push(zeroLine(minVersion || versions[versions.length - 1], code));
       }
+      for (const space of client.spaces || []) {
+        lines.push({
+          code: 'space', label: space.label, qty: 1, rate: space.fee, amount: space.fee,
+          tier: '', tierMode: null, season: '', seasonId: null, seasonEffect: null,
+          version: versionLabel(minVersion), versionId: minVersion ? minVersion.id : null,
+        });
+      }
       const subtotal = money(lines.reduce((s, l) => s + l.amount, 0));
-      const minimum = minVersion ? (minVersion.minimum || 0) : 0;
+      let minimum = minVersion ? (minVersion.minimum || 0) : 0;
+      if (minVersion && minVersion.minimumMode === 'prorate' && start != null && end != null && minimum > 0) {
+        const days = calendarDays(start, end, tz);
+        minimum = money(minimum * days / daysInMonth(localDay(minAt, tz)));
+      }
       const topup = money(minimum - subtotal);
       if (topup > 0) {
         lines.push({
@@ -1206,6 +1362,7 @@
       return {
         clientId: client.id, name: client.name, from: start, to: end == null ? null : end - 1,
         periodFrom: typeof from === 'string' ? from : null, periodTo: typeof to === 'string' ? to : null,
+        timeZone: tz, country: (this.config && this.config.country) || null,
         tariff, lines, subtotal, minimum, minimumVersion: versionLabel(minVersion),
         total: money(Math.max(minimum, subtotal)), palletDays: money(palletDays), moves: moves.length,
       };
@@ -1214,13 +1371,13 @@
     proto.invoiceHtml = function (opts) {
       const inv = this.invoice(opts);
       const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.tier || '')}</td><td>${htmlEscape(l.season || '')}</td><td>${htmlEscape(l.version || '')}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
-      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} to ${htmlEscape(inv.periodTo || '…')} UTC` : 'Open period, up to the current time';
+      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} to ${htmlEscape(inv.periodTo || '…')} (${htmlEscape(inv.timeZone || '')})` : 'Open period, up to the current time';
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${htmlEscape(inv.clientId)}</title>
         <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.total{font-size:18px;font-weight:700}.note{color:#5d6b76;font-size:13px;max-width:46rem}@media print{body{margin:12px}}</style></head>
         <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p><p>${period}</p>
         <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Tier</th><th>Season</th><th>Version</th><th>Amount</th></tr>${rows}</table>
         <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}${inv.minimumVersion ? ` (${htmlEscape(inv.minimumVersion)})` : ''}.</p><p class="total">Total ${htmlEscape(inv.total)}</p>
-        <p class="note">A billing period named with dates is whole UTC days, first and last day included. Storage that crosses a season or a new rate card is split at midnight. An inbound, outbound or kitting event uses the card in effect at its own time. The monthly minimum is the full amount on the card in effect on the last day.</p></body></html>`;
+        <p class="note">Dates are local midnights in ${htmlEscape(inv.timeZone || 'the warehouse timezone')}. Storage that crosses a season or a new rate card is split there. An inbound, outbound or kitting event uses the card in effect at its own time. The monthly minimum is taken from the card in effect on the last day.</p></body></html>`;
     };
 
     proto.invoiceCsv = function (opts) {
