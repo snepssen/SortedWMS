@@ -69,6 +69,7 @@
 
     // Master data and imports
     addItem: (wh, a) => wh.addItem(a),
+    approveItem: (wh, a) => wh.approveItem(req(a.itemNo, 'itemNo')),
     importItems: (wh, a) => (a.rows || []).map((r) => (wh.items[r.itemNo] ? null : wh.addItem(r))).filter(Boolean).length,
     importLocations: (wh, a) => wh.importLocations(a.rows || []),
     // Orders from a spreadsheet: one row per line (orderId, customer, lane, itemNo, pallets, process).

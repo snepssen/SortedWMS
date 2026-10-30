@@ -68,7 +68,7 @@
   'use strict';
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves' };
+  const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
@@ -76,8 +76,9 @@
     technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
   };
-  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator' };
+  const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator', client: 'Client' };
   let me = null;
   let panel = '';
 
@@ -240,10 +241,10 @@
     },
     async users() {
       const { users } = await api('GET', '/api/users');
-      const roles = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
+      const roles = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine', 'client'];
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
-      return `<section><h2>Users and roles</h2><p class="hint">Assign one of the six roles. The last administrator stays an administrator.</p>
-        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('operator')}</select></label><button class="primary">Add user</button></form>
+      return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
+        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('operator')}</select></label><label>Client id<input name="clientId" placeholder="CL-DAIRY, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
@@ -262,6 +263,7 @@
         <form class="form" data-act="config"><label>Trucks per aisle<input name="aisleCap" type="number" min="1" value="${esc(summary.config.aisleCap)}"></label><button class="primary">Save</button></form>
         <h3>Country and timezone</h3>
         <p class="hint">Billing days, seasons, rate-card dates and the journal use this warehouse's local midnight. Daylight saving is included.</p>
+        <form class="form" data-act="approval"><label><input type="checkbox" name="itemApproval" ${summary.config.itemApproval ? 'checked' : ''}> Client items need warehouse approval</label><button>Save approval</button></form>
         <form class="form" data-act="place" id="placeForm"><label>Country<select name="country" id="countryPick">${[['BE','Belgium','Europe/Brussels'],['NL','Netherlands','Europe/Amsterdam'],['DE','Germany','Europe/Berlin'],['FR','France','Europe/Paris'],['GB','United Kingdom','Europe/London'],['IE','Ireland','Europe/Dublin'],['ES','Spain','Europe/Madrid'],['IT','Italy','Europe/Rome'],['PL','Poland','Europe/Warsaw'],['SE','Sweden','Europe/Stockholm'],['CH','Switzerland','Europe/Zurich'],['US','United States','America/New_York'],['CA','Canada','America/Toronto'],['BR','Brazil','America/Sao_Paulo'],['ZA','South Africa','Africa/Johannesburg'],['AE','United Arab Emirates','Asia/Dubai'],['SG','Singapore','Asia/Singapore'],['JP','Japan','Asia/Tokyo'],['AU','Australia','Australia/Sydney'],['NZ','New Zealand','Pacific/Auckland']].map(([code, name, zone]) => `<option value="${code}" data-zone="${zone}" ${summary.config.country === code ? 'selected' : ''}>${code} ${name}</option>`).join('')}</select></label><label>Timezone<input name="timeZone" id="timeZone" value="${esc(summary.config.timeZone || 'Europe/Brussels')}" list="zones"></label><datalist id="zones">${['Europe/Brussels','Europe/Amsterdam','Europe/Berlin','Europe/Paris','Europe/London','Europe/Dublin','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Toronto','America/Sao_Paulo','Africa/Johannesburg','Asia/Dubai','Asia/Singapore','Asia/Tokyo','Australia/Sydney','Pacific/Auckland','UTC'].map((z) => `<option value="${z}">`).join('')}</datalist><button class="primary">Save place</button></form>
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
@@ -313,18 +315,40 @@
         <p><a href="/app#reports">Stock and expiry reports</a> · <a href="/loading">Loading</a></p></section></div>`;
     },
     async clients() { return PANELS.office(); },
+    async stock() {
+      if (me.role === 'client') {
+        const rows = await api('GET', '/api/stock');
+        return `<section><h2>Your stock</h2>${table(['Item', 'Name', 'Available', 'Short', 'Blocked'], rows.map((r) => `<tr><td>${esc(r.item.itemNo)}</td><td>${esc(r.item.name)}</td><td>${esc(r.available)}</td><td>${esc(r.short)}</td><td>${esc(r.blocked)}</td></tr>`))}</section>`;
+      }
+      return PANELS.reports();
+    },
     async items() {
+      if (me.role === 'client') {
+        const items = await api('GET', '/api/items');
+        const features = me.features || {};
+        const showFood = features.temperatureZones || features.lotExpiry;
+        const showFrozen = features.temperatureZones;
+        const showValue = features.highValueSecurity;
+        return `<section><h2>Your items</h2><p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
+          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<button class="primary">Add item</button></form>
+          ${table(['SKU', 'Description', 'Unit', 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td><td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
+      }
       const items = await api('GET', '/api/items');
       const clients = await api('GET', '/api/clients?archived=1');
       const opts = clients.filter((c) => c.status === 'active').map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
       return `<section><h2>Items</h2><form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><button class="primary">Add item</button></form>
-        ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'archived' ? 'archived' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
+        ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
     },
     async inbound() {
       const deliveries = await api('GET', '/api/deliveries');
       const clients = await api('GET', '/api/clients');
       return `<section><h2>Inbound and ASN</h2><form class="form" data-act="asn"><label>Id<input name="id" required></label><label>ASN<input name="asn"></label><label>Supplier<input name="supplier" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Pallets<input name="pallets" type="number" value="1"></label><label>Client<select name="clientId"><option value="">Any</option>${clients.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>Expected<input name="expectedAt" type="date"></label><button class="primary">Announce</button></form>
         ${table(['Delivery', 'Supplier', 'ASN', 'Expected', 'Received', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || '')}</td><td>${esc(d.expectedAt || '')}</td><td>${(d.received || []).length}/${esc(d.expected)}</td><td>${esc(d.status)}</td></tr>`))}</section>`;
+    },
+    async orders() {
+      const orders = await api('GET', '/api/orders');
+      if (me.role === 'client') return `<section><h2>Your orders</h2>${table(['Order', 'Customer', 'Status', 'Lane'], orders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td><td>${esc(o.lane)}</td></tr>`))}</section>`;
+      return PANELS.outbound();
     },
     async outbound() {
       const orders = await api('GET', '/api/orders');
@@ -594,6 +618,7 @@
         return;
       }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
+      if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'loc-del') { await api('POST', '/api/locations/' + encodeURIComponent(b.dataset.id) + '/delete', {}); return draw(); }
       if (act === 'holder-del') { await api('POST', '/api/holders/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'urgent') { await api('POST', '/api/tasks/' + b.dataset.id + '/urgent', { urgent: true }); return draw(); }
@@ -674,13 +699,15 @@
     if (el) el.innerHTML = msg(`${source}: ${text}`, out.result ? out.result.ok !== false : true);
   }
   async function act(name, data) {
-    if (name === 'user-create') return api('POST', '/api/users', data);
     if (name === 'role-save') {
       const permissions = [...document.querySelectorAll('input[name=perm]:checked')].map((n) => n.value);
       return api('POST', '/api/roles/' + data.role, { permissions });
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
+    if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
+    if (name === 'client-item') return api('POST', '/api/items', { ...data, palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' });
+    if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null });
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') return api('POST', '/api/devices/' + encodeURIComponent(data.id) + '/operator', { operator: data.operator });
     if (name === 'client-add') return api('POST', '/api/clients', data);
@@ -849,6 +876,8 @@
     }
     const session = await api('GET', '/api/session');
     me = session.user;
+    me.features = session.features || {};
+    me.itemApproval = Boolean(session.itemApproval);
     if (me.mustChangePassword) {
       document.body.dataset.role = me.role;
       $('#title').textContent = 'Change password';

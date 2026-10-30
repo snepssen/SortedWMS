@@ -22,6 +22,7 @@ const PERMISSIONS = [
   ['tariff.write', 'Edit client rate cards'],
   ['items.read', 'View items'],
   ['items.write', 'Add, edit and remove items'],
+  ['items.approve', 'Approve items submitted by a client'],
   ['locations.read', 'View locations'],
   ['locations.write', 'Create, edit and delete locations'],
   ['holders.read', 'View holders'],
@@ -64,6 +65,7 @@ const ROLES = [
   ['technician', 'Technical'],
   ['operator', 'Operator'],
   ['machine', 'Machine operator'],
+  ['client', 'Client'],
 ];
 
 const ROLE_IDS = ROLES.map(([id]) => id);
@@ -74,7 +76,7 @@ const DEFAULTS = {
   administrator: ALL,
   manager: ALL.filter((id) => !EXCEPT.has(id)),
   office: [
-    'clients.read', 'clients.write', 'tariff.write', 'items.read', 'items.write',
+    'clients.read', 'clients.write', 'tariff.write', 'items.read', 'items.write', 'items.approve',
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
@@ -93,6 +95,7 @@ const DEFAULTS = {
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'tasks.read',
     'putaway.execute', 'moves.execute', 'scans.execute', 'wms.read', 'labels.print', 'sites.switch',
   ],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read'],
 };
 
 // null permission means the route is public.
@@ -122,6 +125,7 @@ const RULES = [
   ['POST', '/api/items', 'items.write'],
   ['POST', '/api/items/:itemNo', 'items.write'],
   ['POST', '/api/items/:itemNo/archive', 'items.write'],
+  ['POST', '/api/items/:itemNo/approve', 'items.approve'],
   ['POST', '/api/items/:itemNo/remove', 'items.write'],
   ['GET', '/api/locations', 'locations.read'],
   ['POST', '/api/locations', 'locations.write'],

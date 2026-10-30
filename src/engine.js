@@ -527,7 +527,7 @@
      * numbers that mean this item, such as a supplier's article number,
      * printed as "(91)40012009" on the label.
      */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active' }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
@@ -552,11 +552,24 @@
       this.items[itemNo] = {
         itemNo, gtin: gtin14, name, category, palletQty, minShipDays, storage,
         unitGtin: unitGtin ? GS1.gtin14(unitGtin) : null, unitsPerCase: unitGtin ? Number(unitsPerCase) : null, codes: list,
-        clientId: owner, uom: uom || 'case', status: status === 'archived' ? 'archived' : 'active',
+        clientId: owner, uom: uom || 'case', status: status === 'archived' ? 'archived' : status === 'pending' ? 'pending' : 'active',
         lengthMm: measure(lengthMm, 'Length'), widthMm: measure(widthMm, 'Width'), heightMm: measure(heightMm, 'Height'), weightKg: measure(weightKg, 'Weight'),
         barcodes: barcodeList,
+        flags: { food: Boolean(food), frozen: Boolean(frozen), highValue: Boolean(highValue) },
       };
+      this.log(`Item ${itemNo} added by ${this._actor || 'unknown'}`, { by: this._actor || 'unknown' });
       return this.items[itemNo];
+    }
+
+    approveItem(itemNo) {
+      const item = this.items[itemNo];
+      if (!item) throw new Error(`Unknown item ${itemNo}`);
+      if (item.status !== 'pending') throw new Error(`${itemNo} is not waiting for approval`);
+      item.status = 'active';
+      item.approvedBy = this._actor || 'unknown';
+      item.approvedAt = this.now();
+      this.log(`Item ${itemNo} approved by ${item.approvedBy}`, { by: item.approvedBy });
+      return item;
     }
 
     /** Manager setting: days of shelf life a pallet must have left to be shipped. */
@@ -678,6 +691,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       if (item.status === 'archived') throw new Error(`Item ${itemNo} is archived`);
+      if (item.status === 'pending') throw new Error(`Item ${itemNo} is waiting for approval`);
       const owner = clientId ? String(clientId).trim().toUpperCase() : (item.clientId || null);
       if (owner && item.clientId && owner !== item.clientId) throw new Error(`Item ${itemNo} belongs to another client`);
       const client = owner && this.clients && this.clients[owner];
@@ -1111,6 +1125,7 @@
         if (!line || !this.items[line.itemNo]) throw new Error(`Unknown item ${line?.itemNo}`);
         const item = this.items[line.itemNo];
         if (item.status === 'archived') throw new Error(`Item ${line.itemNo} is archived`);
+        if (item.status === 'pending') throw new Error(`Item ${line.itemNo} is waiting for approval`);
         const owner = item.clientId && this.clients && this.clients[item.clientId];
         if (owner && owner.status === 'archived') throw new Error(`Client ${owner.name} is archived`);
         if (clientId && item.clientId && item.clientId !== clientId) throw new Error(`Item ${line.itemNo} belongs to another client`);

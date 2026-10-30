@@ -184,7 +184,12 @@
       }
       if (patch.minShipDays != null) this.setMinShipDays(itemNo, Number(patch.minShipDays));
       if (patch.status === 'archived' || patch.status === 'active') item.status = patch.status;
-      this.log(`Item ${itemNo} updated`);
+      for (const key of ['food', 'frozen', 'highValue']) if (key in patch) {
+        item.flags = item.flags || {};
+        item.flags[key] = Boolean(patch[key]);
+      }
+      const actor = this._actor || 'unknown';
+      this.log(`Item ${itemNo} updated by ${actor}`, { by: actor });
       return item;
     };
 
@@ -192,7 +197,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       item.status = 'archived';
-      this.log(`Item ${itemNo} archived`);
+      this.log(`Item ${itemNo} archived by ${this._actor || 'unknown'}`, { by: this._actor || 'unknown' });
       return item;
     };
 

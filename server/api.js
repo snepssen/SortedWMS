@@ -151,6 +151,9 @@
       printers.flush(wh().printQueue);
       return result;
     };
+    let currentActor = null;
+    const ownClient = () => (currentActor && currentActor.role === 'client' ? String(currentActor.clientId || '').toUpperCase() : null);
+    const deny = () => ({ status: 403, error: 'That belongs to another client' });
 
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
@@ -158,7 +161,7 @@
     on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
-    on('GET', '/api/orders', () => Object.values(wh().orders).map((o) => ({ ...o,
+    on('GET', '/api/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ ...o,
       trailerReadiness: wh().trailerReadiness(o.id),
       shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),
     })));
@@ -171,8 +174,8 @@
         total: o.lines.reduce((n, l) => n + l.pallets, 0), loaded: pallets.filter((p) => o.loading && p.loc === o.loading.location).length, pallets };
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
-    on('GET', '/api/items', () => Object.values(wh().items));
-    on('GET', '/api/stock', () => wh().stockSummary().map((r) => ({ ...r, next: palletView(wh(), r.next) })));
+    on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own); });
+    on('GET', '/api/stock', () => { const own = ownClient(); return wh().stockSummary().filter((r) => own == null || (r.item && r.item.clientId === own)).map((r) => ({ ...r, next: palletView(wh(), r.next) })); });
     on('GET', '/api/quality', () => Object.values(wh().pallets).filter((p) => p.qualityHistory && p.qualityHistory.length).map((p) => palletView(wh(), p)));
     const recallView = (itemNo, batch) => {
       const r = wh().batchRecall(itemNo, batch);
@@ -297,19 +300,45 @@
       const stock = wh().stockForClient(c.id).filter((p) => p.loc && p.status !== 'shipped');
       return { ...c, items: items.length, pallets: stock.length, qty: stock.reduce((n, p) => n + (p.qty || 0), 0), tariffVersions: wh().decorateTariff(c) };
     };
-    on('GET', '/api/clients', (_, q) => Object.values(wh().clients || {}).filter((c) => q.archived === '1' || c.status !== 'archived').map(clientView));
+    on('GET', '/api/clients', (_, q) => { const own = ownClient(); return Object.values(wh().clients || {}).filter((c) => (own == null || c.id === own) && (q.archived === '1' || c.status !== 'archived')).map(clientView); });
     on('GET', '/api/clients/:id', ({ id }) => {
       const c = wh().clients[decodeURIComponent(id).toUpperCase()];
       if (!c) return { status: 404, error: `Unknown client ${id}` };
+      const own = ownClient();
+      if (own != null && c.id !== own) return deny();
       return { ...clientView(c), itemList: Object.values(wh().items).filter((i) => i.clientId === c.id), stock: wh().stockForClient(c.id).filter((p) => p.status !== 'shipped').map((p) => palletView(wh(), p)) };
     });
     on('POST', '/api/clients', (_, q, b, by) => run('addClient', b, by));
     on('POST', '/api/clients/:id', ({ id }, q, b, by) => run('updateClient', { ...b, id: decodeURIComponent(id) }, by));
     on('POST', '/api/clients/:id/archive', ({ id }, q, b, by) => run('archiveClient', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/clients/:id/restore', ({ id }, q, b, by) => run('restoreClient', { id: decodeURIComponent(id) }, by));
-    on('POST', '/api/items', (_, q, b, by) => run('addItem', b, by));
-    on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => run('updateItem', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
-    on('POST', '/api/items/:itemNo/archive', ({ itemNo }, q, b, by) => run('archiveItem', { itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items', (_, q, b, by) => {
+      const own = ownClient();
+      const body = { ...b };
+      if (own != null) {
+        if (!own) return deny();
+        body.clientId = own;
+        if (wh().config && wh().config.itemApproval) body.status = 'pending';
+      }
+      return run('addItem', body, by);
+    });
+    on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      const own = ownClient();
+      const item = wh().items[key];
+      if (own != null && (!item || item.clientId !== own)) return deny();
+      const body = { ...b, itemNo: key };
+      if (own != null) delete body.clientId;
+      return run('updateItem', body, by);
+    });
+    on('POST', '/api/items/:itemNo/archive', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      const own = ownClient();
+      const item = wh().items[key];
+      if (own != null && (!item || item.clientId !== own)) return deny();
+      return run('archiveItem', { itemNo: key }, by);
+    });
+    on('POST', '/api/items/:itemNo/approve', ({ itemNo }, q, b, by) => run('approveItem', { itemNo: decodeURIComponent(itemNo) }, by));
     on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => run('removeItem', { itemNo: decodeURIComponent(itemNo) }, by));
     on('GET', '/api/locations', (_, q) => {
       let list = Object.values(wh().locations);
@@ -465,7 +494,8 @@
     // request again when the answer is late; the repeat gets the first answer instead of
     // happening twice (a pallet scanned twice in Auto means "move it").
     const answered = new Map();
-    function handle(method, rawUrl, body = {}, by = 'office', requestId = null) {
+    function handle(method, rawUrl, body = {}, by = 'office', requestId = null, actor = null) {
+      currentActor = actor || null;
       if (method !== 'GET' && requestId) {
         const key = `${by}|${method} ${rawUrl}|${requestId}`;
         if (answered.has(key)) return answered.get(key);
