@@ -22,7 +22,7 @@
   nav button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
   button.primary { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
   main { padding: 16px; max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
   h2 { font-size: 16px; margin: 0 0 8px; }
   .hint, .dim { color: var(--dim); }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
@@ -71,8 +71,8 @@
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
@@ -337,11 +337,103 @@
         <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
         <p class="dim">${low.length} low-stock alert(s).</p>
         <h3>Tariff</h3>
-        <form class="form" data-act="tariff"><label>Client<input name="clientId" value="CL-DAIRY"></label><label>Storage basis<select name="storageBasis"><option>pallet-day</option><option>location-day</option><option>m3-day</option></select></label><label>Storage rate<input name="storageRate" type="number" value="1.5" step="0.01"></label><label>Inbound<select name="inboundBasis"><option>pallet</option><option>line</option></select></label><label>Inbound rate<input name="inboundRate" type="number" value="2" step="0.01"></label><label>Outbound<select name="outboundBasis"><option>order</option><option>line</option><option>carton</option></select></label><label>Outbound rate<input name="outboundRate" type="number" value="3" step="0.01"></label><label>VAL / unit<input name="valRate" type="number" value="0.4" step="0.01"></label><label>Minimum<input name="minimum" type="number" value="50" step="0.01"></label><button>Save tariff</button></form>
-        <p><a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a></p>
+        <p><a href="/app#tariff">Rate cards</a> set tiers, seasons and versions. <a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a> · <a href="/api/reports/invoice.csv?clientId=CL-DAIRY">Invoice CSV</a></p>
         <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)}</td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
         <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
         <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
+    },
+    async tariff() {
+      const clients = await api('GET', '/api/clients?archived=1');
+      const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+      const clientId = params.get('client') || (clients.find((c) => c.status !== 'archived') || clients[0] || {}).id || '';
+      const client = clientId ? await api('GET', '/api/clients/' + encodeURIComponent(clientId)) : null;
+      const versions = (client && client.tariffVersions) || [];
+      const latest = versions[versions.length - 1] || null;
+      const editing = Boolean(latest && !latest.readOnly);
+      const today = new Date().toISOString().slice(0, 10);
+      const from = params.get('from') || (today.slice(0, 8) + '01');
+      const to = params.get('to') || today;
+      const card = latest || {};
+      const writable = can('tariff.write');
+      const opt = (values, current) => values.map((v) => `<option value="${esc(v.id)}" ${v.id === current ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+      const basis = (name, values, current) => `<label>Basis<select name="${name}Basis">${values.map((v) => `<option ${v === (current || values[0]) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
+      const tierRows = (charge) => {
+        const tiers = card[charge + 'Tiers'] || [];
+        return [0, 1, 2].map((i) => {
+          const tier = tiers[i] || {};
+          const upTo = tier.upTo == null || tier.rate == null ? '' : tier.upTo;
+          const rate = tier.rate == null ? '' : tier.rate;
+          return `<tr><td><input name="${charge}UpTo${i}" type="number" min="0" step="0.01" value="${esc(upTo)}" placeholder="${i === 2 ? 'and above' : ''}"></td><td><input name="${charge}Rate${i}" type="number" min="0" step="0.01" value="${esc(rate)}"></td></tr>`;
+        }).join('');
+      };
+      const chargeBlock = (title, charge, bases) => {
+        const mode = card[charge + 'TierMode'] || '';
+        const rateName = charge === 'val' ? 'valRate' : charge + 'Rate';
+        const rate = card[rateName] == null ? '' : card[rateName];
+        return `<h3>${title}</h3><div class="form">${bases ? basis(charge, bases, card[charge + 'Basis']) : ''}<label>Flat rate<input name="${rateName}" type="number" min="0" step="0.01" value="${esc(rate)}"></label><label>Tiers<select name="${charge}TierMode"><option value="" ${mode ? '' : 'selected'}>Flat rate</option><option value="all" ${mode === 'all' ? 'selected' : ''}>All units at the tier rate</option><option value="graduated" ${mode === 'graduated' ? 'selected' : ''}>Graduated bands</option></select></label></div><table><tr><th>Up to</th><th>Rate</th></tr>${tierRows(charge)}</table>`;
+      };
+      const seasonCharge = (s) => {
+        const keys = Object.keys((s && s.charges) || {});
+        if (keys.length === 4) return 'all';
+        return keys[0] || 'storage';
+      };
+      const seasonRows = [0, 1, 2, 3].map((i) => {
+        const s = (card.seasons || [])[i] || {};
+        const charge = seasonCharge(s.charges ? s : null);
+        const spec = (s.charges && (s.charges[charge === 'all' ? 'storage' : charge])) || {};
+        const kind = s.months ? 'months' : 'dates';
+        return `<tr>
+          <td><input name="season${i}Label" autocomplete="off" value="${esc(s.label || '')}" placeholder="Name"></td>
+          <td><select name="season${i}Charge">${opt([{ id: 'storage', label: 'Storage' }, { id: 'inbound', label: 'Inbound' }, { id: 'outbound', label: 'Outbound' }, { id: 'val', label: 'VAL' }, { id: 'all', label: 'All charges' }], s.label ? charge : 'storage')}</select></td>
+          <td><select name="season${i}Kind"><option value="dates" ${kind === 'dates' ? 'selected' : ''}>Dates</option><option value="months" ${kind === 'months' ? 'selected' : ''}>Months each year</option></select></td>
+          <td><input name="season${i}From" type="date" value="${esc(s.from || '')}"></td>
+          <td><input name="season${i}To" type="date" value="${esc(s.to || '')}"></td>
+          <td><input name="season${i}Months" autocomplete="off" value="${esc((s.months || []).join(', '))}" placeholder="1–12"></td>
+          <td><select name="season${i}Effect"><option value="surcharge" ${spec.effect === 'override' ? '' : 'selected'}>Surcharge %</option><option value="override" ${spec.effect === 'override' ? 'selected' : ''}>Override rate</option></select></td>
+          <td><input name="season${i}Percent" type="number" min="0" step="0.01" value="${esc(spec.percent == null ? '' : spec.percent)}"></td>
+          <td><input name="season${i}Rate" type="number" min="0" step="0.01" value="${esc(spec.rate == null ? '' : spec.rate)}"></td>
+        </tr>`;
+      }).join('');
+      let preview = '';
+      if (params.get('preview') === '1' && clientId) {
+        try {
+          const q = new URLSearchParams({ clientId });
+          if (from) q.set('from', from);
+          if (to) q.set('to', to);
+          const inv = await api('GET', '/api/reports/invoice?' + q.toString());
+          preview = `<h3>Preview ${esc(inv.periodFrom || '')} to ${esc(inv.periodTo || '')}</h3>${table(['Charge', 'Qty', 'Rate', 'Tier', 'Season', 'Version', 'Amount'], inv.lines.map((l) => `<tr><td>${esc(l.label)}</td><td>${esc(l.qty)}</td><td>${esc(l.rate)}</td><td>${esc(l.tier || '')}</td><td>${esc(l.season || '')}</td><td>${esc(l.version || '')}</td><td>${esc(l.amount)}</td></tr>`))}<p>Subtotal ${esc(inv.subtotal)}. Minimum ${esc(inv.minimum)}${inv.minimumVersion ? ` (${esc(inv.minimumVersion)})` : ''}. <b>Total ${esc(inv.total)}</b></p>`;
+        } catch (e) { preview = msg(e.message, false); }
+      }
+      const tooWide = latest && (['storage', 'inbound', 'outbound', 'val'].some((c) => (latest[c + 'Tiers'] || []).length > 3) || (latest.seasons || []).length > 4);
+      const versionTable = table(['Version', 'Effective', 'Saved by', 'Status'], versions.map((v) => `<tr><td>${esc(v.id)}</td><td>${esc(v.effectiveFrom || 'From the start')}</td><td>${esc(v.updatedBy || v.createdBy || '')}</td><td>${v.readOnly ? '<span class="tag">Read-only</span>' : '<span class="tag">Current</span>'}</td></tr>`));
+      const editor = writable ? `<form data-act="tariff-save" autocomplete="off">
+        <input type="hidden" name="clientId" value="${esc(clientId)}">
+        ${editing ? `<input type="hidden" name="versionId" value="${esc(latest.id)}">` : ''}
+        <div class="form"><label>Effective from<input name="effectiveFrom" type="date" value="${esc(editing ? (latest.effectiveFrom || '') : (latest ? today : ''))}"></label><label>Monthly minimum<input name="minimum" type="number" min="0" step="0.01" value="${esc(card.minimum == null ? 0 : card.minimum)}"></label></div>
+        <p class="hint">${editing ? 'Save changes keeps this version. Save as new version needs a later effective date and leaves this one as it is.' : (latest ? `${esc(latest.id)} is read-only. Saving starts a new version on the effective date.` : 'Leave the date blank for a card that covers every earlier day. The next dated version makes this one read-only.')}</p>
+        ${chargeBlock('Storage', 'storage', ['pallet-day', 'location-day', 'm3-day'])}
+        <h3>Seasons</h3>
+        <p class="hint">A date range, or months that repeat every year. Surcharge adds a percent to the tier or flat rate. Override replaces the rate on those days. Two seasons cannot cover the same charge on the same day.</p>
+        <div style="overflow-x:auto"><table><tr><th>Name</th><th>Charge</th><th>When</th><th>From</th><th>To</th><th>Months</th><th>Effect</th><th>Percent</th><th>Rate</th></tr>${seasonRows}</table></div>
+        ${chargeBlock('Inbound', 'inbound', ['pallet', 'line'])}
+        ${chargeBlock('Outbound', 'outbound', ['order', 'line', 'carton'])}
+        ${chargeBlock('VAL / kitting', 'val', null)}
+        <p class="hint">All units: the whole quantity uses the band it falls in, and the top of a band is included. Graduated: each band is charged on its own, earliest days first. Leave the last up-to blank.</p>
+        ${tooWide ? '<p class="msg bad">This card has more tiers or seasons than the form. Saving from here would drop the extra rows.</p>' : ''}
+        <p>${editing ? '<button class="primary">Save changes</button> <button type="submit" data-new="1">Save as new version</button>' : `<button class="primary" data-new="1">${latest ? 'Save as new version' : 'Save rate card'}</button>`}</p>
+      </form>` : '<p class="hint">Editing a rate card is for the office and a manager.</p>';
+      const q = new URLSearchParams({ clientId });
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      return `<section><h2>Rate card${client ? ' · ' + esc(client.name) : ''}</h2>
+        <p class="hint">Versions stay in the journal with the person who saved them. A period that crosses a season or a new version is split at midnight UTC. The monthly minimum is the one in effect on the last day.</p>
+        <label>Client <select id="tariffClient">${clients.map((c) => `<option value="${esc(c.id)}" ${c.id === clientId ? 'selected' : ''}>${esc(c.id)} ${esc(c.name)}</option>`).join('')}</select></label>
+        ${versionTable}</section>
+        <section><h2>${editing ? 'Edit ' + esc(latest.id) : (latest ? 'New version' : 'New rate card')}</h2>${editor}</section>
+        <section><h2>Invoice preview</h2>
+        <form class="form" data-act="tariff-preview"><input type="hidden" name="clientId" value="${esc(clientId)}"><label>From<input name="from" type="date" value="${esc(from)}"></label><label>To<input name="to" type="date" value="${esc(to)}"></label><button class="primary">Preview invoice</button></form>
+        <p><a href="/api/reports/billing.html?${q.toString()}" target="_blank">Printable invoice</a> · <a href="/api/reports/invoice.csv?${q.toString()}">Invoice CSV</a></p>
+        ${preview}</section>`;
     },
     async labels() {
       const holders = await api('GET', '/api/holders');
@@ -504,6 +596,7 @@
     if (e.target.id === 'devicePick') { sessionStorage.setItem('device', e.target.value); draw(); }
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
+    if (e.target.id === 'tariffClient') { history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
   };
   $('#main').onsubmit = async (e) => {
     const form = e.target;
@@ -511,6 +604,14 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
+      if (form.dataset.act === 'tariff-preview') {
+        const q = new URLSearchParams({ client: data.clientId, from: data.from || '', to: data.to || '', preview: '1' });
+        history.replaceState(null, '', '/app#tariff?' + q.toString());
+        panel = 'tariff';
+        draw();
+        return;
+      }
+      if (form.dataset.act === 'tariff-save') data.asNew = (e.submitter && e.submitter.dataset.new) || '';
       if (form.dataset.act === 'history') {
       const q = new URLSearchParams();
       if (data.user) q.set('user', data.user);
@@ -614,6 +715,36 @@
     if (name === 'scan-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/scan', { code: data.code });
     if (name === 'dispatch-ship') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/shipment/dispatch', {});
     if (name === 'tariff') return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', data);
+    if (name === 'tariff-save') {
+      const body = { minimum: data.minimum, seasons: [] };
+      if (data.effectiveFrom) body.effectiveFrom = data.effectiveFrom;
+      if (data.asNew !== '1' && data.versionId) body.versionId = data.versionId;
+      for (const c of ['storage', 'inbound', 'outbound', 'val']) {
+        if (c !== 'val') body[c + 'Basis'] = data[c + 'Basis'];
+        body[c + 'Rate'] = data[c + 'Rate'];
+        if (data[c + 'TierMode']) body[c + 'TierMode'] = data[c + 'TierMode'];
+        const tiers = [];
+        for (let i = 0; i < 3; i++) {
+          const rate = data[c + 'Rate' + i];
+          if (rate === '' || rate == null) continue;
+          const upTo = data[c + 'UpTo' + i];
+          tiers.push({ upTo: upTo === '' || upTo == null ? null : Number(upTo), rate: Number(rate) });
+        }
+        if (tiers.length) body[c + 'Tiers'] = tiers;
+      }
+      for (let i = 0; i < 4; i++) {
+        if (!data['season' + i + 'Label']) continue;
+        const row = { label: data['season' + i + 'Label'], charge: data['season' + i + 'Charge'], effect: data['season' + i + 'Effect'] };
+        if (data['season' + i + 'Kind'] === 'months') row.months = String(data['season' + i + 'Months'] || '').split(/[^0-9]+/).filter(Boolean).map(Number);
+        else { row.from = data['season' + i + 'From']; row.to = data['season' + i + 'To']; }
+        if (row.effect === 'override') row.rate = data['season' + i + 'Rate'];
+        else row.percent = data['season' + i + 'Percent'];
+        body.seasons.push(row);
+      }
+      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      panel = 'tariff';
+      return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', body);
+    }
     if (name === 'pick-face') return api('POST', '/api/pick-faces', { code: data.code, itemNo: data.itemNo, min: Number(data.min), max: Number(data.max), trigger: data.trigger === '' ? null : Number(data.trigger), mode: data.mode });
     if (name === 'tech-sort') {
       const rules = String(data.rules || '').split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -646,9 +777,9 @@
   const DEMO_NAV_ROLES = ['administrator', 'manager', 'office', 'technician', 'operator', 'machine'];
   function demoUser(role) {
     const permissions = {
-      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute'],
-      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read'],
-      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'items.read'],
+      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write'],
+      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read', 'clients.read', 'tariff.write'],
+      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'clients.write', 'tariff.write', 'items.read'],
       technician: ['wms.read', 'sites.switch', 'technical.write', 'labels.print'],
       operator: ['wms.read', 'sites.switch', 'picks.execute', 'val.execute', 'inbound.write', 'outbound.write', 'orders.read', 'labels.print', 'holders.write'],
       machine: ['wms.read', 'sites.switch', 'putaway.execute', 'moves.execute', 'labels.print'],

@@ -22,6 +22,474 @@
     return n;
   }
 
+  /*
+   * 3PL rate cards. A client keeps every version. A version starts on an
+   * effective date, or from the beginning when it is the only card, and it
+   * is read-only once a later card exists or its start date is in the past.
+   * Dates are UTC days. Storage that crosses a season or a version is split
+   * at midnight, and the parts add up to the unsplit quantity. Tiers apply
+   * to the quantity on that one version inside the invoice: "all" prices
+   * every unit at the band the total falls in (the top of a band is included);
+   * "graduated" fills the bands from the start of the period. A season
+   * replaces the rate or adds a percent, and two seasons cannot cover the
+   * same charge on the same day. The monthly minimum is the full amount on
+   * the card in effect on the last day of the period.
+   */
+  const DAY = 86400000;
+  const CHARGE_IDS = ['storage', 'inbound', 'outbound', 'val'];
+
+  function tariffNumber(value, label) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
+    return n;
+  }
+
+  function rateOrZero(value, label) {
+    if (value == null || value === '') return 0;
+    return tariffNumber(value, label);
+  }
+
+  function parseDay(value, label) {
+    const s = String(value == null ? '' : value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`${label} is a date YYYY-MM-DD`);
+    const t = Date.parse(`${s}T00:00:00Z`);
+    if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== s) throw new Error(`${label} is not a real date`);
+    return s;
+  }
+
+  function utcDay(t) {
+    return new Date(t).toISOString().slice(0, 10);
+  }
+
+  function bound(value, end) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new Error('Use dates as YYYY-MM-DD');
+      return end ? value + 1 : value;
+    }
+    const day = parseDay(value, end ? 'Period end' : 'Period start');
+    const t = Date.parse(`${day}T00:00:00Z`);
+    return end ? t + DAY : t;
+  }
+
+  function inWindow(t, start, end) {
+    if (t == null || Number.isNaN(t)) return false;
+    if (start != null && t < start) return false;
+    if (end != null && t >= end) return false;
+    return true;
+  }
+
+  function normalizeTiers(list, mode, label) {
+    const name = label.toLowerCase();
+    if (mode == null || mode === '' || mode === 'flat') {
+      if (Array.isArray(list) && list.length) throw new Error(`${label} tiers need a mode of all or graduated`);
+      return { mode: null, tiers: [] };
+    }
+    if (mode !== 'all' && mode !== 'graduated') throw new Error(`${label} tier mode is all or graduated`);
+    if (!Array.isArray(list) || !list.length) throw new Error(`${label} tiers need at least one band`);
+    const tiers = [];
+    let prev = 0;
+    for (let i = 0; i < list.length; i++) {
+      const raw = list[i] || {};
+      const last = i === list.length - 1;
+      let upTo = raw.upTo;
+      if (upTo == null || upTo === '') upTo = null;
+      else {
+        upTo = Number(upTo);
+        if (!Number.isFinite(upTo) || upTo <= prev) throw new Error(`${label} tier limits have to increase`);
+      }
+      if (!last && upTo == null) throw new Error(`Only the last ${name} tier has no upper limit`);
+      if (last && upTo != null) throw new Error(`The last ${name} tier has no upper limit`);
+      tiers.push({ upTo, rate: tariffNumber(raw.rate, `${label} tier rate`) });
+      if (upTo != null) prev = upTo;
+    }
+    return { mode, tiers };
+  }
+
+  function normalizeEffect(spec, label) {
+    const effect = spec && (spec.effect || spec.seasonEffect);
+    if (effect !== 'override' && effect !== 'surcharge') throw new Error(`Season "${label}" overrides the rate or adds a surcharge`);
+    if (effect === 'override') return { effect, rate: tariffNumber(spec.rate, `Season "${label}" rate`), percent: null };
+    return { effect, rate: null, percent: tariffNumber(spec.percent, `Season "${label}" percent`) };
+  }
+
+  function monthsTouched(from, to) {
+    let y = Number(from.slice(0, 4));
+    let m = Number(from.slice(5, 7));
+    const endY = Number(to.slice(0, 4));
+    const endM = Number(to.slice(5, 7));
+    const span = (endY - y) * 12 + (endM - m);
+    if (span >= 11) return new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const out = new Set();
+    for (let i = 0; i <= span; i++) {
+      out.add(m);
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    return out;
+  }
+
+  function seasonDaysOverlap(a, b) {
+    if (a.months && b.months) return a.months.some((m) => b.months.includes(m));
+    if (!a.months && !b.months) return a.from <= b.to && b.from <= a.to;
+    const dated = a.months ? b : a;
+    const months = a.months || b.months;
+    const touched = monthsTouched(dated.from, dated.to);
+    return months.some((m) => touched.has(m));
+  }
+
+  function normalizeSeasons(list) {
+    if (list == null || list === '') return [];
+    if (!Array.isArray(list)) throw new Error('Seasons are a list');
+    const out = [];
+    const ids = new Set();
+    for (const raw of list) {
+      if (!raw || typeof raw !== 'object') throw new Error('A season needs a label and dates or months');
+      const label = String(raw.label || '').trim();
+      if (!label) throw new Error('A season needs a label');
+      const hasMonths = raw.months != null && raw.months !== '' && !(Array.isArray(raw.months) && !raw.months.length);
+      const hasRange = (raw.from != null && raw.from !== '') || (raw.to != null && raw.to !== '');
+      if (hasMonths && hasRange) throw new Error(`Season "${label}" is either a date range or months of the year`);
+      if (!hasMonths && !hasRange) throw new Error(`Season "${label}" needs a date range or months of the year`);
+      let from = null;
+      let to = null;
+      let months = null;
+      if (hasMonths) {
+        const src = Array.isArray(raw.months) ? raw.months : String(raw.months).split(/[^0-9]+/);
+        months = [...new Set(src.map((n) => Number(n)).filter((n) => n))];
+        if (!months.length || months.some((n) => !Number.isInteger(n) || n < 1 || n > 12)) throw new Error(`Season "${label}" months are 1 to 12`);
+        months.sort((a, b) => a - b);
+      } else {
+        from = parseDay(raw.from, `Season "${label}" start`);
+        to = parseDay(raw.to, `Season "${label}" end`);
+        if (from > to) throw new Error(`Season "${label}" ends before it starts`);
+      }
+      const charges = {};
+      if (raw.charges && typeof raw.charges === 'object' && !Array.isArray(raw.charges)) {
+        for (const [key, spec] of Object.entries(raw.charges)) {
+          if (!CHARGE_IDS.includes(key)) throw new Error(`Unknown charge ${key}`);
+          charges[key] = normalizeEffect(spec, label);
+        }
+      } else {
+        const charge = raw.charge || 'storage';
+        if (charge !== 'all' && !CHARGE_IDS.includes(charge)) throw new Error(`Unknown charge ${charge}`);
+        const effect = normalizeEffect(raw, label);
+        for (const key of (charge === 'all' ? CHARGE_IDS : [charge])) charges[key] = effect;
+      }
+      if (!Object.keys(charges).length) throw new Error(`Season "${label}" does not name a charge`);
+      let id = String(raw.id || '').trim().toLowerCase();
+      if (!id) id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24);
+      if (!/^[a-z0-9][a-z0-9-]{0,24}$/.test(id)) throw new Error(`Season "${label}" needs an id of letters, digits and hyphens`);
+      if (ids.has(id)) throw new Error(`Season id ${id} is used twice`);
+      ids.add(id);
+      out.push({ id, label, from, to, months, charges });
+    }
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        if (!seasonDaysOverlap(out[i], out[j])) continue;
+        const shared = Object.keys(out[i].charges).filter((c) => out[j].charges[c]);
+        if (shared.length) throw new Error(`Seasons "${out[i].label}" and "${out[j].label}" both cover ${shared[0]} on the same days`);
+      }
+    }
+    return out;
+  }
+
+  function chargeInput(input, name) {
+    const nested = input.charges && input.charges[name];
+    if (nested && typeof nested === 'object') {
+      return {
+        basis: nested.basis,
+        rate: nested.rate,
+        tierMode: nested.tierMode,
+        tiers: nested.tiers,
+      };
+    }
+    return {
+      basis: input[`${name}Basis`],
+      rate: name === 'val' ? input.valRate : input[`${name}Rate`],
+      tierMode: input[`${name}TierMode`],
+      tiers: input[`${name}Tiers`],
+    };
+  }
+
+  function tariffFields(input) {
+    const storage = chargeInput(input, 'storage');
+    const inbound = chargeInput(input, 'inbound');
+    const outbound = chargeInput(input, 'outbound');
+    const val = chargeInput(input, 'val');
+    const storageBasis = storage.basis || 'pallet-day';
+    const inboundBasis = inbound.basis || 'pallet';
+    const outboundBasis = outbound.basis || 'order';
+    if (!['pallet-day', 'location-day', 'm3-day'].includes(storageBasis)) throw new Error('Storage is charged per pallet-day, location-day or m3-day');
+    if (!['pallet', 'line'].includes(inboundBasis)) throw new Error('Inbound is charged per pallet or line');
+    if (!['order', 'line', 'carton'].includes(outboundBasis)) throw new Error('Outbound is charged per order, line or carton');
+    const storageTiers = normalizeTiers(storage.tiers, storage.tierMode, 'Storage');
+    const inboundTiers = normalizeTiers(inbound.tiers, inbound.tierMode, 'Inbound');
+    const outboundTiers = normalizeTiers(outbound.tiers, outbound.tierMode, 'Outbound');
+    const valTiers = normalizeTiers(val.tiers, val.tierMode, 'VAL');
+    return {
+      storageBasis,
+      storageRate: rateOrZero(storage.rate, 'Storage rate'),
+      storageTierMode: storageTiers.mode,
+      storageTiers: storageTiers.tiers,
+      inboundBasis,
+      inboundRate: rateOrZero(inbound.rate, 'Inbound rate'),
+      inboundTierMode: inboundTiers.mode,
+      inboundTiers: inboundTiers.tiers,
+      outboundBasis,
+      outboundRate: rateOrZero(outbound.rate, 'Outbound rate'),
+      outboundTierMode: outboundTiers.mode,
+      outboundTiers: outboundTiers.tiers,
+      valRate: rateOrZero(val.rate, 'VAL rate'),
+      valTierMode: valTiers.mode,
+      valTiers: valTiers.tiers,
+      minimum: rateOrZero(input.minimum, 'Minimum charge'),
+      seasons: normalizeSeasons(input.seasons),
+    };
+  }
+
+  function sortVersions(list) {
+    return list.slice().sort((a, b) => {
+      if (a.effectiveFrom == null && b.effectiveFrom == null) return 0;
+      if (a.effectiveFrom == null) return -1;
+      if (b.effectiveFrom == null) return 1;
+      return a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0;
+    });
+  }
+
+  function assertOrder(list) {
+    const ordered = sortVersions(list);
+    if (ordered.filter((v) => v.effectiveFrom == null).length > 1) throw new Error('Only one rate card can start from the beginning');
+    let prev = null;
+    for (const v of ordered) {
+      if (v.effectiveFrom != null && prev && prev.effectiveFrom != null && v.effectiveFrom <= prev.effectiveFrom) {
+        throw new Error(`A new rate card has to start after ${prev.id} (${prev.effectiveFrom})`);
+      }
+      prev = v;
+    }
+    return ordered;
+  }
+
+  function isReadOnly(list, version, today) {
+    const latest = list[list.length - 1];
+    if (!latest || version.id !== latest.id) return true;
+    if (version.effectiveFrom == null) return list.length !== 1;
+    return version.effectiveFrom < today;
+  }
+
+  function nextVersionId(list) {
+    const n = list.reduce((m, v) => Math.max(m, Number(String(v.id).replace(/^v/, '')) || 0), 0) + 1;
+    return `v${n}`;
+  }
+
+  function versionAt(versions, t) {
+    let chosen = null;
+    for (const v of versions) {
+      if (v.effectiveFrom == null) { chosen = v; continue; }
+      const start = Date.parse(`${v.effectiveFrom}T00:00:00Z`);
+      if (t >= start) chosen = v;
+      else break;
+    }
+    return chosen;
+  }
+
+  function blankCard(client) {
+    return {
+      id: 'v1', effectiveFrom: null, createdBy: null, updatedBy: null,
+      storageBasis: 'pallet-day', storageRate: Number(client && client.storageRate) || 0, storageTierMode: null, storageTiers: [],
+      inboundBasis: 'pallet', inboundRate: 0, inboundTierMode: null, inboundTiers: [],
+      outboundBasis: 'order', outboundRate: Number(client && client.handlingRate) || 0, outboundTierMode: null, outboundTiers: [],
+      valRate: 0, valTierMode: null, valTiers: [],
+      minimum: 0, seasons: [],
+    };
+  }
+
+  function savedVersions(client) {
+    if (Array.isArray(client.tariffVersions) && client.tariffVersions.length) return client.tariffVersions;
+    if (client.tariff && typeof client.tariff === 'object') {
+      const card = blankCard(client);
+      return [{ ...card, ...client.tariff, id: client.tariff.versionId || client.tariff.id || 'v1', seasons: client.tariff.seasons || card.seasons, storageTiers: client.tariff.storageTiers || [], inboundTiers: client.tariff.inboundTiers || [], outboundTiers: client.tariff.outboundTiers || [], valTiers: client.tariff.valTiers || [] }];
+    }
+    return [];
+  }
+
+  function versionList(client) {
+    const saved = savedVersions(client);
+    return saved.length ? saved : [blankCard(client)];
+  }
+
+  function chargeSpec(version, code) {
+    if (code === 'storage') return { basis: version.storageBasis, rate: version.storageRate, mode: version.storageTierMode, tiers: version.storageTiers || [], label: `Storage (${version.storageBasis})` };
+    if (code === 'inbound') return { basis: version.inboundBasis, rate: version.inboundRate, mode: version.inboundTierMode, tiers: version.inboundTiers || [], label: `Inbound (${version.inboundBasis})` };
+    if (code === 'outbound') return { basis: version.outboundBasis, rate: version.outboundRate, mode: version.outboundTierMode, tiers: version.outboundTiers || [], label: `Outbound (${version.outboundBasis})` };
+    return { basis: 'unit', rate: version.valRate, mode: version.valTierMode, tiers: version.valTiers || [], label: 'VAL / kitting (unit)' };
+  }
+
+  function withFrom(tiers) {
+    let from = 0;
+    return (tiers || []).map((tier) => {
+      const band = { from, upTo: tier.upTo == null ? null : tier.upTo, rate: tier.rate };
+      from = band.upTo == null ? Infinity : band.upTo;
+      return band;
+    });
+  }
+
+  function bandFor(bands, qty) {
+    for (const band of bands) if (band.upTo == null || qty <= band.upTo) return band;
+    return bands[bands.length - 1];
+  }
+
+  function tierText(mode, band) {
+    if (!mode || !band) return '';
+    const where = band.upTo == null
+      ? (band.from ? `above ${band.from}` : 'all quantities')
+      : (band.from ? `${band.from} to ${band.upTo}` : `up to ${band.upTo}`);
+    return `${mode === 'all' ? 'all units' : 'band'} ${where} at ${band.rate}`;
+  }
+
+  function graduate(bands, used, qty) {
+    const out = [];
+    let left = qty;
+    let cursor = used;
+    for (const band of bands) {
+      const end = band.upTo == null ? Infinity : band.upTo;
+      if (cursor >= end) continue;
+      const take = Math.min(left, end - cursor);
+      if (take > 0) {
+        out.push({ qty: take, rate: band.rate, band });
+        cursor += take;
+        left -= take;
+      }
+      if (left <= 1e-12) break;
+    }
+    if (left > 1e-9 && bands.length) out.push({ qty: left, rate: bands[bands.length - 1].rate, band: bands[bands.length - 1] });
+    return out;
+  }
+
+  function seasonAt(version, charge, t) {
+    const day = utcDay(t);
+    const month = Number(day.slice(5, 7));
+    let found = null;
+    for (const season of version.seasons || []) {
+      const spec = season.charges && season.charges[charge];
+      if (!spec) continue;
+      const on = season.months ? season.months.includes(month) : day >= season.from && day <= season.to;
+      if (on) found = { id: season.id, label: season.label, spec };
+    }
+    return found;
+  }
+
+  function seasonText(season) {
+    if (!season) return '';
+    if (season.spec.effect === 'override') return `${season.label} override ${season.spec.rate}`;
+    return `${season.label} +${season.spec.percent}%`;
+  }
+
+  function versionLabel(version) {
+    if (!version) return '';
+    return version.effectiveFrom ? `${version.id} ${version.effectiveFrom}` : version.id;
+  }
+
+  function money(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function priceVersion(version, slices) {
+    const code = slices.code;
+    const spec = chargeSpec(version, code);
+    const bands = withFrom(spec.tiers);
+    const total = slices.rows.reduce((s, row) => s + row.qty, 0);
+    const groups = [];
+    let used = 0;
+    for (const row of slices.rows) {
+      const season = seasonAt(version, code, row.t);
+      const portions = spec.mode === 'graduated'
+        ? graduate(bands, used, row.qty)
+        : [{ qty: row.qty, rate: spec.mode === 'all' ? bandFor(bands, total).rate : spec.rate, band: spec.mode === 'all' ? bandFor(bands, total) : null }];
+      if (spec.mode === 'graduated') used += row.qty;
+      for (const portion of portions) {
+        const rate = season ? (season.spec.effect === 'override' ? season.spec.rate : portion.rate * (1 + season.spec.percent / 100)) : portion.rate;
+        const shown = Math.round(rate * 10000) / 10000;
+        const key = [version.id, season ? season.id : '', portion.band ? `${portion.band.from}:${portion.band.upTo}` : '', shown].join('|');
+        const last = groups[groups.length - 1];
+        if (last && last.key === key) last.qty += portion.qty;
+        else groups.push({
+          key, qty: portion.qty, rate: shown, code, label: spec.label,
+          tier: tierText(spec.mode, portion.band), tierMode: spec.mode,
+          season: seasonText(season), seasonId: season ? season.id : null,
+          seasonEffect: season ? season.spec.effect : null,
+          version: versionLabel(version), versionId: version.id,
+        });
+      }
+    }
+    return groups.map((g) => {
+      const qty = money(g.qty);
+      const line = { ...g, qty, amount: money(qty * g.rate) };
+      delete line.key;
+      return line;
+    }).filter((g) => g.qty !== 0);
+  }
+
+  function priceRows(versions, rows, code) {
+    const sorted = rows.filter((row) => row.qty > 0).sort((a, b) => a.t - b.t);
+    const groups = new Map();
+    for (const row of sorted) {
+      const version = versionAt(versions, row.t);
+      if (!version) continue;
+      if (!groups.has(version.id)) groups.set(version.id, { version, code, rows: [] });
+      groups.get(version.id).rows.push(row);
+    }
+    const lines = [];
+    for (const group of groups.values()) lines.push(...priceVersion(group.version, group));
+    return lines;
+  }
+
+  function zeroLine(version, code) {
+    const spec = chargeSpec(version, code);
+    return {
+      code, label: spec.label, qty: 0, rate: spec.rate, amount: 0,
+      tier: '', tierMode: spec.mode, season: '', seasonId: null, seasonEffect: null,
+      version: versionLabel(version), versionId: version ? version.id : null,
+    };
+  }
+
+  function boundaryPoints(min, max, versions) {
+    const points = [min, max];
+    let recurring = false;
+    for (const v of versions) {
+      if (v.effectiveFrom) {
+        const t = Date.parse(`${v.effectiveFrom}T00:00:00Z`);
+        if (t > min && t < max) points.push(t);
+      }
+      for (const season of v.seasons || []) {
+        if (season.from) {
+          const a = Date.parse(`${season.from}T00:00:00Z`);
+          const b = Date.parse(`${season.to}T00:00:00Z`) + DAY;
+          if (a > min && a < max) points.push(a);
+          if (b > min && b < max) points.push(b);
+        }
+        if (season.months) recurring = true;
+      }
+    }
+    if (recurring) {
+      const start = new Date(min);
+      let y = start.getUTCFullYear();
+      let m = start.getUTCMonth();
+      for (let i = 0; i < 480; i++) {
+        const t = Date.UTC(y, m, 1);
+        if (t >= max) break;
+        if (t > min) points.push(t);
+        m += 1;
+        if (m > 11) { m = 0; y += 1; }
+      }
+    }
+    return [...new Set(points)].sort((a, b) => a - b);
+  }
+
+  function csvCell(value) {
+    return `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+  }
+
   function install(Warehouse, deps) {
     const Labels = (deps && deps.Labels) || (typeof globalThis !== 'undefined' && globalThis.Labels) || null;
     const proto = Warehouse.prototype;
@@ -566,104 +1034,200 @@
       return this.importStock(payload);
     };
 
-    function tariffNumber(value, label) {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number of 0 or more`);
-      return n;
-    }
-
-    proto.setTariff = function (clientId, tariff = {}) {
-      const client = this._client(clientId);
-      const storageBasis = tariff.storageBasis || 'pallet-day';
-      const inboundBasis = tariff.inboundBasis || 'pallet';
-      const outboundBasis = tariff.outboundBasis || 'order';
-      if (!['pallet-day', 'location-day', 'm3-day'].includes(storageBasis)) throw new Error('Storage is charged per pallet-day, location-day or m3-day');
-      if (!['pallet', 'line'].includes(inboundBasis)) throw new Error('Inbound is charged per pallet or line');
-      if (!['order', 'line', 'carton'].includes(outboundBasis)) throw new Error('Outbound is charged per order, line or carton');
-      client.tariff = {
-        storageBasis, storageRate: tariffNumber(tariff.storageRate || 0, 'Storage rate'),
-        inboundBasis, inboundRate: tariffNumber(tariff.inboundRate || 0, 'Inbound rate'),
-        outboundBasis, outboundRate: tariffNumber(tariff.outboundRate || 0, 'Outbound rate'),
-        valRate: tariffNumber(tariff.valRate || 0, 'VAL rate'),
-        minimum: tariffNumber(tariff.minimum || 0, 'Minimum charge'),
-      };
-      this.log(`Tariff for ${client.id} updated`);
-      return client.tariff;
+    proto.decorateTariff = function (client) {
+      const list = assertOrder(savedVersions(client).slice());
+      const today = utcDay(this.now());
+      return list.map((v) => ({ ...v, readOnly: isReadOnly(list, v, today) }));
     };
 
-    function inPeriod(t, from, to) {
-      if (from != null && t < from) return false;
-      if (to != null && t > to) return false;
-      return true;
-    }
+    proto.setTariff = function (clientId, input = {}, by) {
+      const client = this._client(clientId);
+      const actor = by || this._actor || 'unknown';
+      const fields = tariffFields(input);
+      const hasDate = input.effectiveFrom != null && input.effectiveFrom !== '';
+      const effectiveFrom = hasDate ? parseDay(input.effectiveFrom, 'Effective date') : undefined;
+      const versionId = input.versionId ? String(input.versionId).trim() : '';
+      const existing = Array.isArray(client.tariffVersions) ? client.tariffVersions.slice() : [];
+      const today = utcDay(this.now());
+      let version;
+      let next;
+      if (versionId) {
+        const idx = existing.findIndex((v) => v.id === versionId);
+        if (idx < 0) throw new Error(`Unknown rate card ${versionId}`);
+        if (isReadOnly(assertOrder(existing), existing[idx], today)) throw new Error(`Rate card ${versionId} is read-only`);
+        version = { ...existing[idx], ...fields, effectiveFrom: effectiveFrom === undefined ? existing[idx].effectiveFrom : effectiveFrom, updatedAt: this.now(), updatedBy: actor };
+        next = existing.slice();
+        next[idx] = version;
+      } else if (!existing.length && effectiveFrom === undefined) {
+        version = { id: 'v1', effectiveFrom: null, createdAt: this.now(), createdBy: actor, updatedAt: this.now(), updatedBy: actor, ...fields };
+        next = [version];
+      } else if (effectiveFrom === undefined && existing.length === 1 && existing[0].effectiveFrom == null) {
+        if (isReadOnly(existing, existing[0], today)) throw new Error(`Rate card ${existing[0].id} is read-only`);
+        version = { ...existing[0], ...fields, updatedAt: this.now(), updatedBy: actor };
+        next = [version];
+      } else if (effectiveFrom === undefined) {
+        throw new Error('Name the date this rate card starts');
+      } else {
+        const clash = existing.find((v) => v.effectiveFrom === effectiveFrom);
+        if (clash) {
+          if (isReadOnly(assertOrder(existing), clash, today)) throw new Error(`Rate card ${clash.id} is read-only`);
+          const idx = existing.findIndex((v) => v.id === clash.id);
+          version = { ...clash, ...fields, effectiveFrom, updatedAt: this.now(), updatedBy: actor };
+          next = existing.slice();
+          next[idx] = version;
+        } else {
+          const latest = assertOrder(existing)[existing.length - 1];
+          if (latest && latest.effectiveFrom && effectiveFrom <= latest.effectiveFrom) throw new Error(`A new rate card has to start after ${latest.id} (${latest.effectiveFrom})`);
+          version = { id: nextVersionId(existing), effectiveFrom, createdAt: this.now(), createdBy: actor, updatedAt: this.now(), updatedBy: actor, ...fields };
+          next = existing.concat(version);
+        }
+      }
+      client.tariffVersions = assertOrder(next);
+      const current = versionAt(client.tariffVersions, this.now()) || client.tariffVersions[client.tariffVersions.length - 1];
+      client.tariff = { ...current };
+      this.log(`Tariff ${client.id} ${version.id} (${version.effectiveFrom || 'from the start'}) saved by ${actor}`, { by: actor });
+      return this.decorateTariff(client);
+    };
 
     proto.invoice = function ({ clientId, from = null, to = null } = {}) {
       const client = this._client(clientId);
-      const tariff = client.tariff || {
-        storageBasis: 'pallet-day', storageRate: Number(client.storageRate) || 0,
-        inboundBasis: 'pallet', inboundRate: 0,
-        outboundBasis: 'order', outboundRate: Number(client.handlingRate) || 0,
-        valRate: 0, minimum: 0,
-      };
-      const start = from == null || from === '' ? null : (typeof from === 'number' ? from : Date.parse(`${from}T00:00:00Z`));
-      const end = to == null || to === '' ? null : (typeof to === 'number' ? to : Date.parse(`${to}T23:59:59Z`));
-      if (Number.isNaN(start) || Number.isNaN(end)) throw new Error('Use dates as YYYY-MM-DD');
-      const day = 86400000;
+      const versions = assertOrder(versionList(client).slice());
+      const start = bound(from, false);
+      const end = bound(to, true);
+      if (start != null && end != null && end <= start) throw new Error('The billing period ends before it starts');
       const now = this.now();
-      let palletDays = 0;
-      let locationDays = 0;
-      let cubicDays = 0;
-      let inboundPallets = 0;
-      for (const p of Object.values(this.pallets)) {
-        const owner = p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
-        if (owner !== client.id || !p.receivedAt) continue;
-        let stop = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
-        const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
-        const b = Math.min(stop, end == null ? stop : end);
-        const days = Math.max(0, (b - a) / day);
-        palletDays += days;
-        locationDays += days;
-        const item = this.items[p.itemNo];
-        if (item && item.lengthMm && item.widthMm && item.heightMm) cubicDays += days * (item.lengthMm * item.widthMm * item.heightMm) / 1e9;
-        if (inPeriod(p.receivedAt, start, end)) inboundPallets += 1;
-      }
+      const ownerOfPallet = (p) => p.clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId);
       const ownedMove = (m) => {
         const pallet = m.sscc && this.pallets[m.sscc];
-        const holder = m.holder && this.holders[m.holder];
-        const owner = (pallet && (pallet.clientId || (this.items[pallet.itemNo] && this.items[pallet.itemNo].clientId))) || (holder && holder.clientId);
-        return owner === client.id && inPeriod(m.t, start, end);
+        const holder = m.holder && this.holders && this.holders[m.holder];
+        const owner = (pallet && ownerOfPallet(pallet)) || (holder && holder.clientId);
+        return owner === client.id && inWindow(m.t, start, end);
       };
+      const stays = [];
+      let palletDays = 0;
+      for (const p of Object.values(this.pallets)) {
+        if (ownerOfPallet(p) !== client.id || !p.receivedAt) continue;
+        const shipped = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
+        const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
+        const b = Math.min(shipped, end == null ? shipped : end);
+        if (b <= a) continue;
+        const item = this.items[p.itemNo];
+        const cubic = item && item.lengthMm && item.widthMm && item.heightMm ? (item.lengthMm * item.widthMm * item.heightMm) / 1e9 : 0;
+        stays.push({ a, b, cubic });
+        palletDays += (b - a) / DAY;
+      }
+      const storageRows = [];
+      if (stays.length) {
+        const min = Math.min(...stays.map((s) => s.a));
+        const max = Math.max(...stays.map((s) => s.b));
+        const points = boundaryPoints(min, max, versions);
+        for (const stay of stays) { points.push(stay.a, stay.b); }
+        const cuts = [...new Set(points)].filter((t) => t >= min && t <= max).sort((a, b) => a - b);
+        for (let i = 0; i < cuts.length - 1; i++) {
+          const a = cuts[i];
+          const b = cuts[i + 1];
+          let days = 0;
+          let cubicDays = 0;
+          for (const stay of stays) {
+            const left = Math.max(a, stay.a);
+            const right = Math.min(b, stay.b);
+            if (right <= left) continue;
+            const part = (right - left) / DAY;
+            days += part;
+            cubicDays += part * stay.cubic;
+          }
+          if (days > 0) storageRows.push({ t: a, days, cubicDays });
+        }
+      }
+      const storageLines = [];
+      const storageByVersion = new Map();
+      for (const row of storageRows) {
+        const version = versionAt(versions, row.t);
+        if (!version) continue;
+        const basis = version.storageBasis;
+        const qty = basis === 'm3-day' ? row.cubicDays : row.days;
+        if (qty <= 0) continue;
+        if (!storageByVersion.has(version.id)) storageByVersion.set(version.id, []);
+        storageByVersion.get(version.id).push({ t: row.t, qty });
+      }
+      for (const [id, rows] of storageByVersion) {
+        const version = versions.find((v) => v.id === id);
+        storageLines.push(...priceVersion(version, { code: 'storage', rows }));
+      }
+      const inboundEvents = [];
+      for (const p of Object.values(this.pallets)) {
+        if (ownerOfPallet(p) !== client.id || !p.receivedAt || !inWindow(p.receivedAt, start, end)) continue;
+        inboundEvents.push({ t: p.receivedAt, byBasis: { pallet: 1 } });
+      }
+      for (const m of this.movements || []) {
+        if (m.event === 'received' && ownedMove(m)) inboundEvents.push({ t: m.t, byBasis: { line: 1 } });
+      }
+      const orders = Object.values(this.orders).filter((o) => o.clientId === client.id && o.shippedAt && inWindow(o.shippedAt, start, end));
+      const outboundEvents = orders.map((o) => ({
+        t: o.shippedAt,
+        byBasis: {
+          order: 1,
+          line: o.lines.length,
+          carton: (this.shipments || []).filter((s) => s.orderId === o.id).reduce((n, s) => n + (s.cartons || []).length, 0),
+        },
+      }));
+      const valEvents = (this.movements || []).filter((m) => m.event === 'kitted' && ownedMove(m)).map((m) => ({ t: m.t, byBasis: { unit: 1 } }));
+      const eventRows = (events, code) => events.flatMap((event) => {
+        const version = versionAt(versions, event.t);
+        if (!version) return [];
+        const qty = event.byBasis[chargeSpec(version, code).basis] || 0;
+        return qty > 0 ? [{ t: event.t, qty }] : [];
+      });
+      const minAt = end == null ? now : end - 1;
+      const minVersion = versionAt(versions, minAt);
+      const lines = [];
+      const priced = {
+        storage: storageLines,
+        inbound: priceRows(versions, eventRows(inboundEvents, 'inbound'), 'inbound'),
+        outbound: priceRows(versions, eventRows(outboundEvents, 'outbound'), 'outbound'),
+        val: priceRows(versions, eventRows(valEvents, 'val'), 'val'),
+      };
+      for (const code of CHARGE_IDS) {
+        if (priced[code].length) lines.push(...priced[code]);
+        else lines.push(zeroLine(minVersion || versions[versions.length - 1], code));
+      }
+      const subtotal = money(lines.reduce((s, l) => s + l.amount, 0));
+      const minimum = minVersion ? (minVersion.minimum || 0) : 0;
+      const topup = money(minimum - subtotal);
+      if (topup > 0) {
+        lines.push({
+          code: 'minimum', label: 'Monthly minimum', qty: 1, rate: topup, amount: topup,
+          tier: '', tierMode: null, season: '', seasonId: null, seasonEffect: null,
+          version: versionLabel(minVersion), versionId: minVersion ? minVersion.id : null,
+        });
+      }
       const moves = (this.movements || []).filter((m) => ownedMove(m) && ['moved', 'picked', 'consolidated', 'shipped', 'received', 'packed', 'transferred'].includes(m.event));
-      const inboundLines = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'received').length;
-      const orders = Object.values(this.orders).filter((o) => o.clientId === client.id && o.shippedAt && inPeriod(o.shippedAt, start, end));
-      const outboundLines = orders.reduce((s, o) => s + o.lines.length, 0);
-      const outboundCartons = (this.shipments || []).filter((s) => orders.some((o) => o.id === s.orderId)).reduce((n, s) => n + (s.cartons || []).length, 0);
-      const valUnits = (this.movements || []).filter((m) => ownedMove(m) && m.event === 'kitted').length;
-      const storageQty = tariff.storageBasis === 'location-day' ? locationDays : tariff.storageBasis === 'm3-day' ? cubicDays : palletDays;
-      const inboundQty = tariff.inboundBasis === 'line' ? inboundLines : inboundPallets;
-      const outboundQty = tariff.outboundBasis === 'line' ? outboundLines : tariff.outboundBasis === 'carton' ? outboundCartons : orders.length;
-      const lines = [
-        { code: 'storage', label: `Storage (${tariff.storageBasis})`, qty: Math.round(storageQty * 100) / 100, rate: tariff.storageRate },
-        { code: 'inbound', label: `Inbound (${tariff.inboundBasis})`, qty: inboundQty, rate: tariff.inboundRate },
-        { code: 'outbound', label: `Outbound (${tariff.outboundBasis})`, qty: outboundQty, rate: tariff.outboundRate },
-        { code: 'val', label: 'VAL / kitting (unit)', qty: valUnits, rate: tariff.valRate },
-      ].map((l) => ({ ...l, amount: Math.round(l.qty * l.rate * 100) / 100 }));
-      const subtotal = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
-      const total = Math.round(Math.max(tariff.minimum || 0, subtotal) * 100) / 100;
+      const tariff = minVersion || versions[versions.length - 1];
       return {
-        clientId: client.id, name: client.name, from: start, to: end, tariff, lines, subtotal,
-        minimum: tariff.minimum || 0, total, palletDays: Math.round(palletDays * 100) / 100, moves: moves.length,
+        clientId: client.id, name: client.name, from: start, to: end == null ? null : end - 1,
+        periodFrom: typeof from === 'string' ? from : null, periodTo: typeof to === 'string' ? to : null,
+        tariff, lines, subtotal, minimum, minimumVersion: versionLabel(minVersion),
+        total: money(Math.max(minimum, subtotal)), palletDays: money(palletDays), moves: moves.length,
       };
     };
 
     proto.invoiceHtml = function (opts) {
       const inv = this.invoice(opts);
-      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
+      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.tier || '')}</td><td>${htmlEscape(l.season || '')}</td><td>${htmlEscape(l.version || '')}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
+      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} to ${htmlEscape(inv.periodTo || '…')} UTC` : 'Open period, up to the current time';
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${htmlEscape(inv.clientId)}</title>
-        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}.total{font-size:18px;font-weight:700}@media print{body{margin:12px}}</style></head>
-        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p>
-        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>${rows}</table>
-        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}.</p><p class="total">Total ${htmlEscape(inv.total)}</p></body></html>`;
+        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.total{font-size:18px;font-weight:700}.note{color:#5d6b76;font-size:13px;max-width:46rem}@media print{body{margin:12px}}</style></head>
+        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p><p>${period}</p>
+        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Tier</th><th>Season</th><th>Version</th><th>Amount</th></tr>${rows}</table>
+        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}${inv.minimumVersion ? ` (${htmlEscape(inv.minimumVersion)})` : ''}.</p><p class="total">Total ${htmlEscape(inv.total)}</p>
+        <p class="note">A billing period named with dates is whole UTC days, first and last day included. Storage that crosses a season or a new rate card is split at midnight. An inbound, outbound or kitting event uses the card in effect at its own time. The monthly minimum is the full amount on the card in effect on the last day.</p></body></html>`;
+    };
+
+    proto.invoiceCsv = function (opts) {
+      const inv = this.invoice(opts);
+      const rows = [['charge', 'label', 'qty', 'rate', 'amount', 'tier', 'season', 'version']];
+      for (const l of inv.lines) rows.push([l.code, l.label, l.qty, l.rate, l.amount, l.tier || '', l.season || '', l.version || '']);
+      return rows.map((r) => r.map(csvCell).join(',')).join('\n');
     };
 
     proto.availability = function () {

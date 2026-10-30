@@ -48,6 +48,7 @@ That's a low-risk way to prove the rules on real data.
 - Replenishment to a maximum in units, splitting the source plate, plus a whole-pallet mode. Default plate padding is 7 and is set per series.
 - Inter-warehouse transfer through an in-transit location. A refusal returns the original plate.
 - A per-client 3PL tariff and printable period invoices. Backup and restore of the journal and accounts.
+- Volume tiers (all units at the tier rate, or graduated bands), seasonal overrides and surcharges, and rate-card versions. A period that crosses a boundary is split at midnight UTC. The invoice names the tier, season and version on each line. Older versions stay read-only in the journal.
 
 ## 3. Hardware
 

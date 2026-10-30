@@ -295,7 +295,7 @@
     const clientView = (c) => {
       const items = Object.values(wh().items).filter((i) => i.clientId === c.id);
       const stock = wh().stockForClient(c.id).filter((p) => p.loc && p.status !== 'shipped');
-      return { ...c, items: items.length, pallets: stock.length, qty: stock.reduce((n, p) => n + (p.qty || 0), 0) };
+      return { ...c, items: items.length, pallets: stock.length, qty: stock.reduce((n, p) => n + (p.qty || 0), 0), tariffVersions: wh().decorateTariff(c) };
     };
     on('GET', '/api/clients', (_, q) => Object.values(wh().clients || {}).filter((c) => q.archived === '1' || c.status !== 'archived').map(clientView));
     on('GET', '/api/clients/:id', ({ id }) => {
@@ -418,6 +418,11 @@
     on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: q.clientId, from: q.from || null, to: q.to || null }));
+    on('GET', '/api/reports/invoice.csv', (_, q) => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: wh().invoiceCsv({ clientId: q.clientId, from: q.from || null, to: q.to || null }),
+    }));
     on('GET', '/api/backup', () => store.exportBackup());
     on('POST', '/api/backup', (_, q, b) => store.importBackup(b));
     on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null }, by));

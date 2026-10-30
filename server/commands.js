@@ -161,7 +161,7 @@
     stageShipment: (wh, a, by) => wh.stageShipment({ orderId: req(a.orderId, 'orderId'), truck: a.truck || null, by }),
     scanShipment: (wh, a, by) => wh.scanShipment({ orderId: req(a.orderId, 'orderId'), code: req(a.code, 'code'), by }),
     dispatchShipment: (wh, a, by) => wh.dispatchShipment({ orderId: req(a.orderId, 'orderId'), by }),
-    setTariff: (wh, a) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a),
+    setTariff: (wh, a, by) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a, by),
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),
