@@ -557,6 +557,7 @@
         throw new Error(`${code} already holds a load`);
       }
       this._assertHolderFits(loc, holder);
+      if (holder.loc && holder.loc !== code && this._assertNotHeld) this._assertNotHeld(holder.loc, `Plate ${holder.id}`);
       const from = holder.loc;
       holder.loc = code;
       if (from && from !== code) this.recordMovement({ holder: holder.id, sscc: holder.sscc || null, from, to: code, qty: holder.contents && holder.contents[0] ? holder.contents[0].qty : null, event: 'moved', by: this._actor || 'office' });
@@ -812,6 +813,7 @@
       const holder = this._holder(id);
       const loc = holder.loc && this.locations[holder.loc];
       if (!loc || loc.kind !== 'mezzanine') throw new Error(`${holder.id} is not standing on a mezzanine location`);
+      if (this._assertNotHeld) this._assertNotHeld(loc.code, `Plate ${holder.id}`);
       const line = (holder.contents || []).find((c) => Number(c.qty) > 0) || holder.contents[0];
       const available = line ? Number(line.qty) || 0 : 0;
       const take = qty == null || qty === '' ? available : Number(qty);
@@ -1026,10 +1028,10 @@
       if (!ADJUST_REASONS.includes(reason)) throw new Error(`Reason must be one of: ${ADJUST_REASONS.join(', ')}`);
       const before = pallet.qty;
       pallet.qty = next;
-      const entry = { t: this.now(), sscc, itemNo: pallet.itemNo, batch: pallet.batch, before, after: next, reason, by: by || 'office' };
+      const entry = { t: this.now(), loc: pallet.loc, sscc, itemNo: pallet.itemNo, batch: pallet.batch, before, after: next, reason, by: by || 'office' };
       this.adjustments = this.adjustments || [];
       this.adjustments.unshift(entry);
-      if (this.adjustments.length > 500) this.adjustments.length = 500;
+      if (this.adjustments.length > 5000) this.adjustments.length = 5000;
       this.log(`Adjusted …${sscc.slice(-6)} from ${before} to ${next}: ${reason}`);
       return entry;
     };
@@ -1178,7 +1180,7 @@
       const pallet = this.stockPallet(this.resolve(code), { sscc: sscc || undefined, itemNo, qty: amount, batch, expiry, receivedAt: this.now() });
       const actor = by || this._actor || 'stock';
       this.adjustments = this.adjustments || [];
-      this.adjustments.unshift({ t: this.now(), sscc: pallet.sscc, itemNo, batch, before: 0, after: amount, reason, by: actor });
+      this.adjustments.unshift({ t: this.now(), loc: pallet.loc, sscc: pallet.sscc, itemNo, batch, before: 0, after: amount, reason, by: actor });
       this.recordMovement({ sscc: pallet.sscc, from: null, to: pallet.loc, qty: amount, event: 'created', by: actor, note: reason });
       this.log(`Stock created: …${pallet.sscc.slice(-6)} ${itemNo} × ${amount} at ${pallet.loc} (${reason})`);
       return pallet;
@@ -1197,7 +1199,7 @@
       const from = pallet.loc;
       this._remove(pallet);
       this.adjustments = this.adjustments || [];
-      this.adjustments.unshift({ t: this.now(), sscc: pallet.sscc, itemNo: pallet.itemNo, batch: pallet.batch, before: pallet.qty, after: 0, reason, by: actor });
+      this.adjustments.unshift({ t: this.now(), loc: from, sscc: pallet.sscc, itemNo: pallet.itemNo, batch: pallet.batch, before: pallet.qty, after: 0, reason, by: actor });
       // Gone from stock like a shipped pallet, so every stock rule treats it that way.
       pallet.status = 'shipped';
       pallet.removed = 'deleted';
@@ -1219,6 +1221,13 @@
         try { return require('./presets'); } catch (e) { /* browser */ }
       }
       return globalThis.SortedPresets;
+    }
+
+    function loadCorrections() {
+      if (typeof require === 'function') {
+        try { return require('./corrections'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedCorrections;
     }
 
     function loadWaves() {
@@ -1325,6 +1334,8 @@
     if (bins && bins.install) bins.install(Warehouse, deps);
     const waves = loadWaves();
     if (waves && waves.install) waves.install(Warehouse, deps);
+    const corrections = loadCorrections();
+    if (corrections && corrections.install) corrections.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

@@ -481,6 +481,13 @@
     on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null, ...('duty' in b ? { duty: b.duty || null } : {}) }, by));
     on('POST', '/api/devices/:id/duty', ({ id }, q, b, by) => run('setTruckDuty', { id, duty: b.duty || null }, by));
     on('POST', '/api/devices/:id/equipment', ({ id }, q, b, by) => run('setTruckEquipment', { id, equipment: b.equipment || null }, by));
+    on('GET', '/api/checks', () => wh().openChecks());
+    on('POST', '/api/checks', (_, q, b, by) => run('raiseCheck', b, by));
+    on('POST', '/api/checks/:id/close', ({ id }, q, b, by) => run('closeCheck', { ...b, id: decodeURIComponent(id) }, by));
+    on('GET', '/api/stock/at/:code', ({ code }) => wh()._stockAt(wh().resolve(decodeURIComponent(code))));
+    on('POST', '/api/stock/correct', (_, q, b, by) => run('correctItem', b, by));
+    on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null }));
+    on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null }) }));
     on('POST', '/api/stock/create', (_, q, b, by) => run('createStock', b, by));
     on('POST', '/api/stock/:sscc/delete', ({ sscc }, q, b, by) => run('deleteStock', { sscc: decodeURIComponent(sscc), reason: b.reason }, by));
     on('GET', '/api/equipment', () => ({ equipment: Object.values(wh().equipment || {}), faults: wh().faults || [], maintenance: (wh().maintenance || []).slice(0, 100) }));

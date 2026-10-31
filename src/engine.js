@@ -598,7 +598,7 @@
 
     shipState(pallet) {
       if (!pallet.qty || pallet.qty <= 0) return 'blocked';
-      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet) || pallet.quarantine || this.locations[pallet.loc]?.quarantine) return 'blocked';
+      if (pallet.status === 'blocked' || pallet.qualityHold || this.batchHoldFor(pallet) || pallet.quarantine || this.locations[pallet.loc]?.quarantine || this.locations[pallet.loc]?.checkHold) return 'blocked';
       if (this.feature('lotExpiry')) {
         const days = daysBetween(this.today(), pallet.expiry);
         if (days < 0) return 'expired';
@@ -1979,6 +1979,8 @@
       if (to.structural || to.kind === 'zone' || to.kind === 'aisle' || to.kind === 'level' || to.kind === 'frame') return { ok: false, text: `${code} cannot hold stock` };
       if (!this._fits(to, pallet)) return { ok: false, text: `…${sscc.slice(-6)} does not fit ${code} (height, width, depth or weight)` };
       if (pallet.loc === code) return { ok: true, text: `…${sscc.slice(-6)} is already recorded at ${code}` };
+      const held = this.locations[pallet.loc]?.checkHold;
+      if (held) return { ok: false, text: `…${sscc.slice(-6)} is held at ${pallet.loc} for stock check ${held}` };
       const live = this._liveTaskFor(sscc);
       if (live && live.status === 'active' && (live.step > 0 || this.trucks[live.truckId]?.load === sscc)) {
         return { ok: false, text: `…${sscc.slice(-6)} is on ${live.truckId}'s forks (job #${live.id})` };

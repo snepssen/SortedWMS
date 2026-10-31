@@ -95,7 +95,7 @@
       const bins = new Map();
       for (const [code, lines] of Object.entries(this.binStock || {})) {
         const loc = this.locations[code];
-        if (!loc || loc.blocked || loc.role === 'quarantine' || loc.role === 'return' || loc.quarantine) continue;
+        if (!loc || loc.blocked || loc.checkHold || loc.role === 'quarantine' || loc.role === 'return' || loc.quarantine) continue;
         for (const l of lines) {
           const key = `${l.itemNo}|${code}`;
           const row = bins.get(key) || { itemNo: l.itemNo, loc: code, free: 0, expiry: null, since: Infinity };

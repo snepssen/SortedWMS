@@ -73,7 +73,7 @@
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
@@ -158,11 +158,21 @@
     async cases() {
       const [pallets, boxes] = await Promise.all([api('GET', '/api/waves/tasks?kind=pallet'), api('GET', '/api/waves/tasks?kind=case')]);
       return `<section><h2>Whole pallets</h2><p class="hint">Straight to the dock lane named on the task. Scan the pallet to confirm.</p>${taskList(pallets, true)}</section>
+        ${can('stock.check') ? `<section><h2>Something wrong?</h2><form class="form" data-act="check-raise"><label>Location<input name="loc" required></label><label>What<input name="note" required size="28" placeholder="Wrong colour on the pallet"></label><button>Hold for a check</button></form></section>` : ''}
         <section><h2>Box picks</h2><p class="hint">Man-up or high-level order picker. Take whole boxes off the pallet, or the pieces from the box that is already open; the pallet stays in its slot. Drop at the post-pick lane.</p>${taskList(boxes, true)}</section>`;
     },
     async stockctl() {
+      const checks = await api('GET', '/api/checks');
+      const raise = can('stock.check') ? `<form class="form" data-act="check-raise"><label>Location<input name="loc" required autocomplete="off"></label><label>Order<input name="orderId" placeholder="optional"></label><label>Item<input name="itemNo" placeholder="optional"></label><label>What to check<input name="note" required size="30" placeholder="Customer got the wrong item in order 4501"></label><button class="primary">Hold for a check</button></form><p class="hint">Nothing at that location can be picked or moved until stock control has checked it. Open picks there are planned again from other stock.</p>` : '';
+      const checkRows = checks.map((c) => `<section class="check"><h3>${esc(c.id)} · <b>${esc(c.loc)}</b></h3><p>${esc(c.note)}${c.orderId ? ` · order ${esc(c.orderId)}` : ''} <span class="dim">— ${esc(c.raisedBy)}</span></p>
+        ${table(['Booked here', 'Item', 'Qty', can('stock.delete') ? 'Correct the item' : ''], c.stock.map((s) => `<tr><td>${s.kind === 'pallet' ? `pallet …${esc(s.sscc.slice(-6))}${s.plate ? ` <span class="dim">${esc(s.plate)}</span>` : ''}` : s.kind === 'plate' ? esc(s.plate) : 'loose in the bin'}</td><td>${esc(s.itemNo)} <span class="dim">${esc(s.name)}</span></td><td>${esc(s.qty)}</td><td>${can('stock.delete') ? `<form class="form" data-act="check-correct"><input type="hidden" name="target" value="${esc(s.kind === 'pallet' ? s.sscc : s.kind === 'plate' ? s.plate : c.loc)}"><input type="hidden" name="fromItem" value="${esc(s.kind === 'bin' ? s.itemNo : '')}"><label>Right item<input name="itemNo" required size="10" autocomplete="off"></label><label>Counted<input name="qty" type="number" min="1" value="${esc(s.qty)}" style="width:6em"></label><button class="primary">Correct</button></form>` : ''}</td></tr>`))}
+        ${can('stock.adjust') ? `<form class="form" data-act="check-ok"><input type="hidden" name="id" value="${esc(c.id)}"><label>Note<input name="note" placeholder="optional" size="24"></label><button>Stock is right, release</button></form>` : ''}</section>`).join('');
+      if (!can('stock.adjust') && !can('stock.create')) {
+        return `<section><h2>Stock checks</h2>${raise}</section><section><h2>Open checks</h2>${checks.length ? checks.map((c) => `<p><b>${esc(c.loc)}</b> ${esc(c.note)} <span class="dim">${esc(c.id)}</span></p>`).join('') : '<p class="dim">None open</p>'}</section>`;
+      }
       const reasons = '<option>recount</option><option>found</option><option>damage</option><option>expiry</option><option>correction</option><option>other</option>';
-      return `<section><h2>Stock control</h2><p class="hint">Cycle counts, corrections, creating and deleting stock, stock checks, location lookups and transfers. Auto-Shift and counts run on the truck screen.</p>
+      return `<section><h2>Checks to do</h2>${checkRows || '<p class="dim">No location is held for a check.</p>'}${raise}<p class="hint">Correcting replaces the wrong item with the right one at the same place, on a new ST plate: the report shows the wrong item out and the right one in, under one correction number. <a href="/api/reports/stock-changes.csv">Stock changes CSV</a></p></section>
+        <section><h2>Stock control</h2><p class="hint">Cycle counts, corrections, creating and deleting stock, stock checks, location lookups and transfers. Auto-Shift and counts run on the truck screen.</p>
         <form class="form" data-act="bin-find"><label>Pallet, item, barcode, bin or location<input name="q" required autocomplete="off"></label><button class="primary">Check</button></form><div id="binOut"></div></section>
         <div class="grid">
         ${can('moves.execute') ? `<section><h2>Transfer</h2><p class="hint">Record where a pallet really stands.</p><form class="form" data-act="stock-transfer"><label>Pallet SSCC<input name="sscc" required></label><label>To<input name="to" required></label><button class="primary">Transfer</button></form></section>` : ''}
@@ -433,7 +443,7 @@
     async reports() {
       const [stock, expiry] = await Promise.all([api('GET', '/api/reports/stock'), api('GET', '/api/reports/expiry?days=45')]);
       const [avail, low, billing] = await Promise.all([api('GET', '/api/reports/availability'), api('GET', '/api/alerts/low-stock'), api('GET', '/api/reports/billing')]);
-      return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Stock CSV</a> · <a href="/api/reports/availability.csv">Available to sell CSV</a> · <a href="/api/reports/availability.json">JSON feed</a> · <a href="/api/reports/billing.csv">Billing CSV</a></p>
+      return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Stock CSV</a> · <a href="/api/reports/availability.csv">Available to sell CSV</a> · <a href="/api/reports/availability.json">JSON feed</a> · <a href="/api/reports/billing.csv">Billing CSV</a> · <a href="/api/reports/stock-changes.csv">Stock changes CSV</a> (counts, corrections, created and deleted stock)</p>
         <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
         <p class="dim">${low.length} low-stock alert(s).</p>
         <h3>Tariff</h3>
@@ -837,6 +847,9 @@
     }
     if (name === 'truck-duty') return api('POST', '/api/devices/' + encodeURIComponent(data.id) + '/duty', { duty: data.duty || null });
     if (name === 'truck-gear') return api('POST', '/api/devices/' + encodeURIComponent(data.id) + '/equipment', { equipment: data.equipment || null });
+    if (name === 'check-raise') return api('POST', '/api/checks', { loc: data.loc, orderId: data.orderId || null, itemNo: data.itemNo || null, note: data.note });
+    if (name === 'check-ok') return api('POST', '/api/checks/' + encodeURIComponent(data.id) + '/close', { outcome: 'ok', note: data.note || '' });
+    if (name === 'check-correct') return api('POST', '/api/stock/correct', { target: data.target, fromItem: data.fromItem || null, itemNo: data.itemNo, qty: Number(data.qty) });
     if (name === 'stock-create') return api('POST', '/api/stock/create', { code: data.code, itemNo: data.itemNo, qty: Number(data.qty), batch: data.batch || null, expiry: data.expiry || null, reason: data.reason });
     if (name === 'stock-delete') return api('POST', '/api/stock/' + encodeURIComponent(data.sscc) + '/delete', { reason: data.reason });
     if (name === 'stock-adjust') return api('POST', '/api/stock/adjust', { sscc: data.sscc, qty: Number(data.qty), reason: data.reason });
