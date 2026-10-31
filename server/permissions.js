@@ -203,6 +203,7 @@ const RULES = [
   ['POST', '/api/val/scan', 'val.execute'],
   ['POST', '/api/stock/adjust', 'stock.adjust'],
   ['POST', '/api/stock/create', 'stock.create'],
+  ['GET', '/api/labels/sheet', 'labels.print'],
   ['GET', '/api/putaway/:sscc', 'putaway.execute'],
   ['POST', '/api/putaway', 'putaway.execute'],
   ['POST', '/api/stock/correct', 'stock.delete'],

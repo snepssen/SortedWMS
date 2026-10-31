@@ -482,6 +482,10 @@
       try {
         const made = await api('POST', '/api/locations/guided', { answers });
         say(`Created ${made.created} locations${made.skipped ? ', ' + made.skipped + ' already existed' : ''}. First code ${made.sampleCode}.`, true);
+        const out = document.getElementById('out');
+        const names = (made.sections || []).map((s) => s.section).filter(Boolean);
+        const links = (names.length ? names : ['']).map((n) => `<a href="/api/labels/sheet?prefix=${encodeURIComponent(n)}&layout=a4-21" target="_blank">Print labels${n ? ' for ' + esc(n) : ''}</a>`).join(' · ');
+        out.insertAdjacentHTML('beforeend', `<br>${links} <span class="hint">(A4 sticker sheet; other layouts under Labels)</span>`);
       } catch (err) { say(err.message, false); }
       return;
     }
