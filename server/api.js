@@ -386,6 +386,14 @@
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
+    on('POST', '/api/items/:itemNo/units', ({ itemNo }, q, b, by) => run('setItemUnits', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
+    on('GET', '/api/bins', (_, q) => (q.item || q.itemNo ? wh().binsFor(q.item || q.itemNo) : wh().binList()));
+    on('GET', '/api/bins/:code', ({ code }) => wh().binContents(decodeURIComponent(code)));
+    on('POST', '/api/bins/put', (_, q, b, by) => run('binPut', b, by));
+    on('POST', '/api/bins/take', (_, q, b, by) => run('binTake', b, by));
+    on('POST', '/api/bins/move', (_, q, b, by) => run('binMove', b, by));
+    on('POST', '/api/bins/count', (_, q, b, by) => run('binCount', b, by));
+    on('POST', '/api/bins/:code/mode', ({ code }, q, b, by) => run('setBinMode', { code: decodeURIComponent(code), mixed: b.mixed }, by));
     on('POST', '/api/locations/guided/preview', (_, q, b) => {
       const out = require('../src/locations').guided(b.answers || b, { limit: 24 });
       return { total: out.total, sample: out.sample, sampleCode: out.sampleCode, plans: out.plans.map(({ section, type, total, sampleCode, lastCode, capacity }) => ({ section, type, total, sampleCode, lastCode, capacity })) };

@@ -71,11 +71,11 @@
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['holders', 'Holders']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
-    operator: [['receive', 'Receiving'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['holders', 'License plates']],
+    operator: [['receive', 'Receiving'], ['bins', 'Bins'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
+    machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['bins', 'Bins'], ['holders', 'License plates']],
     client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator', client: 'Client' };
@@ -130,6 +130,21 @@
         ${plateTable(here)}
         <form class="scan" data-act="mezz-pick"><label>Order<input name="orderId" placeholder="4501"></label><label>Plate<input name="code" id="scan" autocomplete="off" placeholder="ST0000001"></label><label>Qty<input name="qty" type="number" min="1" placeholder="all"></label><p class="big"><button class="primary">Confirm pick</button></p></form>
         <p class="hint">A pick against an order consumes that sales-order line. Leave the order blank to record the plate only.</p><div id="scanMsg"></div></section>`;
+    },
+    async bins() {
+      const list = await api('GET', '/api/bins');
+      const unit = '<label>Unit<input name="unit" placeholder="piece, box…" size="7"></label>';
+      const what = '<label>Item or barcode<input name="code" required autocomplete="off"></label>';
+      const forms = [];
+      if (can('inbound.write')) forms.push(`<section><h2>Put away</h2><form class="form" data-act="bin-put"><label>Bin<input name="loc" required autocomplete="off"></label>${what}<label>Qty<input name="qty" type="number" min="1" value="1"></label>${unit}<label>Batch<input name="batch" placeholder="optional"></label><label>Best before<input name="expiry" type="date"></label><button class="primary">Put away</button></form><p class="hint">Scanning a box barcode puts in a whole box.</p></section>`);
+      if (can('picks.execute')) forms.push(`<section><h2>Pick</h2><form class="form" data-act="bin-take"><label>Order<input name="orderId" placeholder="optional"></label><label>Bin<input name="loc" required autocomplete="off"></label>${what}<label>Qty<input name="qty" type="number" min="1" value="1"></label>${unit}<button class="primary">Pick</button></form><p class="hint">For an order, the pick waits for packing under the bin code. Earliest expiry goes first.</p></section>`);
+      if (can('moves.execute')) forms.push(`<section><h2>Move</h2><form class="form" data-act="bin-move"><label>From<input name="from" required autocomplete="off"></label><label>To<input name="to" required autocomplete="off"></label>${what}<label>Qty<input name="qty" type="number" min="1" value="1"></label>${unit}<button class="primary">Move</button></form></section>`);
+      if (can('counts.execute')) forms.push(`<section><h2>Count</h2><form class="form" data-act="bin-count"><label>Bin<input name="loc" required autocomplete="off"></label>${what}<label>Counted<input name="counted" type="number" min="0" required></label>${unit}<label>Reason<select name="reason"><option>recount</option><option>found</option><option>damage</option><option>correction</option><option>other</option></select></label><button class="primary">Save count</button></form></section>`);
+      if (can('items.write')) forms.push(`<section><h2>Units and packs</h2><form class="form" data-act="bin-units"><label>Item<input name="itemNo" required></label><label>Base unit<input name="base" placeholder="piece"></label><label>kg per unit<input name="unitWeightKg" type="number" step="0.001" min="0"></label><label>Packs<input name="packs" placeholder="box=12, case=144" size="18"></label><label>Pack barcodes<input name="barcodes" placeholder="box=8710001, case=8710002" size="22"></label><button class="primary">Save units</button></form><p class="hint">Any quantity can then be given in a pack. A bin shows 30 pieces as 2 box + 6 piece.</p></section>`);
+      return `<section><h2>Bins and shelves</h2><p class="hint">Loose stock without a license plate. A bin can hold several items unless it is set to one item only.</p>
+        <form class="form" data-act="bin-find"><label>Item, barcode or bin<input name="q" required autocomplete="off" placeholder="M3 or Shelf1-Bin2"></label><button class="primary">Find</button></form><div id="binOut"></div></section>
+        <div class="grid">${forms.join('')}</div>
+        <section><h2>Bins with stock</h2>${binTable(list.bins)}${list.total > list.bins.length ? `<p class="hint">${list.total - list.bins.length} more. Use Find.</p>` : ''}</section>`;
     },
     async kitting() {
       const val = await api('GET', '/api/val');
@@ -673,6 +688,7 @@
       if (el) el.innerHTML = msg('Picked ' + data.code, true);
       return;
     }
+    if (form.dataset.act.startsWith('bin-')) return await binAct(form.dataset.act, data);
     if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
       if (form.dataset.act === 'station-scan') return sendStation(data.code, wedgeBurst ? 'wedge' : 'manual');
       await act(form.dataset.act, data);
@@ -692,6 +708,42 @@
     lastKey = now;
   });
 
+  function binTable(bins) {
+    const rows = [];
+    for (const b of bins) b.lines.forEach((l, i) => rows.push(`<tr><td>${i ? '' : `<b>${esc(b.code)}</b>${b.mixed ? '' : ' <span class="tag">one item</span>'}`}</td><td>${esc(l.itemNo)}</td><td>${esc(l.name)}</td><td>${esc(l.qty)} ${esc(l.unit || '')}${l.packs ? `<br><span class="dim">${esc(l.packs)}</span>` : ''}</td><td>${esc(l.batch || '')}</td><td>${esc(l.expiry || '')}</td></tr>`));
+    return table(['Bin', 'Item', 'Name', 'Quantity', 'Batch', 'Best before'], rows);
+  }
+  function packList(text, barcodes) {
+    const codes = {};
+    for (const part of String(barcodes || '').split(',')) { const [u, c] = part.split('='); if (u && c) codes[u.trim().toLowerCase()] = c.trim(); }
+    return String(text || '').split(',').map((part) => part.split('=')).filter(([u, n]) => u && n).map(([u, n]) => ({ unit: u.trim(), per: Number(n), barcode: codes[u.trim().toLowerCase()] || null }));
+  }
+  async function binAct(name, data) {
+    const out = document.getElementById('binOut');
+    const qty = data.qty ? Number(data.qty) : 1;
+    const unit = data.unit || null;
+    let text;
+    if (name === 'bin-find') {
+      const q = data.q.trim();
+      try {
+        const bin = await api('GET', '/api/bins/' + encodeURIComponent(q));
+        out.innerHTML = `<p class="msg ok">${esc(bin.code)}${bin.maxWeightKg != null ? ` · ${bin.weightKg} of ${bin.maxWeightKg} kg` : ''}</p>${binTable([bin])}`;
+      } catch (e) {
+        const found = await api('GET', '/api/bins?item=' + encodeURIComponent(q));
+        out.innerHTML = `<p class="msg ok">${esc(found.itemNo)} ${esc(found.name)}: ${found.total} ${esc(found.unit || '')} in ${found.bins.length} bin${found.bins.length === 1 ? '' : 's'}. Pick from the top one first.</p>` +
+          table(['Bin', 'Quantity', 'Batch', 'Best before'], found.bins.map((b) => `<tr><td>${esc(b.loc)}</td><td>${esc(b.qty)}${b.packs ? ` <span class="dim">(${esc(b.packs)})</span>` : ''}</td><td>${esc(b.batch || '')}</td><td>${esc(b.expiry || '')}</td></tr>`));
+      }
+      return;
+    }
+    if (name === 'bin-put') { const r = await api('POST', '/api/bins/put', { loc: data.loc, code: data.code, qty, unit, batch: data.batch || null, expiry: data.expiry || null }); text = `Put ${r.qty} ${r.unit || ''} ${r.itemNo} in ${r.loc}.`; }
+    if (name === 'bin-take') { const r = await api('POST', '/api/bins/take', { loc: data.loc, code: data.code, qty, unit, orderId: data.orderId || null }); text = `Picked ${r.qty} ${r.itemNo} from ${r.loc}${r.orderId ? ' for order ' + r.orderId : ''}.`; }
+    if (name === 'bin-move') { const r = await api('POST', '/api/bins/move', { from: data.from, to: data.to, code: data.code, qty, unit }); text = `Moved ${r.qty} ${r.itemNo} from ${r.from} to ${r.to}.`; }
+    if (name === 'bin-count') { const r = await api('POST', '/api/bins/count', { loc: data.loc, code: data.code, counted: Number(data.counted), unit, reason: data.reason }); text = r.difference ? `${r.loc}: ${r.itemNo} was ${r.before}, now ${r.after}.` : `${r.loc}: ${r.itemNo} is ${r.after}, as expected.`; }
+    if (name === 'bin-units') { const r = await api('POST', '/api/items/' + encodeURIComponent(data.itemNo) + '/units', { base: data.base || null, unitWeightKg: data.unitWeightKg === '' ? undefined : Number(data.unitWeightKg), packs: data.packs ? packList(data.packs, data.barcodes) : null }); text = `${r.itemNo}: ${[r.base, ...r.packs.map((p) => `${p.unit} = ${p.per} ${r.base}`)].join(', ')}.`; }
+    await draw();
+    const after = document.getElementById('binOut');
+    if (after) after.innerHTML = msg(text, true);
+  }
   async function sendScan(code, source, deviceId) {
     if (!code) throw new Error('Nothing to scan');
     const out = await api('POST', '/api/hardware/scan', { code, source, deviceId });

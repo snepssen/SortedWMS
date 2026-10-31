@@ -687,7 +687,7 @@
       const order = this.orders[box.orderId];
       const key = String(code || '').trim().toUpperCase();
       const holder = this.holders[key] || null;
-      const staged = (order.staged || []).find((s) => ((holder && s.holder === holder.id) || (!holder && s.holder === key)) && Number(s.qty) >= take);
+      const staged = (order.staged || []).find((s) => ((holder && s.holder === holder.id) || (!holder && String(s.holder).toUpperCase() === key)) && Number(s.qty) >= take);
       const content = staged || (holder && (holder.contents || []).find((c) => Number(c.qty) >= take));
       if (!content) throw new Error(`${code} does not have ${take} to pack`);
       if (!order.lines.some((l) => l.itemNo === content.itemNo)) throw new Error(`${content.itemNo} is not on order ${order.id}`);
@@ -789,6 +789,7 @@
         if (h.loc !== loc.code || h.sscc) continue;
         for (const c of h.contents || []) if (c.itemNo === spec.itemNo) n += Number(c.qty) || 0;
       }
+      for (const l of (this.binStock && this.binStock[loc.code]) || []) if (l.itemNo === spec.itemNo) n += l.qty;
       return n;
     };
 
@@ -1410,6 +1411,11 @@
             onHand += q;
             if (blocked) held += q;
           }
+        }
+        if (typeof this._binTotals === 'function') {
+          const loose = this._binTotals(item.itemNo);
+          onHand += loose.onHand;
+          held += loose.held;
         }
         let reserved = 0;
         for (const order of Object.values(this.orders)) {
