@@ -3511,7 +3511,7 @@
     // ---- Internals: slotting --------------------------------------------------
 
     _slotFree(loc, pallet) {
-      return Boolean(loc) && loc.kind === 'rack' && !loc.structural && !loc.sscc && !loc.blocked && !loc.reservedBy
+      return Boolean(loc) && loc.kind === 'rack' && !loc.structural && !loc.sscc && !loc.blocked && !loc.reservedBy && !loc.checkHold
         && loc.category === this.items[pallet.itemNo].category
         && Boolean(loc.quarantine) === Boolean(pallet.quarantine && pallet.quarantine.state !== 'returning')
         && this._fits(loc, pallet);
