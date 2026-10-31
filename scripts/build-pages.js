@@ -56,7 +56,7 @@ ${body.trim()}
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
-for (const f of ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
+for (const f of ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
   fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
 }
 fs.copyFileSync(path.join(root, 'walkthrough.html'), path.join(out, 'walkthrough.html'));

@@ -1256,6 +1256,7 @@
       const preset = PRESETS.find((p) => p.id === id);
       if (!preset) throw new Error('Unknown warehouse preset');
       this.features = { ...preset.features };
+      if (preset.modules) this.modules = { ...preset.modules };
       for (const [code, name] of Object.entries(preset.categories || {})) if (!this.categories[code]) this.categories[code] = name;
       this.setup = {
         ...(this.setup || {}), preset: preset.id, features: { ...this.features },
@@ -1263,7 +1264,39 @@
         updatedAt: this.now(), updatedBy: this._actor || 'admin',
       };
       this.log(`Warehouse preset ${preset.name}`);
-      return { id: preset.id, name: preset.name, summary: preset.summary, features: this.features, locationPlan: preset.locationPlan, virtual: preset.virtual || [], categories: preset.categories };
+      return { id: preset.id, name: preset.name, summary: preset.summary, features: this.features, modules: this.modules || null, locationPlan: preset.locationPlan, virtual: preset.virtual || [], categories: preset.categories };
+    };
+
+    /** A module is on unless this warehouse switched it off. */
+    proto.module = function (name) {
+      return !this.modules || this.modules[name] !== false;
+    };
+
+    proto.setModules = function (patch = {}) {
+      const { MODULES } = loadPresets();
+      const ids = MODULES.map(([id]) => id).concat('simple');
+      const next = { ...(this.modules || {}) };
+      for (const [key, value] of Object.entries(patch || {})) {
+        if (!ids.includes(key)) throw new Error(`Unknown module ${key}`);
+        next[key] = Boolean(value);
+      }
+      if (next.billing !== false && next.clients === false) throw new Error('3PL billing needs Clients');
+      if (next.trucks === false) {
+        const busy = Object.values(this.tasks).filter((t) => t.truckId && this.trucks[t.truckId] && ['active'].includes(t.status));
+        if (busy.length) throw new Error(`${busy.length} truck job${busy.length === 1 ? ' is' : 's are'} under way. Finish them before switching trucks off`);
+      }
+      if (next.waves === false && typeof this.activeWave === 'function' && this.activeWave()) throw new Error('A pick wave is active. Finish or cancel it first');
+      this.modules = next;
+      this.setup = { ...(this.setup || {}), modules: { ...next }, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
+      const off = MODULES.filter(([id]) => next[id] === false).map(([, label]) => label);
+      this.log(`Modules: ${off.length ? `${off.join(', ')} off` : 'all on'}${next.simple ? ', simple screens' : ''}`);
+      if (next.trucks !== false) this.dispatch();
+      return { ...this.moduleList() };
+    };
+
+    proto.moduleList = function () {
+      const { MODULES } = loadPresets();
+      return { modules: MODULES.map(([id, label, hint]) => ({ id, label, hint, on: this.module(id) })), simple: Boolean(this.modules && this.modules.simple) };
     };
 
     proto.setFeatures = function (patch) {

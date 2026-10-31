@@ -266,12 +266,13 @@
     };
 
     proto.planWave = function ({ id = null, orders = null, by } = {}) {
+      if (!this.module('waves')) throw new Error('Pick waves are switched off. Pick from the Bins screen, or turn them on in setup');
       return this._buildWave({ id, orders, by, auto: false });
     };
 
     /** The queue drops into a new wave when no wave is active. Called on the clock tick and when a wave finishes. */
     proto.autoWave = function () {
-      if (!this.waveSettings().auto || this.activeWave()) return null;
+      if (!this.module('waves') || !this.waveSettings().auto || this.activeWave()) return null;
       return this._buildWave({ auto: true, by: 'system' });
     };
 

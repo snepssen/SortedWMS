@@ -59,8 +59,8 @@
   <nav id="nav"></nav>
   <span style="flex:1"></span>
   <label id="siteLabel" class="who">Warehouse <select id="sitePick"></select></label>
-  <a class="btn" href="/admin">Floor</a>
-  <a class="btn" href="/handheld">Handheld</a>
+  <a class="btn" href="/admin" id="floorLink">Floor</a>
+  <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
   <button id="out" type="button">Sign out</button>
 </header>
 <main id="main"></main>
@@ -84,6 +84,12 @@
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
+  // Screens that belong to a module disappear while it is off.
+  const PANEL_MODULE = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks' };
+  // Simple screens: one short list for whoever signs in, for a person running the place alone.
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  let MODS = null;
+  const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
   let panel = '';
 
@@ -103,8 +109,16 @@
     document.body.dataset.role = me.role;
     $('#title').textContent = TITLES[me.role] || 'SortedWMS';
     $('#who').textContent = `${me.displayName} · ${me.username}`;
-    const items = NAV[me.role] || [['floor', 'Home']];
-    if (!panel || (!items.some(([id]) => id === panel) && !PANELS[panel])) panel = HOME[me.role] || items[0][0];
+    const simple = MODS && MODS.simple && me.role !== 'client';
+    const listed = simple ? SIMPLE_NAV.filter(([, , perm]) => can(perm)).map(([id, label]) => [id, label]) : (NAV[me.role] || [['floor', 'Home']]);
+    const shown = listed.filter(([id]) => modOn(PANEL_MODULE[id]));
+    const items = shown.length ? shown : listed;
+    const home = simple ? items[0][0] : HOME[me.role];
+    if (!panel || (!items.some(([id]) => id === panel) && !PANELS[panel]) || !modOn(PANEL_MODULE[panel])) panel = items.some(([id]) => id === home) ? home : items[0][0];
+    const hh = document.getElementById('handheldLink');
+    if (hh) hh.style.display = modOn('trucks') ? '' : 'none';
+    const floor = document.getElementById('floorLink');
+    if (floor) floor.style.display = simple ? 'none' : '';
     $('#nav').innerHTML = items.map(([id, label]) => `<button type="button" data-panel="${id}" class="${id === panel ? 'on' : ''}">${label}</button>`).join('');
   }
 
@@ -183,7 +197,7 @@
         </div>`;
     },
     async bins() {
-      const [list, picks] = await Promise.all([api('GET', '/api/bins'), can('picks.execute') ? api('GET', '/api/waves/tasks?kind=bin') : []]);
+      const [list, picks] = await Promise.all([api('GET', '/api/bins'), can('picks.execute') && modOn('waves') ? api('GET', '/api/waves/tasks?kind=bin') : []]);
       const unit = '<label>Unit<input name="unit" placeholder="piece, box…" size="7"></label>';
       const what = '<label>Item or barcode<input name="code" required autocomplete="off"></label>';
       const forms = [];
@@ -367,7 +381,7 @@
         <div class="kpi"><b>${k.cantShip}</b><span>Cannot ship</span></div>
         <div class="kpi"><b>${ex.faults.length}</b><span>Open faults</span></div>
       </div></section>
-      ${can('tasks.assign') ? `<section><h2>Trucks</h2><p class="hint">Each truck gets the jobs of its duty only. A reach truck and a man-up reach every level; an EPT stays on the ground; a cart takes no truck jobs.</p>${table(['Truck', 'Driver', 'Duty', 'Equipment'], devices.filter((d) => d.kind !== 'desk').map((d) => `<tr><td><b>${esc(d.id)}</b></td><td>${esc(d.operator || '—')}</td>
+      ${can('tasks.assign') && modOn('trucks') ? `<section><h2>Trucks</h2><p class="hint">Each truck gets the jobs of its duty only. A reach truck and a man-up reach every level; an EPT stays on the ground; a cart takes no truck jobs.</p>${table(['Truck', 'Driver', 'Duty', 'Equipment'], devices.filter((d) => d.kind !== 'desk').map((d) => `<tr><td><b>${esc(d.id)}</b></td><td>${esc(d.operator || '—')}</td>
         <td><form class="form" data-act="truck-duty"><input type="hidden" name="id" value="${esc(d.id)}"><select name="duty"><option value="">every job</option>${Object.entries(DUTY).map(([k, v]) => `<option value="${k}" ${d.duty === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button>Set</button></form></td>
         <td><form class="form" data-act="truck-gear"><input type="hidden" name="id" value="${esc(d.id)}"><select name="equipment"><option value="">any</option>${Object.entries(GEAR).map(([k, v]) => `<option value="${k}" ${d.equipment === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button>Set</button></form></td></tr>`))}</section>` : ''}
       <div class="grid"><section><h2>Staff</h2>${table(['Name', 'Role', 'User'], (users.users || []).filter((u) => u.active).map((u) => `<tr><td>${esc(u.displayName)}</td><td>${esc(u.roleLabel || u.role)}</td><td>${esc(u.username)}</td></tr>`))}
@@ -993,6 +1007,8 @@
     if (!pick) return;
     try {
       const data = window.SORTED_DEMO ? { current: 'MAIN', sites: [{ id: 'MAIN', name: 'Demo warehouse' }] } : await api('GET', '/api/sites');
+      const label = document.getElementById('siteLabel');
+      if (label) label.style.display = !modOn('sites') && (data.sites || []).length < 2 ? 'none' : '';
       pick.innerHTML = (data.sites || []).map((s) => `<option value="${esc(s.id)}" ${s.id === data.current ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
       pick.onchange = async () => {
         if (window.SORTED_DEMO) return;
@@ -1043,6 +1059,7 @@
       };
       return;
     }
+    try { MODS = await api('GET', '/api/modules'); } catch (e) { MODS = null; } // a client login sees every screen it owns
     panel = (location.hash || '#').slice(1).split('?')[0];
     await draw();
     loadSites();
