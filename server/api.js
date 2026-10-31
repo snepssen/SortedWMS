@@ -142,7 +142,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware }) {
+  function createApi({ store, printers, hardware, backups = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -480,6 +480,12 @@
       raw: wh().invoiceCsv({ clientId: q.clientId, from: q.from || null, to: q.to || null }),
     }));
     on('GET', '/api/backup', () => store.exportBackup());
+    on('GET', '/api/backups', () => (backups ? { dir: backups.dir, backups: backups.list().map(({ file, bytes, at }) => ({ file, bytes, at })) } : { dir: null, backups: [] }));
+    on('POST', '/api/backups', () => {
+      if (!backups) return { status: 400, error: 'Backups are made by the server. Start it with ./start.sh' };
+      const made = backups.now();
+      return { file: made.file, bytes: made.bytes };
+    });
     on('POST', '/api/backup', (_, q, b) => store.importBackup(b));
     on('POST', '/api/devices/:id/operator', ({ id }, q, b, by) => run('assignOperator', { id, operator: b.operator || null, ...('duty' in b ? { duty: b.duty || null } : {}) }, by));
     on('POST', '/api/devices/:id/duty', ({ id }, q, b, by) => run('setTruckDuty', { id, duty: b.duty || null }, by));
