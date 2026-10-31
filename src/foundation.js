@@ -1129,6 +1129,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadWaves() {
+      if (typeof require === 'function') {
+        try { return require('./waves'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedWaves;
+    }
+
     function loadBins() {
       if (typeof require === 'function') {
         try { return require('./bins'); } catch (e) { /* browser */ }
@@ -1224,6 +1231,8 @@
     if (operations && operations.install) operations.install(Warehouse, deps);
     const bins = loadBins();
     if (bins && bins.install) bins.install(Warehouse, deps);
+    const waves = loadWaves();
+    if (waves && waves.install) waves.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

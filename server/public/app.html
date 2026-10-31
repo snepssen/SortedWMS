@@ -71,11 +71,11 @@
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', operator: 'receive', machine: 'moves', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['holders', 'Holders']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     operator: [['receive', 'Receiving'], ['bins', 'Bins'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    machine: [['moves', 'Moves'], ['replenish', 'Replenish'], ['bins', 'Bins'], ['holders', 'License plates']],
+    machine: [['moves', 'Moves'], ['cases', 'Pallet and box picks'], ['replenish', 'Replenish'], ['bins', 'Bins'], ['holders', 'License plates']],
     client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', operator: 'Operator', machine: 'Machine operator', client: 'Client' };
@@ -131,8 +131,32 @@
         <form class="scan" data-act="mezz-pick"><label>Order<input name="orderId" placeholder="4501"></label><label>Plate<input name="code" id="scan" autocomplete="off" placeholder="ST0000001"></label><label>Qty<input name="qty" type="number" min="1" placeholder="all"></label><p class="big"><button class="primary">Confirm pick</button></p></form>
         <p class="hint">A pick against an order consumes that sales-order line. Leave the order blank to record the plate only.</p><div id="scanMsg"></div></section>`;
     },
+    async waves() {
+      const [waves, q] = await Promise.all([api('GET', '/api/waves'), api('GET', '/api/waves/queue')]);
+      const st = q.settings;
+      const queueRows = q.queue.map((o) => `<tr><td>${esc(o.orderId)}</td><td>${esc(o.customer)}</td><td>${o.waitedMin} min</td><td>${o.clean ? '<span class="tag">drops cleanly</span>' : o.due ? '<span class="tag bad">waited long enough, opens a box</span>' : `opens a box, waits up to ${st.maxWaitMin} min`}</td><td class="${o.short.length ? 'bad' : ''}">${o.short.map((s) => `${esc(s.itemNo)} × ${s.qty}`).join(', ') || '—'}</td></tr>`);
+      const rows = waves.map((w) => {
+        const open = w.tasks.filter((t) => t.status === 'open');
+        const cases = w.tasks.filter((t) => t.kind !== 'bin');
+        const bins = w.tasks.filter((t) => t.kind === 'bin');
+        const short = w.short.map((s) => `${s.orderId} ${s.itemNo} × ${s.qty}`).join('<br>');
+        return `<tr><td><b>${esc(w.id)}</b><br><span class="dim">${esc(w.orders.join(', '))}</span></td><td>${cases.length} · ${cases.reduce((n, t) => n + t.qty, 0)} units</td><td>${bins.length} · ${bins.reduce((n, t) => n + t.qty, 0)} units</td><td>${open.length ? `${open.length} open` : 'done'}</td><td class="${short ? 'bad' : ''}">${short || '—'}</td><td>${open.length && can('orders.write') ? `<form class="form" data-act="wave-cancel"><input type="hidden" name="id" value="${esc(w.id)}"><button>Cancel</button></form>` : ''}</td></tr>`;
+      });
+      return `<section><h2>Pick waves</h2><p class="hint">Each piece line is picked as whole pallets first (straight to the dock), then whole boxes off the rack pallets, then the small rest: from the bins when they hold all of it, else from a box that is already open, and only then from a new box. Reach trucks never pick from bins.</p>
+        <p>${q.active ? `Active wave <b>${esc(q.active)}</b>. The queue drops into the next wave when it is done.` : st.auto ? 'No active wave. The queue drops on the next clock tick.' : 'Automatic waves are off: plan them here.'}</p>
+        ${can('orders.write') ? `<form class="form" data-act="wave-plan"><label>Orders<input name="orders" placeholder="all queued orders, or 4501, 4502" size="28"></label><button class="primary">Plan wave now</button></form><p class="hint">Planning by hand takes the named orders now, even when they open a box.</p>
+        <form class="form" data-act="wave-config"><label><input type="checkbox" name="auto" ${st.auto ? 'checked' : ''}> Automatic</label><label>Wait at most (min)<input name="maxWaitMin" type="number" min="0" value="${st.maxWaitMin}"></label><label>Orders per wave<input name="maxOrders" type="number" min="1" value="${st.maxOrders}"></label><label>Post-pick lane<input name="postPick" value="${esc(st.postPick || '')}" placeholder="STAGE01"></label><button>Save</button></form>` : ''}</section>
+        <section><h2>Queue</h2><p class="hint">Oldest first. An order joins the next wave when it drops cleanly, without opening a new box, or when it has waited the maximum time.</p>${table(['Order', 'Customer', 'Waiting', 'Next wave', 'Short'], queueRows)}</section>
+        <section><h2>Recent waves</h2>${table(['Wave', 'Pallet and box picks', 'Bin picks', 'Status', 'Short', ''], rows)}</section>
+        <section><h2>Open tasks</h2>${taskList(await api('GET', '/api/waves/tasks'), false)}</section>`;
+    },
+    async cases() {
+      const [pallets, boxes] = await Promise.all([api('GET', '/api/waves/tasks?kind=pallet'), api('GET', '/api/waves/tasks?kind=case')]);
+      return `<section><h2>Whole pallets</h2><p class="hint">Straight to the dock lane named on the task. Scan the pallet to confirm.</p>${taskList(pallets, true)}</section>
+        <section><h2>Box picks</h2><p class="hint">Man-up or high-level order picker. Take whole boxes off the pallet, or the pieces from the box that is already open; the pallet stays in its slot. Drop at the post-pick lane.</p>${taskList(boxes, true)}</section>`;
+    },
     async bins() {
-      const list = await api('GET', '/api/bins');
+      const [list, picks] = await Promise.all([api('GET', '/api/bins'), can('picks.execute') ? api('GET', '/api/waves/tasks?kind=bin') : []]);
       const unit = '<label>Unit<input name="unit" placeholder="piece, box…" size="7"></label>';
       const what = '<label>Item or barcode<input name="code" required autocomplete="off"></label>';
       const forms = [];
@@ -143,6 +167,7 @@
       if (can('items.write')) forms.push(`<section><h2>Units and packs</h2><form class="form" data-act="bin-units"><label>Item<input name="itemNo" required></label><label>Base unit<input name="base" placeholder="piece"></label><label>kg per unit<input name="unitWeightKg" type="number" step="0.001" min="0"></label><label>Packs<input name="packs" placeholder="box=12, case=144" size="18"></label><label>Pack barcodes<input name="barcodes" placeholder="box=8710001, case=8710002" size="22"></label><button class="primary">Save units</button></form><p class="hint">Any quantity can then be given in a pack. A bin shows 30 pieces as 2 box + 6 piece.</p></section>`);
       return `<section><h2>Bins and shelves</h2><p class="hint">Loose stock without a license plate. A bin can hold several items unless it is set to one item only.</p>
         <form class="form" data-act="bin-find"><label>Item, barcode or bin<input name="q" required autocomplete="off" placeholder="M3 or Shelf1-Bin2"></label><button class="primary">Find</button></form><div id="binOut"></div></section>
+        ${picks.length ? `<section><h2>Bin pick tasks</h2><p class="hint">From the pick wave, for EPT and cart pickers. Scan the bin to confirm.</p>${taskList(picks, true)}</section>` : ''}
         <div class="grid">${forms.join('')}</div>
         <section><h2>Bins with stock</h2>${binTable(list.bins)}${list.total > list.bins.length ? `<p class="hint">${list.total - list.bins.length} more. Use Find.</p>` : ''}</section>`;
     },
@@ -377,7 +402,7 @@
     },
     async outbound() {
       const orders = await api('GET', '/api/orders');
-      return `<section><h2>Orders, packing and dispatch</h2><form class="form" data-act="order"><label>Order<input name="id" required></label><label>Customer<input name="customer" required></label><label>Lane<input name="lane" value="OUT-01"></label><label>Item<input name="itemNo" required></label><label>Pallets<input name="pallets" type="number" value="1"></label><button class="primary">Create order</button></form>
+      return `<section><h2>Orders, packing and dispatch</h2><form class="form" data-act="order"><label>Order<input name="id" required></label><label>Customer<input name="customer" required></label><label>Lane<input name="lane" value="OUT-01"></label><label>Item<input name="itemNo" required></label><label>Pallets<input name="pallets" type="number" placeholder="1"></label><label>or Units<input name="units" type="number" min="1" placeholder="pieces"></label><button class="primary">Create order</button></form><p class="hint">Units make a piece line: plan it as a pick wave, so whole boxes come off the pallets and the rest from the bins.</p>
         <form class="form" data-act="pack"><label>Order<input name="id" required></label><label>Packing note<input name="note" placeholder="Wrapped, labels on the long side"></label><button>Record packing</button></form>
         ${table(['Order', 'Customer', 'Client', 'Status', 'Lane'], orders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.clientId || '')}</td><td>${esc(o.status)}</td><td>${esc(o.lane)}</td></tr>`))}
         <p class="dim">Check &amp; label and trailer loading stay on the floor and loading screens. Ship from the floor office once the load is sealed.</p></section>`;
@@ -708,6 +733,11 @@
     lastKey = now;
   });
 
+  function taskList(tasks, confirm) {
+    return table(['Task', 'Order', 'Where', 'Item', 'Quantity', confirm ? 'Confirm' : 'For'], tasks.map((t) => `<tr><td>${esc(t.id)}</td><td>${esc(t.orderId)}</td><td><b>${esc(t.loc)}</b>${t.sscc ? `<br><span class="dim">pallet …${esc(t.sscc.slice(-6))}</span>` : ''}</td><td>${esc(t.itemNo)} <span class="dim">${esc(t.name || '')}</span></td><td>${esc(t.qty)} ${esc(t.unit || '')}${t.box === 'new' ? '<br><span class="tag">open a box</span>' : t.box === 'open' ? '<br><span class="tag">from the open box</span>' : t.box === 'whole' && t.per ? `<br><span class="dim">${t.qty / t.per} whole box${t.qty / t.per === 1 ? '' : 'es'}</span>` : t.kind === 'pallet' ? '<br><span class="dim">whole pallet</span>' : ''}${t.dropTo ? `<br><span class="dim">to ${esc(t.dropTo)}</span>` : ''}</td><td>${confirm
+      ? `<form class="form" data-act="wave-confirm"><input type="hidden" name="task" value="${esc(t.id)}"><input name="scan" placeholder="scan ${t.kind === 'case' ? 'pallet or slot' : 'bin'}" size="14" autocomplete="off"><button class="primary">Done</button></form>`
+      : (t.kind === 'bin' ? 'bin picker' : t.kind === 'pallet' ? 'pallet picker' : 'man-up')}</td></tr>`));
+  }
   function binTable(bins) {
     const rows = [];
     for (const b of bins) b.lines.forEach((l, i) => rows.push(`<tr><td>${i ? '' : `<b>${esc(b.code)}</b>${b.mixed ? '' : ' <span class="tag">one item</span>'}`}</td><td>${esc(l.itemNo)}</td><td>${esc(l.name)}</td><td>${esc(l.qty)} ${esc(l.unit || '')}${l.packs ? `<br><span class="dim">${esc(l.packs)}</span>` : ''}</td><td>${esc(l.batch || '')}</td><td>${esc(l.expiry || '')}</td></tr>`));
@@ -775,7 +805,11 @@
     if (name === 'client-add') return api('POST', '/api/clients', data);
     if (name === 'item-add') return api('POST', '/api/items', { ...data, palletQty: Number(data.palletQty || 1), lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), clientId: data.clientId || null, gtin: data.gtin || null });
     if (name === 'asn') return api('POST', '/api/deliveries', { ...data, pallets: Number(data.pallets || 1), clientId: data.clientId || null });
-    if (name === 'order') return api('POST', '/api/orders', { id: data.id, customer: data.customer, lane: data.lane, lines: [{ itemNo: data.itemNo, pallets: Number(data.pallets || 1) }] });
+    if (name === 'order') return api('POST', '/api/orders', { id: data.id, customer: data.customer, lane: data.lane, lines: [data.units ? { itemNo: data.itemNo, units: Number(data.units) } : { itemNo: data.itemNo, pallets: Number(data.pallets || 1) }] });
+    if (name === 'wave-plan') return api('POST', '/api/waves', { orders: String(data.orders || '').split(/[\s,]+/).filter(Boolean) });
+    if (name === 'wave-config') return api('POST', '/api/waves/config', { auto: data.auto === 'on', maxWaitMin: Number(data.maxWaitMin), maxOrders: Number(data.maxOrders), postPick: data.postPick || null });
+    if (name === 'wave-cancel') return api('POST', '/api/waves/' + encodeURIComponent(data.id) + '/cancel', {});
+    if (name === 'wave-confirm') return api('POST', '/api/waves/tasks/' + encodeURIComponent(data.task) + '/confirm', { scan: data.scan || null });
     if (name === 'pack') return api('POST', '/api/orders/' + encodeURIComponent(data.id) + '/pack', { note: data.note });
     if (name === 'label-pallet' || name === 'label-master') {
       const path = name === 'label-master' ? '/api/labels/master' : '/api/labels/pallet';
