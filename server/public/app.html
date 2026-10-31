@@ -51,6 +51,7 @@
   a { color: var(--acc); }
   @media (max-width: 720px) { main { padding: 10px; } header h1 { font-size: 16px; } .job { font-size: 18px; } }
 </style>
+<script src="camera.js"></script>
 </head>
 <body>
 <header>
@@ -87,7 +88,7 @@
   // Screens that belong to a module disappear while it is off.
   const PANEL_MODULE = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks' };
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -139,7 +140,10 @@
         <form class="form" data-act="issue-plates"><label>Received pallet SSCC<input name="sscc" required placeholder="18 digit SSCC"></label><button class="primary">Issue PAL + MASTER</button></form>
         <form class="form" data-act="issue-series"><input type="hidden" name="series" value="INB"><label>Item<input name="itemNo" value="Y1002"></label><label>Qty<input name="qty" type="number" value="1"></label><label>Location<input name="loc" value="DOCK-IN"></label><button>Issue INB plate</button></form>
         <h3>Open deliveries</h3>${table(['Delivery', 'Supplier', 'ASN', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || d.id)}</td><td>${esc(d.status)}</td></tr>`))}
-        <h3>INB plates</h3>${plateTable(inbound)}</section>`;
+        <h3>INB plates</h3>${plateTable(inbound)}</section>
+        ${can('putaway.execute') ? `<section><h2>Put away by hand</h2><p class="hint">${modOn('trucks') ? 'For a pallet the trucks are not taking.' : 'No trucks here: put received pallets away yourself.'} Scan the pallet to see where the system would put it, then scan that slot, or another one.</p>
+        <form class="form" data-act="putaway-suggest"><label>Pallet SSCC<input name="sscc" required autocomplete="off"></label><button>Where does it go?</button></form>
+        <form class="form" data-act="putaway"><label>Pallet SSCC<input name="sscc" id="paSscc" required autocomplete="off"></label><label>Slot<input name="to" id="paTo" autocomplete="off" placeholder="the suggested slot"></label><button class="primary">Put away</button></form><div id="paOut"></div></section>` : ''}`;
     },
     async mezzanine() {
       const [locs, holders] = await Promise.all([api('GET', '/api/locations?kind=mezzanine&limit=50'), api('GET', '/api/holders')]);
@@ -570,7 +574,11 @@
     },
     async labels() {
       const holders = await api('GET', '/api/holders');
-      return `<section><h2>Pallet and master labels</h2><p class="hint">ZPL for a thermal printer. The HTML page is the browser print / PDF fallback. Simulated printers keep the job.</p>
+      const layouts = [['a4-21', 'A4 sticker sheet, 21 (Avery L7160)'], ['a4-14', 'A4 sticker sheet, 14 (Avery L7163)'], ['a4-8', 'A4 sticker sheet, 8 (Avery L7165)'], ['letter-30', 'US Letter sheet, 30 (Avery 5160)'], ['roll-62x29', 'Label printer, 62 × 29 mm roll'], ['roll-57x32', 'Label printer, 57 × 32 mm roll'], ['roll-102x152', 'Label printer, 4 × 6 in roll']];
+      return `<section><h2>Label sheets</h2><p class="hint">No label printer needed: print on sticker sheets from any printer, or on a roll in a small label printer. Print at 100% (actual size). Start after the stickers already used on a part sheet.</p>
+        <form class="form" data-act="label-sheet"><label>Labels for<select name="kind"><option value="locations">Locations</option><option value="items">Items and their boxes</option><option value="plates">License plates</option></select></label><label>Which<input name="which" placeholder="codes starting with Shelf1, or a list" size="26"></label><label>Layout<select name="layout">${layouts.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label><label>Stickers used<input name="skip" type="number" min="0" value="0" style="width:5em"></label><button class="primary">Open the sheet</button></form>
+        <p class="hint">Locations: a start of the code (every location starting with it) or a list. Items: a list, or empty for all. Plates: a list.</p></section>
+        <section><h2>Pallet and master labels</h2><p class="hint">ZPL for a thermal printer. The HTML page is the browser print / PDF fallback. Simulated printers keep the job.</p>
         <form class="form" data-act="label-pallet"><label>SSCC in stock<input name="sscc" placeholder="18 digits, or leave blank"></label><label>Or item<input name="itemNo" placeholder="Y1001"></label><label>Batch<input name="batch"></label><label>Best before<input name="expiry" type="date"></label><label>Qty<input name="qty" type="number"></label><button class="primary">Pallet label</button></form>
         <form class="form" data-act="label-master"><label>Child SSCCs<textarea name="children" placeholder="one SSCC per line"></textarea></label><label>Title<input name="title" value="Master logistic unit"></label><button class="primary">Master label</button></form>
         <p class="dim">${holders.length} holders on the floor. A holder label uses its id when that id is an SSCC.</p><div id="labelOut"></div></section>`;
@@ -765,6 +773,30 @@
       return;
     }
     if (form.dataset.act.startsWith('bin-')) return await binAct(form.dataset.act, data);
+    if (form.dataset.act === 'label-sheet') {
+      const q = new URLSearchParams({ kind: data.kind, layout: data.layout, skip: data.skip || '0' });
+      const which = (data.which || '').trim();
+      if (data.kind === 'locations') q.set(/[\s,;]/.test(which) ? 'codes' : 'prefix', which);
+      else q.set(data.kind === 'items' ? 'items' : 'ids', which);
+      const tab = window.open('', '_blank'); // opened before the wait, so a pop-up blocker allows it
+      const html = await api('GET', '/api/labels/sheet?' + q.toString());
+      if (tab) { tab.document.open(); tab.document.write(html); tab.document.close(); }
+      return;
+    }
+    if (form.dataset.act === 'putaway-suggest') {
+      const s = await api('GET', '/api/putaway/' + encodeURIComponent(data.sscc.trim()));
+      document.getElementById('paSscc').value = s.sscc;
+      document.getElementById('paTo').value = s.to || '';
+      document.getElementById('paOut').innerHTML = s.to ? msg(`…${s.sscc.slice(-6)} ${s.itemNo} goes to ${s.to}`, true) : msg('No free slot of its category. Name one, or free one first', false);
+      return;
+    }
+    if (form.dataset.act === 'putaway') {
+      const r = await api('POST', '/api/putaway', { sscc: data.sscc.trim(), to: data.to || null });
+      await draw();
+      const out = document.getElementById('paOut');
+      if (out) out.innerHTML = msg(`Put away …${r.sscc.slice(-6)} at ${r.to}`, true);
+      return;
+    }
     if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
       if (form.dataset.act === 'station-scan') return sendStation(data.code, wedgeBurst ? 'wedge' : 'manual');
       await act(form.dataset.act, data);

@@ -13,6 +13,24 @@ The server keeps one accept path for scans and one send path for labels, so a re
 
 The technical role or an administrator sets the mode under Hardware or Settings. The default is wedge + simulated, which is what `npm run start:demo` uses. The barcode on a new pallet or master label is the license plate (`PAL0000001`, `MASTER0000001`). An SSCC can be printed underneath it.
 
+## Without warehouse hardware
+
+**Scanning with the camera.** On a phone, tablet or laptop with Chrome or Edge, every scan field has a camera button. It reads Code 128, EAN/UPC, Code 39, ITF, QR and Data Matrix with the browser's own barcode reader, so nothing is installed and it works offline. A read fills the field the way a wedge scanner would: a one-field scan form is sent, otherwise the cursor moves to the next field. Browsers without a barcode reader (Safari, Firefox) show no button; typing still works. The page asks for the camera the first time.
+
+**Labels on sticker sheets or a small label printer.** Labels → Label sheets prints location, item (with each box barcode) or license-plate labels, one page per sheet or roll label:
+
+| Layout | Labels |
+| --- | --- |
+| A4, Avery L7160 | 21 per sheet, 63.5 × 38.1 mm |
+| A4, Avery L7163 | 14 per sheet, 99.1 × 38.1 mm |
+| A4, Avery L7165 | 8 per sheet, 99.1 × 67.7 mm |
+| US Letter, Avery 5160 | 30 per sheet, 66.7 × 25.4 mm |
+| Roll, Brother QL | 62 × 29 mm |
+| Roll | 57 × 32 mm (2¼ × 1¼ in) |
+| Roll | 4 × 6 in (102 × 152 mm) |
+
+Print from the browser at 100% (actual size) with no margins. "Stickers used" starts after the stickers already used on a part sheet. Rack labels carry their two check digits in the corner. The setup wizard links to the labels for the locations it just created. `/api/labels/sheet?kind=locations&prefix=Shelf1&layout=a4-21&skip=0` is the same page.
+
 ## Handheld: Zebra MC9401
 
 A rugged Android gun-grip terminal with a 4.3" touch screen and a full keypad (Esc, letters, digits, F-keys under the blue key, P1/P2, arrows, ENT).

@@ -94,3 +94,27 @@ test('a module that is off refuses its changes over the API, reads still answer,
     store.close();
   }
 });
+
+test('with no trucks, inbound puts a received pallet away by hand where the system would', () => {
+  const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
+  w.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10 });
+  w.setModules({ trucks: false });
+  w.addItem({ itemNo: 'C1', name: 'Cheese', category: 'CHE', palletQty: 10 });
+  for (const loc of w._racks()) loc.category = 'YOG';
+  w.locations['01-02-0-10'].category = 'CHE';
+  w._forgetPlaces();
+  const p = w.stockPallet('DOCK-IN', { itemNo: 'Y1', qty: 10, receivedAt: 1 });
+  const hint = w.putAwaySlot(p.sscc);
+  assert.ok(hint.to, 'a slot is suggested');
+  assert.equal(w.locations[hint.to].category, 'YOG');
+  assert.throws(() => w.putAwayPallet({ sscc: p.sscc, to: '01-02-0-10' }), /not free for this pallet/, 'a cheese slot is not for yoghurt');
+  w.createLocation({ code: 'BIN-1', kind: 'bin' });
+  assert.throws(() => w.putAwayPallet({ sscc: p.sscc, to: 'BIN-1' }), /rack or a block lane/);
+  w.raiseCheck({ loc: hint.to, note: 'Beam looks bent' });
+  assert.throws(() => w.putAwayPallet({ sscc: p.sscc, to: hint.to }), /held for stock check/);
+  const out = w.putAwayPallet({ sscc: p.sscc, by: 'ines' });
+  assert.notEqual(out.to, hint.to, 'the held slot is not chosen');
+  assert.equal(w.pallets[p.sscc].loc, out.to);
+  assert.equal(w.movements[0].by, 'ines');
+  assert.throws(() => w.putAwayPallet({ sscc: p.sscc }), /already in storage/);
+});
