@@ -25,7 +25,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   const pages = {
     '/': 'index.html', '/index.html': 'index.html',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
-    '/handheld': 'server/public/handheld.html', '/camera.js': 'server/public/camera.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
+    '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
     '/kit': 'server/public/kit.html', '/kit.html': 'server/public/kit.html',
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',

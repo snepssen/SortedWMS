@@ -367,9 +367,61 @@
       return wave;
     };
 
-    /** Open tasks for one kind of pick: pallet, case (man-up) or bin (EPT and cart pickers). */
-    proto.waveTasks = function ({ kind = null } = {}) {
-      return this._openWaveTasks().filter((t) => !kind || t.kind === kind).map((t) => ({ ...t, name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null }));
+    /**
+     * Open tasks for one kind of pick: pallet, case (man-up) or bin (EPT and
+     * cart pickers), in walking order (by location). With `for`, only tasks
+     * nobody else has claimed, the person's own claims first.
+     */
+    proto.waveTasks = function ({ kind = null, for: who = null } = {}) {
+      const near = (a, b) => String(a.loc).localeCompare(String(b.loc), undefined, { numeric: true }) || (a.id < b.id ? -1 : 1);
+      return this._openWaveTasks()
+        .filter((t) => (!kind || t.kind === kind) && (!who || !t.claimedBy || t.claimedBy === who))
+        .sort((a, b) => (who ? (b.claimedBy === who) - (a.claimedBy === who) : 0) || near(a, b))
+        .map((t) => ({ ...t, name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null, packs: this.items[t.itemNo] ? this.items[t.itemNo].packs || [] : [] }));
+    };
+
+    /** A picker takes a task, so nobody else walks to it. */
+    proto.claimWaveTask = function ({ task: taskId, by } = {}) {
+      const { task } = this._waveTask(taskId);
+      if (task.status !== 'open') throw new Error(`Task ${task.id} is ${task.status}`);
+      const who = by || this._actor || 'picker';
+      if (task.claimedBy && task.claimedBy !== who) throw new Error(`${task.claimedBy} is already on task ${task.id}`);
+      task.claimedBy = who;
+      task.claimedAt = this.now();
+      return task;
+    };
+
+    proto.releaseWaveTask = function ({ task: taskId, by } = {}) {
+      const { task } = this._waveTask(taskId);
+      const who = by || this._actor || 'picker';
+      if (task.claimedBy && task.claimedBy !== who) throw new Error(`Task ${task.id} is ${task.claimedBy}'s`);
+      task.claimedBy = null;
+      task.claimedAt = null;
+      return task;
+    };
+
+    /**
+     * Not enough at the place: the place is held for a stock check, its open
+     * picks (this one too) are cancelled, and the queue plans them again from
+     * other stock.
+     */
+    proto.shortWaveTask = function ({ task: taskId, found = null, by } = {}) {
+      const { task } = this._waveTask(taskId);
+      if (task.status !== 'open') throw new Error(`Task ${task.id} is ${task.status}`);
+      const who = by || this._actor || 'picker';
+      const seen = found == null || found === '' ? null : Number(found);
+      const note = `Short pick for ${task.orderId}: ${seen == null ? 'not' : `only ${seen} of ${task.qty}`} ${task.itemNo} found${task.sscc ? ` on pallet …${task.sscc.slice(-6)}` : ''}`;
+      const place = this.locations[task.loc];
+      let check;
+      if (place && place.checkHold) {
+        check = this.checks[place.checkHold];
+        task.status = 'cancelled';
+        task.cancelReason = `Short, ${check.id}`;
+      } else check = this.raiseCheck({ loc: task.loc, itemNo: task.itemNo, orderId: task.orderId, note, by: who });
+      this.log(`${who} could not pick task ${task.id}: ${note}`);
+      const wave = Object.values(this.waves).find((w) => w.tasks.includes(task));
+      if (wave && !wave.tasks.some((t) => t.status === 'open')) { wave.completedAt = this.now(); this.autoWave(); }
+      return { task, check: check.id };
     };
 
     /** Units of an order line on whole pallets picked for it. */

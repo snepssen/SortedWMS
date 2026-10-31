@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101418">
+<title>SortedWMS bins</title>
+<style>
+  :root { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; cursor: pointer; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #04121f; font-weight: 700; }
+  button.bad { border-color: var(--bad); color: var(--bad); }
+  input { font: inherit; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  header b { font-size: 18px; }
+  header .who { color: var(--dim); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header a { color: var(--acc); font-size: 14px; }
+  .modes { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; }
+  .modes button { min-height: 40px; padding: 8px 12px; white-space: nowrap; }
+  .modes button.on { background: var(--ink); color: var(--bg); font-weight: 700; }
+  main { flex: 1; padding: 0 12px 12px; display: grid; gap: 10px; align-content: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .kicker { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .kicker .code { text-transform: none; letter-spacing: 0; }
+  .big { font-size: 30px; font-weight: 800; line-height: 1.1; margin: 4px 0; overflow-wrap: anywhere; }
+  .mid { font-size: 20px; font-weight: 700; }
+  .dim { color: var(--dim); }
+  .steps { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .steps span { font-size: 14px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--dim); }
+  .steps span.done { border-color: var(--ok); color: var(--ok); }
+  .steps span.now { border-color: var(--acc); color: var(--ink); font-weight: 700; }
+  form.scan { display: flex; gap: 8px; align-items: center; }
+  form.scan label { flex: 1; display: block; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 auto; }
+  .qty { display: flex; gap: 8px; align-items: center; }
+  .qty input { font-size: 26px; font-weight: 800; text-align: center; }
+  .qty button { min-width: 56px; font-size: 22px; }
+  .msg { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); }
+  .msg.ok { border-color: var(--ok); color: var(--ok); }
+  .msg.bad { border-color: var(--bad); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+</style>
+<script src="camera.js"></script>
+</head>
+<body>
+<header><b>Bins</b><span class="who" id="who"></span><a href="app" id="back">App</a></header>
+<nav class="modes" id="modes"></nav>
+<main>
+  <div class="card" id="job"></div>
+  <form class="scan" id="scanForm" autocomplete="off"><label><input id="scanIn" placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"></label><button class="primary">Enter</button></form>
+  <div id="extra"></div>
+  <div id="say"></div>
+</main>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let me = null;
+  let MODS = null;
+  let mode = null;
+  let st = {};
+
+  async function api(method, path, body) {
+    if (window.SortedLocal) {
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: (me && me.username) || 'picker' });
+      if (r.status >= 400) throw new Error((r.body && r.body.error) || 'Refused');
+      return r.body;
+    }
+    const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent('/bins')); throw new Error('Sign in required'); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+  const can = (p) => !me || !me.permissions || me.permissions.includes(p);
+  const modOn = (id) => !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
+  const say = (text, ok = true) => { $('say').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'bad'}">${esc(text)}</div>` : ''; if (navigator.vibrate) navigator.vibrate(ok ? 40 : [80, 60, 80]); };
+  const same = (a, b) => String(a || '').trim().toUpperCase() === String(b || '').trim().toUpperCase();
+
+  const MODES = [
+    ['pick', 'Pick', () => can('picks.execute')],
+    ['put', 'Put away', () => can('inbound.write')],
+    ['move', 'Move', () => can('moves.execute')],
+    ['count', 'Count', () => can('counts.execute')],
+    ['check', 'Check', () => can('stock.read')],
+  ];
+
+  function steps(list, at) {
+    return `<div class="steps">${list.map((s, i) => `<span class="${i < at ? 'done' : i === at ? 'now' : ''}">${esc(s)}</span>`).join('')}</div>`;
+  }
+  function qtyBox(value, label = 'How many') {
+    return `<div class="kicker" style="margin-top:10px">${esc(label)}</div><div class="qty"><button type="button" data-step="-1">−</button><input id="qty" inputmode="numeric" value="${esc(value)}"><button type="button" data-step="1">+</button></div>`;
+  }
+  const qty = () => Number(($('qty') || {}).value || 0);
+  // What a scanned code is: an item (or one of its boxes), a bin, or nothing known.
+  async function itemOf(code) {
+    try { const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code)); return { itemNo: f.itemNo, name: f.name, unit: f.unit, packs: f.packs }; } catch (e) { return null; }
+  }
+  async function binOf(code) {
+    try { return await api('GET', '/api/bins/' + encodeURIComponent(code)); } catch (e) { return null; }
+  }
+
+  // ---- Pick ------------------------------------------------------------------
+  const pick = {
+    async start() {
+      st = {};
+      if (!modOn('waves')) return pick.byOrder();
+      const tasks = await api('GET', '/api/waves/tasks?kind=bin&mine=1');
+      const t = tasks[0];
+      if (!t) {
+        $('job').innerHTML = '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
+        st.step = 'order';
+        return;
+      }
+      if (t.claimedBy !== me.username) { try { await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/claim`, {}); } catch (e) { return pick.start(); } }
+      st = { task: t, step: 'bin' };
+      pick.draw();
+    },
+    draw() {
+      const t = st.task;
+      $('job').innerHTML = `<div class="kicker">Pick for <span class="code">${esc(t.orderId)}</span></div>
+        <div class="dim">Go to</div><div class="big">${esc(t.loc)}</div>
+        <div class="mid">${esc(t.qty)} ${esc(t.unit || '')} · ${esc(t.itemNo)}</div><div class="dim">${esc(t.name)}${t.expiry ? ` · best before ${esc(t.expiry)}` : ''}</div>
+        ${steps(['Scan the bin', 'Scan the item', 'Take them'], { bin: 0, item: 1, take: 2 }[st.step])}`;
+      $('extra').innerHTML = `<div class="row"><button type="button" id="short" class="bad">Not enough here</button><button type="button" id="skip">Later</button></div>${st.step === 'take' ? `<p><button type="button" class="primary" id="took" style="width:100%">Took ${esc(t.qty)}</button></p>` : ''}`;
+      $('short').onclick = pick.short;
+      $('skip').onclick = async () => { await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/release`, {}).catch(() => {}); say(`${t.loc} left for later`); pick.start(); };
+      if ($('took')) $('took').onclick = pick.take;
+    },
+    async scan(code) {
+      if (st.step === 'order') return pick.order(code);
+      if (st.byOrder) return pick.orderScan(code);
+      const t = st.task;
+      if (st.step === 'bin') {
+        if (!same(code, t.loc)) return say(`That is ${code}. Go to ${t.loc}`, false);
+        st.step = 'item';
+        say('');
+        return pick.draw();
+      }
+      if (st.step === 'item') {
+        const found = await itemOf(code);
+        if (!found || found.itemNo !== t.itemNo) return say(`${found ? found.itemNo : code} is not ${t.itemNo}. Check the bin`, false);
+        st.step = 'take';
+        say('');
+        return pick.draw();
+      }
+      if (st.step === 'take') return pick.take();
+    },
+    async take() {
+      const t = st.task;
+      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/confirm`, { scan: t.loc });
+      say(`Took ${t.qty} ${t.itemNo} from ${t.loc}. Drop at ${t.dropTo || 'the post-pick lane'}`);
+      pick.start();
+    },
+    async short() {
+      const t = st.task;
+      const found = prompt(`How many ${t.itemNo} are there? (empty if none)`, '');
+      if (found === null) return;
+      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/short`, { found: found === '' ? null : Number(found) });
+      say(`${t.loc} is held for a stock check. The pick is planned again from other stock.`, false);
+      pick.start();
+    },
+    // Without pick waves: scan an order and pick its piece lines from the bins.
+    byOrder() {
+      st = { step: 'order' };
+      $('job').innerHTML = '<div class="kicker">Pick an order</div><div class="mid">Scan the order number</div>';
+      $('extra').innerHTML = '';
+    },
+    async order(code) {
+      const orders = await api('GET', '/api/orders');
+      const order = orders.find((o) => same(o.id, code));
+      if (!order) return say(`No order ${code}`, false);
+      st = { byOrder: true, order: order.id, lines: [] };
+      for (const l of order.lines.filter((x) => x.kind === 'each' && (x.picked || 0) < x.units)) {
+        const where = await api('GET', '/api/bins?item=' + encodeURIComponent(l.itemNo));
+        st.lines.push({ itemNo: l.itemNo, name: where.name, unit: where.unit, need: l.units - (l.picked || 0), bins: where.bins });
+      }
+      pick.nextLine();
+    },
+    nextLine() {
+      const line = st.lines.find((l) => l.need > 0);
+      if (!line) { say(`Order ${st.order} is picked`); return pick.start(); }
+      const bin = line.bins.find((b) => b.qty > 0);
+      st.line = line;
+      st.bin = bin ? bin.loc : null;
+      st.step2 = 'bin';
+      $('job').innerHTML = `<div class="kicker">Order <span class="code">${esc(st.order)}</span></div>${bin ? `<div class="dim">Go to</div><div class="big">${esc(bin.loc)}</div>` : '<div class="mid">Not in any bin</div>'}
+        <div class="mid">${esc(Math.min(line.need, bin ? bin.qty : line.need))} ${esc(line.unit || '')} · ${esc(line.itemNo)}</div><div class="dim">${esc(line.name)}</div>${steps(['Scan the bin', 'Scan the item', 'Take them'], 0)}`;
+      $('extra').innerHTML = '';
+    },
+    async orderScan(code) {
+      const line = st.line;
+      if (st.step2 === 'bin') {
+        if (!st.bin || !same(code, st.bin)) return say(`Go to ${st.bin || 'the office: it is not in a bin'}`, false);
+        st.step2 = 'item';
+        $('job').querySelector('.steps').outerHTML = steps(['Scan the bin', 'Scan the item', 'Take them'], 1);
+        return say('');
+      }
+      const found = await itemOf(code);
+      if (!found || found.itemNo !== line.itemNo) return say(`${found ? found.itemNo : code} is not ${line.itemNo}`, false);
+      const bin = line.bins.find((b) => b.loc === st.bin);
+      const take = Math.min(line.need, bin.qty);
+      await api('POST', '/api/bins/take', { loc: st.bin, itemNo: line.itemNo, qty: take, orderId: st.order });
+      line.need -= take;
+      bin.qty -= take;
+      say(`Took ${take} ${line.itemNo} from ${st.bin}`);
+      pick.nextLine();
+    },
+  };
+
+  // ---- Put away ----------------------------------------------------------------
+  const put = {
+    start() {
+      st = { step: 'item' };
+      $('job').innerHTML = `<div class="kicker">Put away</div><div class="mid">Scan the item or its box</div>${steps(['Item', 'How many', 'Scan the bin'], 0)}`;
+      $('extra').innerHTML = '';
+    },
+    async scan(code) {
+      if (st.step === 'item') {
+        let found;
+        try { found = await api('GET', '/api/bins/suggest?item=' + encodeURIComponent(code)); } catch (e) { return say(`${code} is not an item or a box barcode`, false); }
+        const box = await itemOf(code);
+        const pack = box && (box.packs || []).find((p) => same(p.barcode, code));
+        st = { step: 'qty', code, itemNo: found.itemNo, pack, hint: found };
+        $('job').innerHTML = `<div class="kicker">Put away</div><div class="mid">${esc(found.itemNo)}</div><div class="dim">${esc(found.name)}</div>
+          ${found.best ? `<div class="dim" style="margin-top:8px">Put it in</div><div class="big">${esc(found.best.loc)}</div><div class="dim">${esc(found.best.why)}${found.others.length ? ` · or ${found.others.map((o) => esc(o.loc)).join(', ')}` : ''}</div>` : '<div class="msg bad">No bin has room. Scan any bin</div>'}
+          ${qtyBox(1, pack ? `How many ${pack.unit} (of ${pack.per})` : `How many ${found.unit || ''}`)}${steps(['Item', 'How many', 'Scan the bin'], 2)}`;
+        $('extra').innerHTML = '';
+        return say('');
+      }
+      const n = qty();
+      if (!(n > 0)) return say('Enter how many', false);
+      const done = await api('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n });
+      say(`Put ${done.qty} ${done.unit || ''} ${done.itemNo} in ${done.loc}`);
+      put.start();
+    },
+  };
+
+  // ---- Move --------------------------------------------------------------------
+  const move = {
+    start() {
+      st = { step: 'from' };
+      $('job').innerHTML = `<div class="kicker">Move</div><div class="mid">Scan the bin it comes from</div>${steps(['From bin', 'Item', 'How many', 'To bin'], 0)}`;
+      $('extra').innerHTML = '';
+    },
+    async scan(code) {
+      if (st.step === 'from') {
+        const bin = await binOf(code);
+        if (!bin) return say(`${code} is not a bin`, false);
+        if (!bin.lines.length) return say(`${bin.code} is empty`, false);
+        st = { step: 'item', from: bin.code, bin };
+        $('job').innerHTML = `<div class="kicker">Move from <span class="code">${esc(bin.code)}</span></div><div class="mid">Scan the item</div>${table(bin)}${steps(['From bin', 'Item', 'How many', 'To bin'], 1)}`;
+        return say('');
+      }
+      if (st.step === 'item') {
+        const found = await itemOf(code);
+        const line = found && st.bin.lines.find((l) => l.itemNo === found.itemNo);
+        if (!line) return say(`${found ? found.itemNo : code} is not in ${st.from}`, false);
+        st.step = 'to';
+        st.itemNo = line.itemNo;
+        $('job').innerHTML = `<div class="kicker">Move from <span class="code">${esc(st.from)}</span></div><div class="mid">${esc(line.itemNo)}</div><div class="dim">${esc(line.name)} · ${esc(line.qty)} here</div>${qtyBox(line.qty)}<div class="dim" style="margin-top:8px">Then scan the bin it goes to</div>${steps(['From bin', 'Item', 'How many', 'To bin'], 3)}`;
+        return say('');
+      }
+      const n = qty();
+      if (!(n > 0)) return say('Enter how many', false);
+      const done = await api('POST', '/api/bins/move', { from: st.from, to: code, itemNo: st.itemNo, qty: n });
+      say(`Moved ${done.qty} ${done.itemNo} from ${done.from} to ${done.to}`);
+      move.start();
+    },
+  };
+
+  // ---- Count (blind) -----------------------------------------------------------
+  const count = {
+    start() {
+      st = { step: 'bin' };
+      $('job').innerHTML = '<div class="kicker">Count</div><div class="mid">Scan the bin</div><div class="dim">You count first; the screen does not say what should be there.</div>';
+      $('extra').innerHTML = '';
+    },
+    draw() {
+      $('job').innerHTML = `<div class="kicker">Counting <span class="code">${esc(st.loc)}</span></div><div class="mid">${st.itemNo ? esc(st.itemNo) : 'Scan an item in the bin'}</div>${st.itemNo ? `<div class="dim">${esc(st.name || '')}</div>${qtyBox('', `How many ${st.unit || ''} are there`)}<p><button type="button" class="primary" id="save" style="width:100%">Save count</button></p>` : ''}
+        ${st.done.length ? `<div class="dim" style="margin-top:8px">Counted: ${st.done.map((d) => `${esc(d.itemNo)} ${esc(d.after)}${d.difference ? ` (was ${esc(d.before)})` : ''}`).join(' · ')}</div>` : ''}`;
+      $('extra').innerHTML = '<p><button type="button" id="binDone" style="width:100%">Bin done</button></p>';
+      if ($('save')) $('save').onclick = count.save;
+      $('binDone').onclick = count.finish;
+      if ($('qty')) $('qty').focus();
+    },
+    async scan(code) {
+      if (st.step === 'bin') {
+        const bin = await binOf(code);
+        if (!bin) return say(`${code} is not a bin`, false);
+        st = { step: 'item', loc: bin.code, done: [] };
+        say('');
+        return count.draw();
+      }
+      if (st.itemNo && ($('qty') || {}).value) return count.save();
+      const found = await itemOf(code);
+      if (!found) return say(`${code} is not an item`, false);
+      Object.assign(st, { itemNo: found.itemNo, name: found.name, unit: found.unit });
+      say('');
+      count.draw();
+    },
+    async save() {
+      const raw = ($('qty') || {}).value;
+      if (raw === '' || raw == null) return say('Enter the count', false);
+      const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, counted: Number(raw) });
+      st.done.push(r);
+      st.itemNo = null;
+      say(r.difference ? `${r.itemNo} was ${r.before}, now ${r.after}` : `${r.itemNo}: ${r.after}, as booked`, !r.difference);
+      count.draw();
+    },
+    async finish() {
+      const bin = await binOf(st.loc);
+      const missed = bin.lines.filter((l) => !st.done.some((d) => d.itemNo === l.itemNo));
+      if (!missed.length) {
+        const changed = st.done.filter((d) => d.difference).map((d) => `${d.itemNo} ${d.before} → ${d.after}`);
+        say(changed.length ? `${st.loc} counted. Corrected: ${changed.join(', ')}` : `${st.loc} counted, all as booked`, !changed.length);
+        return count.start();
+      }
+      $('job').innerHTML = `<div class="kicker"><span class="code">${esc(st.loc)}</span>: not counted yet</div><div class="dim">These are booked in this bin. Count them, or say they are not here.</div>
+        ${missed.map((l) => `<div class="row" style="margin-top:8px;align-items:center"><div><b>${esc(l.itemNo)}</b> <span class="dim">${esc(l.name)}</span></div><button type="button" class="bad" data-zero="${esc(l.itemNo)}">Not here</button></div>`).join('')}`;
+      $('extra').innerHTML = '<p class="dim">Or scan one of them to count it.</p>';
+      $('job').onclick = async (e) => {
+        const b = e.target.closest('[data-zero]');
+        if (!b) return;
+        const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: b.dataset.zero, counted: 0 });
+        st.done.push(r);
+        $('job').onclick = null;
+        count.finish();
+      };
+    },
+  };
+
+  // ---- Check -------------------------------------------------------------------
+  function table(bin) {
+    return `<table><tr><th>Item</th><th>Qty</th><th>Batch</th></tr>${bin.lines.map((l) => `<tr><td><b>${esc(l.itemNo)}</b> <span class="dim">${esc(l.name)}</span></td><td>${esc(l.qty)}${l.packs ? `<div class="dim">${esc(l.packs)}</div>` : ''}</td><td>${esc(l.batch || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="dim">Empty</td></tr>'}</table>`;
+  }
+  const check = {
+    start() {
+      st = {};
+      $('job').innerHTML = '<div class="kicker">Check</div><div class="mid">Scan a bin or an item</div>';
+      $('extra').innerHTML = '';
+    },
+    async scan(code) {
+      const bin = await binOf(code);
+      if (bin) { $('job').innerHTML = `<div class="kicker">Bin</div><div class="big">${esc(bin.code)}</div>${bin.mixed ? '' : '<div class="dim">One item only</div>'}${table(bin)}`; return say(''); }
+      try {
+        const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code));
+        $('job').innerHTML = `<div class="kicker">Item</div><div class="mid">${esc(f.itemNo)}</div><div class="dim">${esc(f.name)} · ${esc(f.total)} ${esc(f.unit || '')} in bins</div>
+          <table><tr><th>Bin</th><th>Qty</th><th>Best before</th></tr>${f.bins.map((b) => `<tr><td><b>${esc(b.loc)}</b></td><td>${esc(b.qty)}</td><td>${esc(b.expiry || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="dim">Not in any bin</td></tr>'}</table>`;
+        say('');
+      } catch (e) { say(`${code} is not a bin or an item`, false); }
+    },
+  };
+
+  const HANDLERS = { pick, put, move, count, check };
+
+  function drawModes() {
+    const allowed = MODES.filter(([, , ok]) => ok());
+    $('modes').innerHTML = allowed.map(([id, label]) => `<button type="button" data-mode="${id}" class="${id === mode ? 'on' : ''}">${label}</button>`).join('');
+  }
+  async function setMode(next) {
+    mode = next;
+    try { sessionStorage.setItem('binsMode', mode); } catch (e) { /* storage optional */ }
+    drawModes();
+    say('');
+    try { await HANDLERS[mode].start(); } catch (e) { say(e.message, false); }
+    $('scanIn').focus();
+  }
+  $('modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-step]');
+    if (!b || !$('qty')) return;
+    $('qty').value = Math.max(0, (Number($('qty').value) || 0) + Number(b.dataset.step));
+  });
+  $('scanForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const code = $('scanIn').value.trim();
+    $('scanIn').value = '';
+    if (!code && !(mode === 'count' && st.itemNo)) return;
+    try { await HANDLERS[mode].scan(code); } catch (err) { say(err.message, false); }
+    $('scanIn').focus();
+  };
+
+  async function start() {
+    try {
+      if (window.SortedLocal) me = { username: 'demo', displayName: 'Demo', permissions: null };
+      else me = (await api('GET', '/api/session')).user;
+    } catch (e) { return; }
+    try { MODS = await api('GET', '/api/modules'); } catch (e) { MODS = null; }
+    $('who').textContent = me.displayName ? `${me.displayName} · ${me.username}` : me.username;
+    if (window.SortedLocal) $('back').href = 'app.html';
+    let saved = null;
+    try { saved = sessionStorage.getItem('binsMode'); } catch (e) { /* storage optional */ }
+    const allowed = MODES.filter(([, , ok]) => ok()).map(([id]) => id);
+    if (!allowed.length) { $('job').innerHTML = '<div class="mid">This account has no bin work.</div>'; return; }
+    setMode(allowed.includes(saved) ? saved : allowed[0]);
+  }
+  start();
+})();
+</script>
+</body>
+</html>

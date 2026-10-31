@@ -390,6 +390,7 @@
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
     on('POST', '/api/items/:itemNo/units', ({ itemNo }, q, b, by) => run('setItemUnits', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
+    on('GET', '/api/bins/suggest', (_, q) => wh().suggestBin(q.item || '', q.qty || 1));
     on('GET', '/api/bins', (_, q) => (q.item || q.itemNo ? wh().binsFor(q.item || q.itemNo) : wh().binList()));
     on('GET', '/api/bins/:code', ({ code }) => wh().binContents(decodeURIComponent(code)));
     on('POST', '/api/bins/put', (_, q, b, by) => run('binPut', b, by));
@@ -400,7 +401,10 @@
     on('GET', '/api/waves', () => Object.values(wh().waves || {}).slice(-30).reverse());
     on('GET', '/api/waves/queue', () => ({ settings: wh().waveSettings(), active: wh().activeWave() ? wh().activeWave().id : null, queue: wh().waveQueue() }));
     on('POST', '/api/waves/config', (_, q, b, by) => run('setWaveConfig', { config: b }, by));
-    on('GET', '/api/waves/tasks', (_, q) => wh().waveTasks({ kind: q.kind || null }));
+    on('GET', '/api/waves/tasks', (_, q, b, by) => wh().waveTasks({ kind: q.kind || null, for: q.mine ? by : null }));
+    on('POST', '/api/waves/tasks/:task/claim', ({ task }, q, b, by) => run('claimWaveTask', { task: decodeURIComponent(task) }, by));
+    on('POST', '/api/waves/tasks/:task/release', ({ task }, q, b, by) => run('releaseWaveTask', { task: decodeURIComponent(task) }, by));
+    on('POST', '/api/waves/tasks/:task/short', ({ task }, q, b, by) => run('shortWaveTask', { task: decodeURIComponent(task), found: b.found }, by));
     on('POST', '/api/waves', (_, q, b, by) => run('planWave', b, by));
     on('POST', '/api/waves/tasks/:task/confirm', ({ task }, q, b, by) => run('confirmWaveTask', { task: decodeURIComponent(task), scan: b.scan }, by));
     on('POST', '/api/waves/:id/cancel', ({ id }, q, b, by) => run('cancelWave', { id: decodeURIComponent(id) }, by));

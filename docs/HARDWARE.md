@@ -17,6 +17,8 @@ The technical role or an administrator sets the mode under Hardware or Settings.
 
 **Scanning with the camera.** On a phone, tablet or laptop with Chrome or Edge, every scan field has a camera button. It reads Code 128, EAN/UPC, Code 39, ITF, QR and Data Matrix with the browser's own barcode reader, so nothing is installed and it works offline. A read fills the field the way a wedge scanner would: a one-field scan form is sent, otherwise the cursor moves to the next field. Browsers without a barcode reader (Safari, Firefox) show no button; typing still works. The page asks for the camera the first time.
 
+**Work on foot with a phone.** `/bins` (on Pages: `bins.html`) is the bin handheld: pick, put away, move, count and check bins with the phone's camera or a wedge scanner. Add it to the home screen.
+
 **Labels on sticker sheets or a small label printer.** Labels → Label sheets prints location, item (with each box barcode) or license-plate labels, one page per sheet or roll label:
 
 | Layout | Labels |
