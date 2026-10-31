@@ -1256,6 +1256,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadSheets() {
+      if (typeof require === 'function') {
+        try { return require('./sheets'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedSheets;
+    }
+
     function loadCorrections() {
       if (typeof require === 'function') {
         try { return require('./corrections'); } catch (e) { /* browser */ }
@@ -1402,6 +1409,8 @@
     if (waves && waves.install) waves.install(Warehouse, deps);
     const corrections = loadCorrections();
     if (corrections && corrections.install) corrections.install(Warehouse, deps);
+    const sheets = loadSheets();
+    if (sheets && sheets.install) sheets.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

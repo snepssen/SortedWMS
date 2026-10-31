@@ -429,6 +429,7 @@
     };
     on('POST', '/api/labels/pallet', (_, q, b, by) => issue({ ...b, kind: 'pallet' }, by));
     on('POST', '/api/labels/master', (_, q, b, by) => issue({ ...b, kind: 'master' }, by));
+    on('GET', '/api/labels/sheet', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().labelSheet({ kind: q.kind || 'locations', codes: q.codes || null, prefix: q.prefix || null, items: q.items || null, ids: q.ids || null, layout: q.layout || 'a4-21', skip: Number(q.skip) || 0 }) }));
     on('GET', '/api/labels/:id', ({ id }) => wh().labelDocument(decodeURIComponent(id)));
     on('GET', '/api/labels/:id/html', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().labelDocument(decodeURIComponent(id)).html }));
     on('GET', '/api/labels/:id/zpl', ({ id }) => ({ contentType: 'text/plain; charset=utf-8', raw: wh().labelDocument(decodeURIComponent(id)).zpl }));
