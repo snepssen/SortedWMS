@@ -136,6 +136,7 @@
     assignOperator: (wh, a) => wh.assignOperator(req(a.id, 'id'), a.operator || null, a.duty),
     setTruckDuty: (wh, a) => wh.setTruckDuty(req(a.id, 'id'), a.duty || null),
     setTruckEquipment: (wh, a) => wh.setTruckEquipment(req(a.id, 'id'), a.equipment || null),
+    putAwayPallet: (wh, a, by) => wh.putAwayPallet({ sscc: req(a.sscc, 'sscc'), to: a.to || null, by }),
     createStock: (wh, a, by) => wh.createStock({ ...a, by }),
     raiseCheck: (wh, a, by) => wh.raiseCheck({ ...a, loc: req(a.loc, 'loc'), by }),
     closeCheck: (wh, a, by) => wh.closeCheck({ ...a, id: req(a.id, 'id'), by }),

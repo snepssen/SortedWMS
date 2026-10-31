@@ -107,6 +107,6 @@ An administrator edits a role under **Roles**. The last active administrator can
 - No password-reset email. The administrator hands over the temporary password.
 - No ERP or EDI connection. Orders and stock still come in through the API or CSV.
 - Bins have no handheld mode yet; the Bins screen is used in the browser. Serial numbers are not tracked.
-- Real scanners and printers are the wedge and the ZPL transport. There is no DataWedge installer and no USB claim.
+- Real scanners and printers are the wedge and the ZPL transport. There is no DataWedge installer and no USB claim. Without them, the camera scans in Chrome and Edge, and label sheets print on A4 or Letter stickers or a small label printer (see HARDWARE.md).
 - A seasonal override replaces the unit rate for those days. It does not scale the tier table. The card can add a percent or a fixed amount instead.
 - The offline queue is on the handheld page. The role views in `/app` need a connection.
