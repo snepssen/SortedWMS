@@ -88,7 +88,7 @@ const DEFAULTS = {
   ],
   operator: [
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'items.read',
-    'tasks.read', 'picks.execute', 'inbound.read', 'inbound.write', 'val.execute',
+    'tasks.read', 'picks.execute', 'moves.execute', 'counts.execute', 'inbound.read', 'inbound.write', 'val.execute',
     'scans.execute', 'labels.print', 'wms.read', 'orders.read', 'outbound.write', 'sites.switch',
   ],
   machine: [
@@ -164,6 +164,14 @@ const RULES = [
   ['POST', '/api/locations/preview', 'settings.write'],
   ['POST', '/api/locations/generate', 'settings.write'],
   ['POST', '/api/locations/guided/preview', 'settings.write'],
+  ['POST', '/api/items/:itemNo/units', 'items.write'],
+  ['GET', '/api/bins', 'stock.read'],
+  ['GET', '/api/bins/:code', 'stock.read'],
+  ['POST', '/api/bins/put', 'inbound.write'],
+  ['POST', '/api/bins/take', 'picks.execute'],
+  ['POST', '/api/bins/move', 'moves.execute'],
+  ['POST', '/api/bins/count', 'counts.execute'],
+  ['POST', '/api/bins/:code/mode', 'locations.write'],
   ['POST', '/api/locations/guided', 'settings.write'],
   ['GET', '/api/location-profiles', 'locations.read'],
   ['POST', '/api/location-profiles', 'technical.write'],

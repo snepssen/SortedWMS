@@ -256,6 +256,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       if (Object.values(this.pallets).some((p) => p.itemNo === itemNo)) throw new Error('Item has stock history; archive it instead');
+      if (Object.values(this.binStock || {}).some((lines) => lines.some((l) => l.itemNo === itemNo))) throw new Error('Item is in a bin; archive it instead');
       if (Object.values(this.orders).some((o) => o.lines.some((l) => l.itemNo === itemNo))) throw new Error('Item is on an order');
       if (Object.values(this.holders || {}).some((h) => (h.contents || []).some((c) => c.itemNo === itemNo))) throw new Error('Item is on a holder');
       if (Object.values(this.deliveries).some((d) => d.list && Object.values(d.list).some((l) => l.itemNo === itemNo))) throw new Error('Item is on a delivery');
@@ -423,14 +424,14 @@
         this.log(`Block lane ${raw} removed`);
         return { deleted: raw };
       }
-      const resolved = this.locations[raw] ? raw : this.resolve(raw);
+      const resolved = this.locations[raw] ? raw : this.resolve(String(code || '').trim());
       const loc = this.locations[resolved];
       if (!loc) throw new Error(`${code} is not a location`);
       if (loc.code === 'DOCK-IN' || /^OUT-\d+$/.test(loc.code) || loc.code.startsWith('ST-') || loc.kind === 'trailer' || loc.kind === 'station') {
         throw new Error(`${loc.code} is a system location`);
       }
       if (loc.kind === 'block' && !loc.custom) throw new Error(`${loc.code} is part of the site layout`);
-      if (loc.sscc || (loc.pallets && loc.pallets.length)) throw new Error(`${loc.code} is not empty`);
+      if (loc.sscc || (loc.pallets && loc.pallets.length) || (this.binStock && (this.binStock[loc.code] || []).length)) throw new Error(`${loc.code} is not empty`);
       if (loc.reservedBy) throw new Error(`${loc.code} is reserved`);
       if (Object.values(this.holders || {}).some((h) => h.loc === loc.code)) throw new Error(`${loc.code} has a holder`);
       if (Object.values(this.locations).some((l) => l.parent === loc.code)) throw new Error(`Remove locations inside ${loc.code} first`);
@@ -1128,6 +1129,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadBins() {
+      if (typeof require === 'function') {
+        try { return require('./bins'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedBins;
+    }
+
     function loadOperations() {
       if (typeof require === 'function') {
         try { return require('./operations'); } catch (e) { /* browser */ }
@@ -1214,6 +1222,8 @@
 
     const operations = loadOperations();
     if (operations && operations.install) operations.install(Warehouse, deps);
+    const bins = loadBins();
+    if (bins && bins.install) bins.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();
