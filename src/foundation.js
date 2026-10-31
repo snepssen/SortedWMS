@@ -321,6 +321,7 @@
       const code = preserve ? String(spec.code || '').trim() : String(spec.code || '').trim().toUpperCase();
       if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/.test(code)) throw new Error('Location code uses letters, digits or hyphen');
       if (this.locations[code]) throw new Error(`Location ${code} already exists`);
+      if (this.aliasOf && this.aliasOf(code)) throw new Error(`${code} is the old code of ${this.aliasOf(code)}. Drop that alias first`);
       if (spec.parent && !this.locations[String(spec.parent).trim().toUpperCase()]) throw new Error(`Unknown parent ${spec.parent}`);
       if (spec.category && !this.categories[spec.category]) throw new Error(`Unknown category ${spec.category}`);
       const structural = kindIn === 'zone' || kindIn === 'aisle' || kindIn === 'rack' || kindIn === 'level';
@@ -403,7 +404,7 @@
           const code = profile.storageType === 'rack'
             ? `${aisle}-${bay}-${height}-${String(pos).padStart(2, '0')}`
             : profile.storageType === 'block' ? `BLK-${aisle}-${bay}-${height}` : `SH-${aisle}-${bay}-${height}`;
-          if (this.locations[code]) continue;
+          if (this.locations[code] || (this.aliasOf && this.aliasOf(code))) continue;
           const kind = profile.storageType === 'rack' ? 'rack' : 'bin';
           const cap = profile.capacity || {};
           const loc = this.createLocation({
@@ -1256,6 +1257,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadRenames() {
+      if (typeof require === 'function') {
+        try { return require('./renames'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedRenames;
+    }
+
     function loadSheets() {
       if (typeof require === 'function') {
         try { return require('./sheets'); } catch (e) { /* browser */ }
@@ -1357,7 +1365,7 @@
       let created = 0;
       const sample = [];
       for (const code of built.codes) {
-        if (this.locations[code]) continue;
+        if (this.locations[code] || (this.aliasOf && this.aliasOf(code))) continue;
         this.createLocation({ code, kind, name: code, preserveCase: true, heightMm: cap.heightMm, widthMm: cap.widthMm, depthMm: cap.depthMm, maxWeightKg: cap.maxWeightKg });
         created++;
         if (sample.length < 8) sample.push(code);
@@ -1376,7 +1384,7 @@
       const sample = [];
       for (const part of built.plans) {
         for (const code of expandCodes(part.plan)) {
-          if (this.locations[code]) continue;
+          if (this.locations[code] || (this.aliasOf && this.aliasOf(code))) continue;
           const cap = part.capacity;
           const loc = this.createLocation({ code, kind: part.kind, name: code, preserveCase: true, heightMm: cap.heightMm, widthMm: cap.widthMm, depthMm: cap.depthMm, maxWeightKg: cap.maxWeightKg });
           loc.storageType = part.type;
@@ -1411,6 +1419,8 @@
     if (corrections && corrections.install) corrections.install(Warehouse, deps);
     const sheets = loadSheets();
     if (sheets && sheets.install) sheets.install(Warehouse, deps);
+    const renames = loadRenames();
+    if (renames && renames.install) renames.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

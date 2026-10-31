@@ -75,7 +75,7 @@
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
-    technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
+    technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     stock: [['stockctl', 'Stock control'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
@@ -88,7 +88,7 @@
   // Screens that belong to a module disappear while it is off.
   const PANEL_MODULE = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks' };
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -584,8 +584,11 @@
         <p class="dim">${holders.length} holders on the floor. A holder label uses its id when that id is an SSCC.</p><div id="labelOut"></div></section>`;
     },
     async locations() {
-      const data = await api('GET', '/api/locations?custom=1&limit=100');
-      return `<section><h2>Locations</h2><p class="hint">Zones, aisles, racks, levels and bins, plus block lanes. Height, width, depth and weight are enforced when both the location and the load know them.</p>
+      const [data, aliases] = await Promise.all([api('GET', '/api/locations?custom=1&limit=100'), api('GET', '/api/locations/aliases').catch(() => [])]);
+      const rename = can('locations.write') ? `<section><h2>Rename locations</h2><p class="hint">Give one location a new code, or every location whose code starts the same way (Garage- to G-). Stock, plates, bins and open jobs follow. The old codes keep scanning until you drop them, so the old labels work until the new ones are up.</p>
+        <form class="form" data-act="rename"><label>From<input name="from" required placeholder="Garage-Shelf1-Bin1, or Garage-"></label><label>To<input name="to" required placeholder="new code, or new start"></label><label><input type="checkbox" name="all"> Every code starting with it</label><button name="go" value="preview">Preview</button><button class="primary" name="go" value="rename">Rename</button></form><div id="renameOut"></div>
+        ${aliases.length ? `<h3>Old codes that still scan</h3><p class="hint">Drop them once the new labels are up; then an old label no longer finds anything.</p>${table(['Old code', 'Finds', ''], aliases.slice(0, 50).map((a) => `<tr><td><code>${esc(a.old)}</code></td><td><code>${esc(a.code)}</code></td><td><button type="button" data-act="alias-drop" data-id="${esc(a.old)}">Drop</button></td></tr>`))}${aliases.length > 50 ? `<p class="dim">${aliases.length - 50} more</p>` : ''}<p><button type="button" data-act="alias-drop-all">Drop all ${aliases.length} old codes</button></p>` : ''}</section>` : '';
+      return `${rename}<section><h2>Locations</h2><p class="hint">Zones, aisles, racks, levels and bins, plus block lanes. Height, width, depth and weight are enforced when both the location and the load know them.</p>
         <form class="form" data-act="loc-add"><label>Code<input name="code" required></label><label>Kind<select name="kind"><option>zone</option><option>aisle</option><option>rack</option><option>level</option><option>bin</option><option>block</option></select></label><label>Name<input name="name"></label><label>Parent<input name="parent"></label><label>Category<input name="category" placeholder="YOG"></label><label>H mm<input name="heightMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>D mm<input name="depthMm" type="number"></label><label>Max kg<input name="maxWeightKg" type="number"></label><label>Stacks<input name="stacks" type="number" placeholder="block"></label><button class="primary">Create</button></form>
         <form class="form" data-act="loc-cap"><label>Code<input name="code" required></label><label>H<input name="heightMm" type="number"></label><label>W<input name="widthMm" type="number"></label><label>D<input name="depthMm" type="number"></label><label>kg<input name="maxWeightKg" type="number"></label><button>Set capacity</button></form>
         ${table(['Code', 'Kind', 'Name', 'Capacity', 'Occupied', ''], data.locations.map((l) => `<tr><td>${esc(l.code)}</td><td>${esc(l.kind)}</td><td>${esc(l.name || '')}</td><td>${l.capacity ? `${l.capacity.heightMm || '–'}×${l.capacity.widthMm || '–'}×${l.capacity.depthMm || '–'} mm / ${l.capacity.maxWeightKg || '–'} kg` : ''}</td><td>${esc(l.occupied)}</td><td><button type="button" data-act="loc-del" data-id="${esc(l.code)}">Delete</button></td></tr>`))}</section>`;
@@ -701,9 +704,16 @@
   };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
   $('#main').onclick = async (e) => {
-    const b = e.target.closest('[data-act], #sim, #stationPick, #devicePick');
+    const b = e.target.closest('[data-sheet], [data-act], #sim, #stationPick, #devicePick');
     if (!b) return;
     try {
+      if (b.dataset.sheet) {
+        e.preventDefault();
+        const tab = window.open('', '_blank');
+        const html = await api('GET', '/api/labels/sheet?layout=a4-21&' + b.dataset.sheet);
+        if (tab) { tab.document.open(); tab.document.write(html); tab.document.close(); }
+        return;
+      }
       if (b.id === 'devicePick') return;
       if (b.id === 'stationPick') { sessionStorage.setItem('station', b.value); return draw(); }
       if (b.id === 'sim') { await sendScan(b.dataset.code, 'simulated', sessionStorage.getItem('device') || 'HH01'); return; }
@@ -728,6 +738,8 @@
       }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
+      if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
+      if (act === 'alias-drop-all') { if (!confirm('Old labels will no longer find anything. Drop every old code?')) return; await api('POST', '/api/locations/aliases/drop', { all: true }); return draw(); }
       if (act === 'loc-del') { await api('POST', '/api/locations/' + encodeURIComponent(b.dataset.id) + '/delete', {}); return draw(); }
       if (act === 'holder-del') { await api('POST', '/api/holders/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'urgent') { await api('POST', '/api/tasks/' + b.dataset.id + '/urgent', { urgent: true }); return draw(); }
@@ -781,6 +793,23 @@
       const tab = window.open('', '_blank'); // opened before the wait, so a pop-up blocker allows it
       const html = await api('GET', '/api/labels/sheet?' + q.toString());
       if (tab) { tab.document.open(); tab.document.write(html); tab.document.close(); }
+      return;
+    }
+    if (form.dataset.act === 'rename') {
+      const body = data.all ? { prefix: data.from.trim(), to: data.to.trim() } : { pairs: [{ from: data.from.trim(), to: data.to.trim() }] };
+      const out = document.getElementById('renameOut');
+      const go = e.submitter && e.submitter.value;
+      if (go === 'preview') {
+        const p = await api('POST', '/api/locations/rename/preview', body);
+        out.innerHTML = `<p class="msg ok">${p.pairs.length} location${p.pairs.length === 1 ? '' : 's'}</p>${table(['Now', 'Becomes'], p.pairs.slice(0, 30).map((x) => `<tr><td><code>${esc(x.from)}</code></td><td><code>${esc(x.to)}</code></td></tr>`))}${p.pairs.length > 30 ? `<p class="dim">and ${p.pairs.length - 30} more</p>` : ''}`;
+        return;
+      }
+      const r = await api('POST', '/api/locations/rename', body);
+      await draw();
+      const codes = r.pairs.map((x) => x.to);
+      const q = codes.length > 200 ? `prefix=${encodeURIComponent(data.to.trim())}` : `codes=${encodeURIComponent(codes.join(','))}`;
+      const slot = document.getElementById('renameOut');
+      if (slot) slot.innerHTML = `<p class="msg ok">Renamed ${r.renamed}. The old codes still scan. <a href="#" data-sheet="${esc(q)}">Print the new labels</a></p>`;
       return;
     }
     if (form.dataset.act === 'putaway-suggest') {
