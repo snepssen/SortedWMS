@@ -18,8 +18,9 @@ const DEMO_USERS = [
   ['manager', 'sorted-manager', 'manager', 'Morgan Supervisor'],
   ['office', 'sorted-office', 'office', 'Olivia Office'],
   ['tech', 'sorted-tech', 'technician', 'Taylor Technical'],
-  ['operator', 'sorted-operator', 'operator', 'Omar Operator'],
-  ['machine', 'sorted-machine', 'machine', 'Mina Machine'],
+  ['inbound', 'sorted-inbound', 'inbound', 'Ines Inbound'],
+  ['picker', 'sorted-picker', 'picker', 'Pat Picker'],
+  ['stock', 'sorted-stock', 'stock', 'Sam Stock'],
 ];
 
 function hashPassword(password, params = {}) {
@@ -157,6 +158,12 @@ function createAuth(db, { now = () => Date.now() } = {}) {
   add('users', 'sites', 'TEXT');
   add('users', 'client_id', 'TEXT');
   add('sessions', 'last_seen', 'INTEGER');
+  // The on-foot operator and the machine operator became duties: pickers and inbound.
+  for (const [old, next] of [['operator', 'picker'], ['machine', 'inbound']]) {
+    const moved = db.prepare('UPDATE users SET role = ? WHERE role = ?').run(next, old).changes;
+    db.prepare('DELETE FROM role_permissions WHERE role = ?').run(old);
+    if (moved) db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(now(), 'role-renamed', 'upgrade', JSON.stringify({ from: old, to: next, users: moved }));
+  }
   const dummy = hashPassword('not-a-real-password');
 
   function record(action, by, detail) {

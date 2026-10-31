@@ -18,6 +18,23 @@
   const SERIES = ['PAL', 'MASTER', 'ST', 'INB', 'OUT'];
   const HOLDER_TYPES = ['pallet', 'crate', 'tote'];
   const ADJUST_REASONS = ['damage', 'expiry', 'found', 'recount', 'correction', 'other'];
+  // Who does which engine job. Inbound receives and puts away; pickers pick,
+  // check and take order moves to the dock; stock control does Auto-Shift,
+  // counts and the moves that are not for an order.
+  const DUTIES = {
+    inbound: { label: 'Inbound', takes: (t) => t.type === 'RECEIVE' || t.type === 'PUTAWAY' },
+    picking: { label: 'Picking', takes: (t) => t.type === 'PICK' || t.type === 'CHECK' || (t.type === 'MOVE' && Boolean(t.orderId)) },
+    inventory: { label: 'Stock and inventory', takes: (t) => t.type === 'SHIFT' || t.type === 'COUNT' || (t.type === 'MOVE' && !t.orderId) },
+  };
+  // A reach truck and a man-up reach every level. An EPT stays on the ground;
+  // a cart works the bins and takes no truck jobs.
+  const highUp = (code, locations) => { const l = code && locations[code]; return Boolean(l && l.kind === 'rack' && Number(l.level) > 0); };
+  const EQUIPMENT = {
+    reach: { label: 'Reach truck', takes: () => true },
+    manup: { label: 'Man-up order picker', takes: () => true },
+    ept: { label: 'Electric pallet truck', takes: (t, locations) => !highUp(t.from, locations) && !highUp(t.to, locations) && t.type !== 'SHIFT' },
+    cart: { label: 'Picking cart', takes: () => false },
+  };
   const EQUIPMENT_STATUS = ['running', 'idle', 'fault', 'down', 'maintenance'];
   const PROFILE_PRESETS = {
     'high-value': { name: 'High value', storageType: 'rack', temperature: 'ambient', security: 'high', autoSort: 'secure nearest', label: 'High-value plate', capacity: { heightMm: 1600, widthMm: 1000, depthMm: 1200, maxWeightKg: 600, positionsPerLevel: 1 } },
@@ -99,6 +116,8 @@
   }
 
   function install(Warehouse, deps) {
+    Warehouse.DUTIES = Object.fromEntries(Object.entries(DUTIES).map(([k, v]) => [k, v.label]));
+    Warehouse.EQUIPMENT = Object.fromEntries(Object.entries(EQUIPMENT).map(([k, v]) => [k, v.label]));
     const { GS1, Labels } = deps;
     const proto = Warehouse.prototype;
 
@@ -1107,12 +1126,85 @@
       return entry;
     };
 
-    proto.assignOperator = function (truckId, operator) {
+    /**
+     * A truck can take every job (no duty), or only one duty's jobs. The duty
+     * follows the person's role when someone is assigned with one.
+     */
+    proto.assignOperator = function (truckId, operator, duty) {
       const truck = this.trucks[truckId] || this.desks[truckId];
       if (!truck) throw new Error(`No device ${truckId}`);
       truck.operator = operator ? String(operator).trim() : null;
+      if (duty !== undefined && this.trucks[truckId]) this.setTruckDuty(truckId, duty);
       this.log(`${truckId} assigned to ${truck.operator || 'nobody'}`);
       return truck;
+    };
+
+    proto.setTruckDuty = function (truckId, duty) {
+      const truck = this.trucks[truckId];
+      if (!truck) throw new Error(`No truck ${truckId}`);
+      const next = duty == null || duty === '' ? null : String(duty).trim().toLowerCase();
+      if (next && !DUTIES[next]) throw new Error(`Duty is one of ${Object.keys(DUTIES).join(', ')}, or empty for every job`);
+      truck.duty = next;
+      this.log(`${truck.id} does ${next ? DUTIES[next].label.toLowerCase() : 'every job'}`);
+      this.dispatch();
+      return truck;
+    };
+
+    proto.setTruckEquipment = function (truckId, equipment) {
+      const truck = this.trucks[truckId];
+      if (!truck) throw new Error(`No truck ${truckId}`);
+      const next = equipment == null || equipment === '' ? null : String(equipment).trim().toLowerCase();
+      if (next && !EQUIPMENT[next]) throw new Error(`Equipment is one of ${Object.keys(EQUIPMENT).join(', ')}`);
+      truck.equipment = next;
+      this.log(`${truck.id} is ${next ? EQUIPMENT[next].label.toLowerCase() : 'any truck'}`);
+      this.dispatch();
+      return truck;
+    };
+
+    /** Whether a truck's duty and equipment let it take an engine job. */
+    proto._dutyAllows = function (truck, task) {
+      const duty = truck.duty && DUTIES[truck.duty];
+      if (duty && !duty.takes(task)) return false;
+      const gear = truck.equipment && EQUIPMENT[truck.equipment];
+      if (gear && !gear.takes(task, this.locations)) return false;
+      return true;
+    };
+
+    /** Create one pallet of stock, for stock control (not receiving). */
+    proto.createStock = function ({ code, sscc = null, itemNo, qty, batch = null, expiry = null, reason = 'found', by } = {}) {
+      if (!ADJUST_REASONS.includes(reason)) throw new Error(`Reason must be one of: ${ADJUST_REASONS.join(', ')}`);
+      const amount = Number(qty);
+      if (!Number.isInteger(amount) || amount < 1) throw new Error('Quantity must be a whole number above 0');
+      const pallet = this.stockPallet(this.resolve(code), { sscc: sscc || undefined, itemNo, qty: amount, batch, expiry, receivedAt: this.now() });
+      const actor = by || this._actor || 'stock';
+      this.adjustments = this.adjustments || [];
+      this.adjustments.unshift({ t: this.now(), sscc: pallet.sscc, itemNo, batch, before: 0, after: amount, reason, by: actor });
+      this.recordMovement({ sscc: pallet.sscc, from: null, to: pallet.loc, qty: amount, event: 'created', by: actor, note: reason });
+      this.log(`Stock created: …${pallet.sscc.slice(-6)} ${itemNo} × ${amount} at ${pallet.loc} (${reason})`);
+      return pallet;
+    };
+
+    /** Take a pallet out of stock for good, with a reason. The record stays for traceability. */
+    proto.deleteStock = function ({ sscc, reason, by } = {}) {
+      const pallet = this._pallet(sscc);
+      if (pallet.status === 'shipped') throw new Error(`Pallet …${pallet.sscc.slice(-6)} is not in stock`);
+      if (!ADJUST_REASONS.includes(reason)) throw new Error(`Reason must be one of: ${ADJUST_REASONS.join(', ')}`);
+      if (pallet.orderId) throw new Error(`Pallet …${pallet.sscc.slice(-6)} is on order ${pallet.orderId}`);
+      const live = this._liveTaskFor(pallet.sscc);
+      if (live) throw new Error(`Pallet …${pallet.sscc.slice(-6)} has job #${live.id}`);
+      if ((this._openWaveTasks ? this._openWaveTasks() : []).some((t) => t.sscc === pallet.sscc)) throw new Error(`Pallet …${pallet.sscc.slice(-6)} is on a pick wave`);
+      const actor = by || this._actor || 'stock';
+      const from = pallet.loc;
+      this._remove(pallet);
+      this.adjustments = this.adjustments || [];
+      this.adjustments.unshift({ t: this.now(), sscc: pallet.sscc, itemNo: pallet.itemNo, batch: pallet.batch, before: pallet.qty, after: 0, reason, by: actor });
+      // Gone from stock like a shipped pallet, so every stock rule treats it that way.
+      pallet.status = 'shipped';
+      pallet.removed = 'deleted';
+      pallet.goneAt = this.now();
+      this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from, to: null, qty: pallet.qty, event: 'deleted', by: actor, note: reason });
+      this.log(`Stock deleted: …${pallet.sscc.slice(-6)} from ${from} (${reason})`);
+      return pallet;
     };
 
     function loadLocations() {

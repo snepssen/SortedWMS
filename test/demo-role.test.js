@@ -8,7 +8,7 @@ test('the static demo offers a role picker and says it is not a signed-in wareho
   assert.match(app, /Not a signed-in warehouse/);
   assert.match(app, /data-demo/);
   assert.match(app, /SORTED_DEMO/);
-  for (const role of ['administrator', 'manager', 'office', 'technician', 'operator', 'machine']) assert.match(app, new RegExp(role));
+  for (const role of ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock']) assert.match(app, new RegExp(role));
   assert.match(build, /window\.SORTED_DEMO = true/);
   assert.match(build, /app\.html/);
 });

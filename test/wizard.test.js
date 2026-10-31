@@ -84,7 +84,7 @@ test('the setup wizard is admin-only and can be run again', async () => {
     return (res.headers ? null : (await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }) })).headers.get('set-cookie').split(';')[0]);
   };
   try {
-    const opRes = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'operator', password: 'sorted-operator' }) });
+    const opRes = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'picker', password: 'sorted-picker' }) });
     const operator = opRes.headers.get('set-cookie').split(';')[0];
     const adminRes = await fetch(base + '/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'sorted-admin' }) });
     const admin = adminRes.headers.get('set-cookie').split(';')[0];
@@ -191,7 +191,7 @@ test('guided locations are created through the API as rack slots and shelf bins'
   };
   try {
     const admin = await login('admin', 'sorted-admin');
-    const operator = await login('operator', 'sorted-operator');
+    const operator = await login('picker', 'sorted-picker');
     const preview = await call('/api/locations/guided/preview', { answers }, admin);
     assert.equal(preview.status, 200, preview.body.error);
     assert.equal(preview.body.total, 10);

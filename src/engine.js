@@ -2695,6 +2695,7 @@
       const types = TRUCK_MODES[truck.mode].types;
       if (types && !types.includes(task.type)) return false;
       if (truck.mode === 'pick' && task.orderId !== truck.orderId) return false;
+      if (typeof this._dutyAllows === 'function' && !this._dutyAllows(truck, task)) return false;
       if (task.type === 'COUNT' && !task.category) return true; // an empty location without a category: anyone can count it
       return !truck.categories || truck.categories.includes(task.category);
     }

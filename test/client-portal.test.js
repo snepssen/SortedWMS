@@ -21,7 +21,7 @@ test('a client only sees and edits their own items, and approval is off unless t
   assert.equal(DEFAULTS.client.includes('items.write'), true);
   assert.equal(DEFAULTS.client.includes('items.approve'), false);
   assert.equal(DEFAULTS.office.includes('items.approve'), true);
-  assert.equal(DEFAULTS.operator.includes('items.approve'), false);
+  assert.equal(DEFAULTS.picker.includes('items.approve'), false);
 
   const store = new Store({ site });
   const auth = createAuth(store.db);

@@ -337,6 +337,8 @@
           if (pallet.qty === 0) {
             this._remove(pallet);
             pallet.status = 'shipped';
+            pallet.removed = 'emptied';
+            pallet.goneAt = this.now();
             pallet.openBox = 0;
             this.log(`Pallet …${pallet.sscc.slice(-6)} is empty after the pick`);
           }

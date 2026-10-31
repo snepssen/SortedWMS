@@ -58,21 +58,21 @@ test('login, sessions, roles and the shared token', async () => {
     assert.equal(verifyPassword('nope', hash), false);
 
     assert.equal((await app.call('GET', '/api/summary')).status, 401);
-    assert.equal((await app.call('POST', '/api/login', { username: 'operator', password: 'wrong-password' })).status, 401);
-    const operator = await app.sign('operator', 'sorted-operator');
+    assert.equal((await app.call('POST', '/api/login', { username: 'picker', password: 'wrong-password' })).status, 401);
+    const operator = await app.sign('picker', 'sorted-picker');
     const me = await app.call('GET', '/api/session', null, { cookie: operator });
-    assert.equal(me.body.user.role, 'operator');
-    assert.equal(me.body.user.roleLabel, 'Operator');
+    assert.equal(me.body.user.role, 'picker');
+    assert.equal(me.body.user.roleLabel, 'Picker');
     assert.equal((await app.call('GET', '/api/users', null, { cookie: operator })).status, 403);
     assert.match((await app.call('POST', '/api/users', { username: 'extra', password: 'sorted-extra', role: 'office', displayName: 'Extra' }, { cookie: operator, 'x-operator': 'admin' })).body.error, /Missing permission: users.write/);
 
     const admin = await app.sign('admin', 'sorted-admin');
-    const created = await app.call('POST', '/api/users', { username: 'extra', password: 'sorted-extra', role: 'operator', displayName: 'Extra One' }, { cookie: admin });
+    const created = await app.call('POST', '/api/users', { username: 'extra', password: 'sorted-extra', role: 'picker', displayName: 'Extra One' }, { cookie: admin });
     assert.equal(created.status, 200);
     const moved = await app.call('POST', `/api/users/${created.body.user.id}`, { role: 'office' }, { cookie: admin });
     assert.equal(moved.body.user.role, 'office');
     const roles = await app.call('GET', '/api/roles', null, { cookie: admin });
-    assert.ok(roles.body.roles.find((r) => r.id === 'machine').permissions.includes('scans.execute'));
+    assert.ok(roles.body.roles.find((r) => r.id === 'inbound').permissions.includes('scans.execute'));
     const officePerms = roles.body.roles.find((r) => r.id === 'office').permissions.filter((p) => p !== 'clients.write');
     assert.equal((await app.call('POST', '/api/roles/office', { permissions: officePerms }, { cookie: admin })).status, 200);
     const office = await app.sign('office', 'sorted-office');
@@ -99,8 +99,9 @@ test('each demo role can sign in and is refused a screen it does not own', async
       ['manager', 'sorted-manager', 'manager', '/api/users', 200],
       ['office', 'sorted-office', 'office', '/api/clients', 200],
       ['tech', 'sorted-tech', 'technician', '/api/technical', 200],
-      ['operator', 'sorted-operator', 'operator', '/api/val', 200],
-      ['machine', 'sorted-machine', 'machine', '/api/tasks', 200],
+      ['inbound', 'sorted-inbound', 'inbound', '/api/deliveries', 200],
+      ['picker', 'sorted-picker', 'picker', '/api/val', 200],
+      ['stock', 'sorted-stock', 'stock', '/api/movements', 200],
     ];
     for (const [username, password, role, path, status] of expect) {
       const cookie = await app.sign(username, password);
@@ -108,9 +109,9 @@ test('each demo role can sign in and is refused a screen it does not own', async
       assert.equal(session.body.user.role, role);
       assert.equal((await app.call('GET', path, null, { cookie })).status, status);
     }
-    const operator = await app.sign('operator', 'sorted-operator');
+    const operator = await app.sign('picker', 'sorted-picker');
     assert.equal((await app.call('POST', '/api/config', { aisleCap: 2 }, { cookie: operator })).status, 403);
-    const machine = await app.sign('machine', 'sorted-machine');
+    const machine = await app.sign('inbound', 'sorted-inbound');
     assert.equal((await app.call('POST', '/api/orders', { id: 'NO', customer: 'X', lane: 'OUT-01', lines: [] }, { cookie: machine })).status, 403);
     assert.equal((await app.call('POST', '/api/technical', { autoSort: { strategy: 'fifo' } }, { cookie: machine })).status, 403);
     const tech = await app.sign('tech', 'sorted-tech');
@@ -161,7 +162,7 @@ test('office can create a client, an item, a location and a label; capacity is e
     const master = await app.call('POST', '/api/labels/master', { children: [app.store.wh.pallets[Object.keys(app.store.wh.pallets)[0]].sscc], title: 'Shift master' }, { cookie: office });
     assert.match(master.body.zpl, /MASTER/);
 
-    const scan = await app.call('POST', '/api/hardware/scan', { code: 'BIN-TEST', source: 'simulated' }, { cookie: await app.sign('operator', 'sorted-operator') });
+    const scan = await app.call('POST', '/api/hardware/scan', { code: 'BIN-TEST', source: 'simulated' }, { cookie: await app.sign('picker', 'sorted-picker') });
     assert.equal(scan.body.scan.source, 'simulated');
     const tech = await app.sign('tech', 'sorted-tech');
     assert.equal((await app.call('POST', '/api/hardware/mode', { printer: 'browser' }, { cookie: tech })).body.printer, 'browser');

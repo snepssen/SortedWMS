@@ -206,7 +206,7 @@ Presets: chilled distribution centre (temperature, lot, expiry and FEFO on; froz
 On top of the reach-truck rules already in `src/engine.js`:
 
 - **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator. An administrator can reset a password without email; the person must change it at the next sign-in. Optional authenticator-app codes (TOTP). Five failed sign-ins lock the account for 15 minutes. A session ends after 30 idle minutes, or 12 hours at the latest.
-- **Roles.** Administrator, manager / supervisor, office, technical, operator (on foot), machine operator (reach truck or order picker). Permissions are a list an administrator can edit. Each role has its own view.
+- **Roles.** Administrator, manager / supervisor, office, technical, inbound, picker, and stock / inventory. Floor roles follow the job; the truck's type (reach, man-up, EPT, cart) is a setting on the truck, and a truck with a duty only gets that duty's jobs. Permissions are a list an administrator can edit. Each role has its own view.
 - **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
 - **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
 - **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation), staging, returns and quarantine. Height, width, depth and weight capacity. A load that does not fit is refused.
@@ -243,8 +243,9 @@ Then open `http://localhost:8080/login`.
 | `manager` | `sorted-manager` | KPIs, staff, tasks, exceptions, locations, holders |
 | `office` | `sorted-office` | Clients, items, orders, inbound, outbound, reports, labels |
 | `tech` | `sorted-tech` | Auto-sort, location defaults, label series, hardware |
-| `operator` | `sorted-operator` | Receiving, mezzanine pick, VAL / kitting |
-| `machine` | `sorted-machine` | Put-away, replenishment, transfers, block-lane moves |
+| `inbound` | `sorted-inbound` | Receiving and put-away |
+| `picker` | `sorted-picker` | Pick waves, mezzanine, kitting |
+| `stock` | `sorted-stock` | Counts, corrections, stock create/delete, transfers, replenishment, Auto-Shift |
 
 `SORTED_ADMIN_USER` and `SORTED_ADMIN_PASSWORD` set the first administrator when the database has no users. `SORTED_DEMO_USERS=0` skips the other five accounts. Details are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
@@ -267,7 +268,7 @@ Settings, through environment variables:
 | `SORTED_TOKEN` | none | Optional shared secret. If set, a call with header `x-token` is accepted as a service administrator. Sign-in still works without it. |
 | `SORTED_ADMIN_USER` | `admin` | Created when there are no users yet. |
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
-| `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, operator and machine operator accounts. |
+| `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, inbound, picker and stock accounts. |
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 

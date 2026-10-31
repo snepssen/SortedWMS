@@ -201,8 +201,8 @@ test('waves through the API: office plans, the man-up and the bin picker confirm
   try {
     const admin = await login('admin', 'sorted-admin');
     const office = await login('office', 'sorted-office');
-    const operator = await login('operator', 'sorted-operator');
-    const machine = await login('machine', 'sorted-machine');
+    const inbound = await login('inbound', 'sorted-inbound');
+    const picker = await login('picker', 'sorted-picker');
     const ok = (r) => { assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
     ok(await call('POST', '/api/locations/guided', { answers: { sections: { count: 1, name: 'Mezz' }, layouts: [{ type: 'shelf', positions: { count: 2, name: 'Bin 1' } }] } }, admin));
     ok(await call('POST', '/api/items', { itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 200000, uom: 'piece' }, admin));
@@ -210,19 +210,19 @@ test('waves through the API: office plans, the man-up and the bin picker confirm
     const rack = store.wh._racks().find((l) => !l.sscc && !l.blocked && l.category === 'YOG').code;
     const added = store.exec('importStock', { rows: [{ code: rack, sscc: sscc(9911), itemNo: 'M3', qty: 200000, receivedAt: 1 }] }, 'admin');
     assert.equal(added.added, 1, JSON.stringify(added.errors));
-    ok(await call('POST', '/api/bins/put', { loc: 'Mezz-Bin1', itemNo: 'M3', qty: 400 }, operator));
+    ok(await call('POST', '/api/bins/put', { loc: 'Mezz-Bin1', itemNo: 'M3', qty: 400 }, inbound));
     const lane = Object.values(store.wh.locations).find((l) => l.kind === 'lane' && l.role === 'out').code;
     ok(await call('POST', '/api/orders', { id: 'W-1', customer: 'Builder', lane, lines: [{ itemNo: 'M3', units: 10250 }] }, office));
-    assert.equal((await call('POST', '/api/waves', { orders: ['W-1'] }, operator)).status, 403);
+    assert.equal((await call('POST', '/api/waves', { orders: ['W-1'] }, picker)).status, 403, 'the office plans waves');
     const wave = ok(await call('POST', '/api/waves', { orders: ['W-1'] }, office));
     assert.deepEqual(wave.tasks.map((t) => [t.kind, t.qty]), [['case', 10000], ['bin', 250]]);
     const queue = ok(await call('GET', '/api/waves/queue', null, office));
     assert.equal(queue.active, wave.id);
-    const mine = ok(await call('GET', '/api/waves/tasks?kind=case', null, machine));
+    const mine = ok(await call('GET', '/api/waves/tasks?kind=case', null, picker));
     assert.equal(mine.length, 1);
-    ok(await call('POST', `/api/waves/tasks/${mine[0].id}/confirm`, { scan: rack }, machine));
-    const bins = ok(await call('GET', '/api/waves/tasks?kind=bin', null, operator));
-    ok(await call('POST', `/api/waves/tasks/${bins[0].id}/confirm`, { scan: 'Mezz-Bin1' }, operator));
+    ok(await call('POST', `/api/waves/tasks/${mine[0].id}/confirm`, { scan: rack }, picker));
+    const bins = ok(await call('GET', '/api/waves/tasks?kind=bin', null, picker));
+    ok(await call('POST', `/api/waves/tasks/${bins[0].id}/confirm`, { scan: 'Mezz-Bin1' }, picker));
     assert.equal(store.wh.orders['W-1'].lines[0].picked, 10250);
     store.load();
     assert.equal(store.wh.orders['W-1'].lines[0].picked, 10250, 'the journal replays the wave');

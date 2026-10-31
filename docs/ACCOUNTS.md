@@ -47,10 +47,11 @@ Created when missing. Existing passwords are not reset.
 | `manager` | `sorted-manager` | Manager / supervisor | KPIs, staff, tasks, exceptions, locations, holders |
 | `office` | `sorted-office` | Office | Clients, orders, inbound, outbound, reports |
 | `tech` | `sorted-tech` | Technical | Auto-sort, location defaults, label series, hardware |
-| `operator` | `sorted-operator` | Operator | Receiving, mezzanine pick, VAL / kitting |
-| `machine` | `sorted-machine` | Machine operator | Put-away, replenishment, transfers, pallet and block-lane moves |
+| `inbound` | `sorted-inbound` | Inbound | Receiving and put-away |
+| `picker` | `sorted-picker` | Picker | Pick waves: pallet, box and bin picks; mezzanine; kitting |
+| `stock` | `sorted-stock` | Stock / inventory | Counts, corrections, creating and deleting stock, checks, transfers, replenishment, Auto-Shift |
 
-The operator is on foot, at a station or with a handheld. The machine operator drives a reach truck or a high-level order picker. The technical account is the WMS technical department, not maintenance.
+Floor roles follow the job, not the vehicle. Inbound, pickers and stock control can each be on foot or on a truck; what the truck is (reach truck, man-up, EPT, cart) is set on the truck. The technical account is the WMS technical department, not maintenance. Users who had the old Operator role became Pickers, and Machine operators became Inbound, the first time the server starts after the upgrade.
 
 ## What each role is for
 
@@ -58,14 +59,16 @@ The operator is on foot, at a station or with a handheld. The machine operator d
 - **Manager / supervisor.** Shift KPIs, staff, task assignment, exceptions, approvals, and movement history for a person or a license plate.
 - **Office.** Clients, items, ASNs, orders, packing notes, reports, and label printing.
 - **Technical.** Auto-sort strategy and rules, default dimensions and capacity by location type, and the license-plate prefix and padding. Equipment and scanner/printer mode sit underneath that. This is not the maintenance role.
-- **Operator.** On foot. Inbound receiving (a full pallet is issued `PAL` and `MASTER`), mezzanine picking, moving and counting loose stock in bins, and VAL/kitting where each scan adds a component to a base product. Wedge, manual entry, and simulated scan all use the same field.
-- **Machine operator.** Driving a reach truck or high-level order picker. The screen is the next move: put-away, replenishment, transfer, pallet move, block lane. On a man-up they also do the case picks of a pick wave. Not a production-line screen.
+- **Inbound.** Receives deliveries (a full pallet is issued `PAL` and `MASTER`) and puts stock away: pallets into the racks, loose stock into bins. A truck with the inbound duty only gets receiving and put-away jobs.
+- **Picker.** Picks in waves: whole pallets straight to the dock, whole boxes and opened-box pieces on a man-up, bin picks on an EPT or cart, all dropped at the post-pick lane. Also mezzanine picks and VAL/kitting. A truck with the picking duty only gets picks, check and label, and moves to the dock.
+- **Stock / inventory.** Cycle counts, quantity corrections, creating and deleting stock with a reason, stock checks, location lookups, transfers, replenishment and Auto-Shift. A truck with the stock duty only gets Auto-Shift, counts and moves back into storage. Wedge, manual entry, and simulated scan all use the same field.
+- **Trucks.** The manager sets each truck's duty (every job, inbound, picking, or stock and inventory) and equipment on the Floor screen. Assigning a person gives the truck that person's duty. A reach truck and a man-up reach every level; an EPT only takes jobs at ground level and no Auto-Shift; a cart takes no truck jobs. Process-station moves that are not for an order count as stock work. The demo trucks start on every job.
 
 The floor screens (`/admin`, `/handheld`, `/station`, `/desk`, `/loading`) stay. After sign-in the cookie is sent with them. A role that lacks the permission gets 403 rather than a silent change.
 
 ## Permissions
 
-`server/permissions.js` is the list. A route names the permission it needs. Anything not listed needs `wms.read` for a GET and `wms.write` for a change. Operator and machine operator do not have `wms.write`; their posts are listed one by one (`scans.execute`, `counts.execute`, and so on).
+`server/permissions.js` is the list. A route names the permission it needs. Anything not listed needs `wms.read` for a GET and `wms.write` for a change. Inbound, picker and stock do not have `wms.write`; their posts are listed one by one (`scans.execute`, `counts.execute`, and so on).
 
 An administrator edits a role under **Roles**. The last active administrator cannot be demoted or disabled.
 

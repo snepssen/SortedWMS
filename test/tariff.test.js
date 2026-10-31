@@ -299,9 +299,10 @@ test('tariff editing is tariff.write for office and manager', async () => {
   assert.equal(permissionFor('GET', '/api/reports/invoice.csv').permission, 'reports.read');
   assert.equal(DEFAULTS.office.includes('tariff.write'), true);
   assert.equal(DEFAULTS.manager.includes('tariff.write'), true);
-  assert.equal(DEFAULTS.operator.includes('tariff.write'), false);
+  assert.equal(DEFAULTS.picker.includes('tariff.write'), false);
   assert.equal(DEFAULTS.technician.includes('tariff.write'), false);
-  assert.equal(DEFAULTS.machine.includes('tariff.write'), false);
+  assert.equal(DEFAULTS.inbound.includes('tariff.write'), false);
+  assert.equal(DEFAULTS.stock.includes('tariff.write'), false);
 
   const store = new Store({ site });
   const auth = createAuth(store.db);
@@ -322,7 +323,7 @@ test('tariff editing is tariff.write for office and manager', async () => {
     return ((res.headers.getSetCookie && res.headers.getSetCookie()[0]) || res.headers.get('set-cookie') || '').split(';')[0];
   };
   try {
-    const operator = await sign('operator', 'sorted-operator');
+    const operator = await sign('picker', 'sorted-picker');
     assert.equal((await call('POST', '/api/clients/CL-DAIRY/tariff', { storageRate: 1 }, { cookie: operator })).status, 403);
     const office = await sign('office', 'sorted-office');
     const saved = await call('POST', '/api/clients/CL-DAIRY/tariff', {
