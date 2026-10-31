@@ -1178,6 +1178,34 @@
       return { created, skipped: built.total - created, total: built.total, sample, sampleCode: built.sampleCode };
     };
 
+    // The guided wizard: one plan per section, racks as pallet slots and
+    // shelves as bins. Answers are kept so the wizard opens where it left off.
+    proto.generateGuided = function (answers) {
+      const { guided } = loadLocations();
+      const built = guided(answers);
+      let created = 0;
+      const sample = [];
+      for (const part of built.plans) {
+        for (const code of expandCodes(part.plan)) {
+          if (this.locations[code]) continue;
+          const cap = part.capacity;
+          const loc = this.createLocation({ code, kind: part.kind, name: code, preserveCase: true, heightMm: cap.heightMm, widthMm: cap.widthMm, depthMm: cap.depthMm, maxWeightKg: cap.maxWeightKg });
+          loc.storageType = part.type;
+          if (part.kind === 'rack') loc.structural = false;
+          created++;
+          if (sample.length < 8) sample.push(code);
+        }
+      }
+      this._forgetPlaces();
+      this.setup = { ...(this.setup || {}), guided: answers, generated: ((this.setup && this.setup.generated) || 0) + created, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
+      this.log(`Generated ${created} locations in ${built.plans.length} section${built.plans.length === 1 ? '' : 's'}`);
+      return { created, skipped: built.total - created, total: built.total, sample, sampleCode: built.sampleCode, sections: built.plans.map((p) => ({ section: p.section, type: p.type, total: p.total })) };
+    };
+
+    function expandCodes(plan) {
+      return loadLocations().expand(plan).codes;
+    }
+
     proto.completeSetup = function () {
       this.setup = { ...(this.setup || {}), completed: true, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
       this.log('Setup wizard saved');

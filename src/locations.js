@@ -2,6 +2,7 @@
  * Location codes for any building: Cell > Aisle > Bay > Position > Height.
  * A level can be skipped. Each level is numbers, letters, letters-and-numbers,
  * or words. Colours and pictures are written out as text (Red, Blue).
+ * The guided wizard reads the scheme from what the first one is called.
  */
 (function (root, factory) {
   const api = factory();
@@ -31,10 +32,12 @@
       const from = Number(level.from);
       const to = Number(level.to);
       const width = Number(level.pad) || 0;
+      const prefix = level.prefix == null ? '' : String(level.prefix).replace(/\s+/g, '');
       if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from || to - from > 500) rangeError(key, 'number range must be whole numbers, from <= to, at most 501 values');
       if (!Number.isInteger(width) || width < 0 || width > 6) rangeError(key, 'pad is 0 to 6');
+      if (prefix && !/^[A-Za-z][A-Za-z0-9]{0,11}$/.test(prefix)) rangeError(key, 'a prefix starts with a letter and has letters and digits');
       const out = [];
-      for (let n = from; n <= to; n++) out.push(padNumber(n, width));
+      for (let n = from; n <= to; n++) out.push(prefix + padNumber(n, width));
       return out;
     }
     if (level.scheme === 'letter') {
@@ -104,6 +107,112 @@
     };
   }
 
+  /*
+   * The guided wizard asks "how many?" and "what do you want to call it?"
+   * and works out the scheme from the first name, so nobody picks one:
+   *   (empty)        1, 2, 3   (padded to the widest number: 01..12)
+   *   01             01, 02, 03
+   *   7              7, 8, 9
+   *   A              A, B, C
+   *   R1 / Shelf 01  R1, R2 / Shelf01, Shelf02
+   *   Bin            Bin (one) or Bin1, Bin2 (more than one)
+   *   Left, Right    every name written out, one per count
+   * One of something with no name is left out of the code.
+   */
+  const GUIDED_STEPS = ['sections', 'aisles', 'bays', 'positions', 'levels'];
+  const GUIDED_KEYS = { sections: 'cell', aisles: 'aisle', bays: 'bay', positions: 'position', levels: 'height' };
+  const SECTION_TYPES = {
+    rack: { kind: 'rack', label: 'Rack', capacity: { heightMm: 1800, widthMm: 1000, depthMm: 1200, maxWeightKg: 1000 } },
+    shelf: { kind: 'bin', label: 'Shelf', capacity: { heightMm: 400, widthMm: 600, depthMm: 400, maxWeightKg: 25 } },
+  };
+
+  function seriesFromName(name, count, key = 'level') {
+    const n = Number(count);
+    if (!Number.isInteger(n) || n < 1 || n > 501) rangeError(key, 'how many is a whole number from 1 to 501');
+    const text = String(name == null ? '' : name).trim();
+    if (!text) {
+      if (n === 1) return { key, skip: true };
+      return { key, scheme: 'number', from: 1, to: n, pad: String(n).length > 1 ? String(n).length : 0 };
+    }
+    if (/[,\n|]/.test(text)) {
+      const words = text.split(/[,\n|]/).map((w) => w.trim()).filter(Boolean);
+      if (words.length !== n) rangeError(key, `you have ${n} but named ${words.length}. Give one name each, or name only the first`);
+      if (new Set(words.map((w) => w.replace(/\s+/g, '').toUpperCase())).size !== words.length) rangeError(key, 'two names are the same');
+      return { key, scheme: 'word', words };
+    }
+    let m = /^(\d+)$/.exec(text);
+    if (m) {
+      const from = Number(m[1]);
+      return { key, scheme: 'number', from, to: from + n - 1, pad: m[1].length > 1 ? Math.max(m[1].length, String(from + n - 1).length) : 0 };
+    }
+    if (/^[A-Za-z]$/.test(text)) {
+      const from = text.toUpperCase();
+      const last = from.charCodeAt(0) + n - 1;
+      if (last > 90) rangeError(key, `letters run out at Z. Starting at ${from} gives ${90 - from.charCodeAt(0) + 1}. Try A1 or a number instead`);
+      return { key, scheme: 'letter', from, to: String.fromCharCode(last) };
+    }
+    m = /^([A-Za-z][A-Za-z ]*?)\s*(\d+)$/.exec(text);
+    if (m) {
+      const from = Number(m[2]);
+      return { key, scheme: 'number', prefix: m[1].replace(/\s+/g, ''), from, to: from + n - 1, pad: m[2].length > 1 ? m[2].length : 0 };
+    }
+    if (/^[A-Za-z][A-Za-z ]{0,11}$/.test(text)) {
+      if (n === 1) return { key, scheme: 'word', words: [text] };
+      return { key, scheme: 'number', prefix: text.replace(/\s+/g, ''), from: 1, to: n, pad: String(n).length > 1 ? String(n).length : 0 };
+    }
+    rangeError(key, 'a name is a number (1, 01), a letter (A), a word with a number (R1, Shelf 1), or names split by commas');
+  }
+
+  function answerOf(step, answer) {
+    const a = answer || {};
+    return seriesFromName(a.name, a.count == null || a.count === '' ? 1 : a.count, step);
+  }
+
+  /**
+   * Turn the wizard's answers into one plan per section.
+   * answers: { sections: {count, name}, layouts: [{ type, aisles, bays, positions, levels }] }
+   * One layout per section; a missing layout copies the one before it.
+   */
+  function guided(answers, { limit = 24 } = {}) {
+    const a = answers || {};
+    const separator = a.separator == null ? '-' : String(a.separator);
+    const sectionSeries = answerOf('sections', a.sections);
+    const names = sectionSeries.skip ? [null] : tokens(sectionSeries);
+    const layouts = Array.isArray(a.layouts) ? a.layouts : [];
+    if (!layouts.length) throw new Error('Describe the first section: rack or shelf, aisles, bays, positions and levels');
+    const plans = [];
+    const codes = [];
+    const seen = new Set();
+    let previous = null;
+    names.forEach((section, i) => {
+      const layout = layouts[i] || previous;
+      previous = layout;
+      const type = SECTION_TYPES[layout.type] ? layout.type : 'rack';
+      const where = section == null ? 'The building' : (/^\d+$/.test(section) ? `Section ${section}` : section);
+      const levels = [section == null ? { key: 'cell', skip: true } : { key: 'cell', scheme: 'word', words: [section] }];
+      for (const step of GUIDED_STEPS.slice(1)) {
+        try { levels.push({ ...answerOf(step, layout[step]), key: GUIDED_KEYS[step] }); }
+        catch (e) { throw new Error(`${where}: ${e.message}`); }
+      }
+      const plan = { separator, levels };
+      let built;
+      try { built = expand(plan, { limit }); }
+      catch (e) {
+        if (/at least one level/.test(e.message)) throw new Error(`${where}: name at least one thing, or give more than one of something`);
+        throw new Error(`${where}: ${e.message}`);
+      }
+      for (const code of built.codes) {
+        if (seen.has(code.toUpperCase())) throw new Error(`${code} would be created twice. Give each section its own name`);
+        seen.add(code.toUpperCase());
+        codes.push(code);
+      }
+      if (codes.length > MAX_CODES) throw new Error(`That would create more than ${MAX_CODES} locations. Narrow it.`);
+      const capacity = { ...SECTION_TYPES[type].capacity, ...(layout.capacity || {}) };
+      plans.push({ section, type, kind: SECTION_TYPES[type].kind, capacity, plan, total: built.total, sampleCode: built.sampleCode, lastCode: built.codes[built.codes.length - 1] });
+    });
+    return { total: codes.length, codes, sample: codes.slice(0, limit), sampleCode: codes[0] || '', plans, separator };
+  }
+
   const EXAMPLES = {
     numbers: {
       id: 'numbers',
@@ -171,5 +280,5 @@
     },
   };
 
-  return { LEVELS, SCHEMES, EXAMPLES, expand, tokens, MAX_CODES };
+  return { LEVELS, SCHEMES, EXAMPLES, expand, tokens, MAX_CODES, GUIDED_STEPS, SECTION_TYPES, seriesFromName, guided };
 });

@@ -386,6 +386,11 @@
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
+    on('POST', '/api/locations/guided/preview', (_, q, b) => {
+      const out = require('../src/locations').guided(b.answers || b, { limit: 24 });
+      return { total: out.total, sample: out.sample, sampleCode: out.sampleCode, plans: out.plans.map(({ section, type, total, sampleCode, lastCode, capacity }) => ({ section, type, total, sampleCode, lastCode, capacity })) };
+    });
+    on('POST', '/api/locations/guided', (_, q, b, by) => run('generateGuided', b, by));
     on('GET', '/api/location-profiles', () => wh().locationProfilesView());
     on('POST', '/api/location-profiles', (_, q, b, by) => run('saveLocationProfile', { profile: b }, by));
     on('POST', '/api/locations/bulk', (_, q, b, by) => run('bulkLocations', b, by));
