@@ -30,7 +30,38 @@
   .preview { font: 15px/1.5 ui-monospace, monospace; background: #f6f3ec; border-radius: 8px; padding: 10px; min-height: 3em; }
   .msg { padding: 8px 10px; border-radius: 8px; background: #e7f6ef; }
   .msg.bad { background: #fde8e6; }
-  @media (max-width: 720px) { .ex, .level { grid-template-columns: 1fr; } }
+  .steps { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .steps span { flex: 1 1 18px; height: 5px; border-radius: 3px; background: var(--line); }
+  .steps span.done { background: #9cc9b9; }
+  .steps span.now { background: var(--acc); }
+  .q { min-height: 220px; }
+  .q .where { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
+  .q h3 { margin: 2px 0 12px; font-size: 21px; }
+  .ask { display: grid; grid-template-columns: 140px 1fr; gap: 10px 14px; align-items: start; }
+  .ask > label { display: block; margin: 0; font-weight: 600; }
+  .ask input { width: 100%; }
+  .ask input[name=count] { width: 7em; }
+  .ask input::placeholder { color: #b5ada0; }
+  .eg { color: #a39b8e; font-size: 14px; margin-top: 6px; display: flex; gap: 6px 10px; flex-wrap: wrap; }
+  .eg button { border: 0; background: none; padding: 0; color: #a39b8e; font: 14px ui-monospace, monospace; text-decoration: underline dotted; cursor: pointer; }
+  .eg button:hover { color: var(--acc); }
+  .gives { font: 14px ui-monospace, monospace; margin-top: 6px; color: var(--acc); }
+  .gives.bad { color: #a3352b; font-family: inherit; }
+  .types { display: grid; gap: 8px; }
+  .types .row { display: grid; grid-template-columns: 160px 1fr; gap: 10px; align-items: center; }
+  .pick { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pick button.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); font-weight: 700; }
+  .pick small { display: block; color: var(--dim); font-weight: 400; }
+  .nav { display: flex; gap: 8px; margin-top: 14px; }
+  .codes { margin-top: 14px; font: 15px/1.5 ui-monospace, monospace; background: #f6f3ec; border-radius: 8px; padding: 10px 12px; }
+  .codes .label { font: 13px system-ui, sans-serif; color: var(--dim); }
+  .codes.bad { background: #fde8e6; font-family: system-ui, sans-serif; }
+  .review { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .review th, .review td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .review input { width: 5.5em; }
+  .review code { font: 14px ui-monospace, monospace; }
+  details summary { cursor: pointer; color: var(--dim); margin-bottom: 8px; }
+  @media (max-width: 720px) { .ex, .level, .ask, .types .row { grid-template-columns: 1fr; } .review { font-size: 14px; } }
 </style>
 </head>
 <body>
@@ -65,23 +96,35 @@
     <div id="features"></div>
     <p><button type="button" id="saveFeatures">Save features</button></p>
   </section>
-  <section id="numbering">
-    <h2>4. How locations are named</h2>
-    <p class="hint">Cell, then aisle, bay, position and height. Skip a level when the building does not have it. Names are text: a colour is the word Red or Blue, not a picture.</p>
-    <div class="examples" id="examples"></div>
+  <section id="guide">
+    <h2>4. Your locations</h2>
+    <p class="hint">A few questions about the building. Type what you call the first one and the rest follow: <b>01</b> gives 01, 02, 03; <b>A</b> gives A, B, C; <b>Shelf 1</b> gives Shelf1, Shelf2; or write every name, split by commas.</p>
+    <div class="steps" id="stepDots"></div>
+    <div class="q" id="question"></div>
+    <div class="nav">
+      <button type="button" id="back">Back</button>
+      <span style="flex:1"></span>
+      <button type="button" class="primary" id="next">Next</button>
+    </div>
+    <div class="codes" id="codes" aria-live="polite"></div>
   </section>
   <section>
-    <h2>5. Build the locations</h2>
-    <div id="levels"></div>
-    <p class="hint">Live preview</p>
-    <div class="preview" id="preview">Choose an example or edit the ranges.</div>
-    <form class="level" id="dims" style="margin-top:10px">
-      <label>H mm <input name="heightMm" type="number" value="1800"></label>
-      <label>W mm <input name="widthMm" type="number" value="1000"></label>
-      <label>D mm <input name="depthMm" type="number" value="1200"></label>
-      <label>Max kg <input name="maxWeightKg" type="number" value="1000"></label>
-    </form>
-    <p><button type="button" class="primary" id="generate">Generate these locations</button></p>
+    <h2>5. Extra places</h2>
+    <details>
+      <summary>Advanced: write the ranges yourself</summary>
+      <p class="hint">Cell, then aisle, bay, position and height. Each level is numbers, letters, letter+number or words.</p>
+      <div class="examples" id="examples"></div>
+      <div id="levels"></div>
+      <p class="hint">Live preview</p>
+      <div class="preview" id="preview">Choose an example or edit the ranges.</div>
+      <form class="level" id="dims" style="margin-top:10px">
+        <label>H mm <input name="heightMm" type="number" value="1800"></label>
+        <label>W mm <input name="widthMm" type="number" value="1000"></label>
+        <label>D mm <input name="depthMm" type="number" value="1200"></label>
+        <label>Max kg <input name="maxWeightKg" type="number" value="1000"></label>
+      </form>
+      <p><button type="button" id="generate">Generate these locations</button></p>
+    </details>
     <h3>Virtual locations</h3>
     <p class="hint">Consolidation and staging are not physical slots. conso00 is the usual consolidation name.</p>
     <form id="virtual" class="level">
@@ -98,6 +141,7 @@
     <p id="out"></p>
   </section>
 </main>
+<script src="/src/locations.js"></script>
 <script>
 (function () {
   'use strict';
@@ -173,6 +217,8 @@
     document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
     document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
     document.getElementById('examples').innerHTML = data.examples.map((ex) => `<div class="ex"><div><b>${esc(ex.title)}</b><div class="hint">${esc(ex.blurb)}</div></div><code>${esc(ex.preview.sampleCode)}</code><button type="button" data-example="${esc(ex.id)}">Use this</button></div>`).join('');
+    if (data.setup && data.setup.guided && data.setup.guided.layouts) { answers = JSON.parse(JSON.stringify(data.setup.guided)); stepAt = 0; }
+    renderQuestion();
     const chosen = data.examples.find((ex) => ex.id === 'numbers');
     fillPlan((data.setup && data.setup.locationPlan) || (chosen && chosen.plan));
   }
@@ -229,6 +275,208 @@
   document.getElementById('done').onclick = async () => {
     try { await api('POST', '/api/setup/complete', {}); say('Setup saved. You can change it whenever you come back.', true); }
     catch (err) { say(err.message, false); }
+  };
+
+  // ---- Guided questions ----
+  const L = window.SortedLocations;
+  const WORDS = {
+    sections: ['North', 'South', 'East', 'West', 'Annex', 'Yard'],
+    aisles: ['Left', 'Right', 'Back', 'Front'],
+    bays: ['Red', 'Blue', 'Green', 'Yellow', 'White', 'Black'],
+    positions: { 2: ['Left', 'Right'], 3: ['Left', 'Middle', 'Right'], 4: ['Front', 'Back', 'Left', 'Right'] },
+    levels: { 2: ['Bottom', 'Top'], 3: ['Floor', 'Middle', 'Top'], 4: ['Floor', 'Low', 'High', 'Top'], 5: ['Floor', 'Low', 'Middle', 'High', 'Top'] },
+  };
+  const SAMPLES = { sections: ['1', 'A', 'Hall 1'], aisles: ['01', 'A', 'Row 1'], bays: ['1', 'B', 'Shelf 1'], positions: ['1', 'A', 'Bin 1'], levels: ['1', 'A', 'L1'] };
+  const blankLayout = () => ({ type: 'rack', aisles: { count: 1, name: '' }, bays: { count: 1, name: '' }, positions: { count: 1, name: '' }, levels: { count: 1, name: '' } });
+  let answers = { sections: { count: 1, name: '' }, layouts: [blankLayout()] };
+  let stepAt = 0;
+
+  function sectionNames() {
+    try {
+      const series = L.seriesFromName(answers.sections.name, answers.sections.count, 'sections');
+      return series.skip ? [null] : L.tokens(series);
+    } catch (e) { return null; }
+  }
+  function steps() {
+    const names = sectionNames() || [null];
+    const out = [{ id: 'sections' }, { id: 'types' }];
+    names.forEach((name, i) => { for (const id of ['aisles', 'bays', 'positions', 'levels']) out.push({ id, section: i, name }); });
+    out.push({ id: 'review' });
+    return out;
+  }
+  function layout(i) {
+    while (answers.layouts.length <= i) answers.layouts.push(JSON.parse(JSON.stringify(answers.layouts[answers.layouts.length - 1] || blankLayout())));
+    return answers.layouts[i];
+  }
+  function fitLayouts() {
+    const names = sectionNames();
+    if (names) { layout(names.length - 1); answers.layouts.length = names.length; }
+  }
+  function words(id, count) {
+    const w = WORDS[id];
+    const list = Array.isArray(w) ? w : (w[count] || null);
+    return list && list.length >= count && count > 1 ? list.slice(0, count).join(', ') : null;
+  }
+  function gives(id, name, count) {
+    const series = L.seriesFromName(name, count, id);
+    if (series.skip) return { text: 'Left out of the code', skip: true };
+    const t = L.tokens(series);
+    return { text: t.length > 4 ? t.slice(0, 3).join(', ') + ' … ' + t[t.length - 1] : t.join(', ') };
+  }
+  function exampleChips(id, count) {
+    const n = Math.max(1, Number(count) || 1);
+    const list = SAMPLES[id].slice();
+    const w = words(id, n);
+    if (w) list.push(w);
+    return list.map((name) => {
+      let shown = name;
+      try { shown = gives(id, name, n).text; } catch (e) { return ''; }
+      return `<button type="button" data-fill="${esc(name)}" title="Use ${esc(name)}">${esc(shown)}</button>`;
+    }).join('<span>·</span>');
+  }
+  const QUESTIONS = {
+    sections: () => ({ where: 'The building', title: 'How many buildings, or separate sections in a building, are you creating locations for?', note: 'One building with no name stays out of the codes.', unit: 'sections' }),
+    aisles: (lay) => ({ title: lay.type === 'shelf' ? 'How many aisles, or walls with shelves?' : 'How many aisles?', note: 'Just one wall or one aisle? Leave the name empty and it stays out of the codes.', unit: 'aisles' }),
+    bays: (lay) => ({ title: lay.type === 'shelf' ? 'How many shelving units along each aisle?' : 'How many bays along each aisle?', note: lay.type === 'shelf' ? 'A shelving unit is one bookcase-like frame.' : 'A bay is the space between two uprights.', unit: lay.type === 'shelf' ? 'units' : 'bays' }),
+    positions: (lay) => ({ title: lay.type === 'shelf' ? 'How many bins or spots on each shelf?' : 'How many positions in a bay?', note: lay.type === 'shelf' ? 'Bins side by side on one shelf.' : 'Pallets side by side on one beam.', unit: 'positions' }),
+    levels: (lay) => ({ title: 'How many levels high?', note: lay.type === 'shelf' ? 'Count the shelves, floor included if you store there.' : 'Count the beam levels, the floor included.', unit: 'levels' }),
+  };
+
+  function progress() {
+    const all = steps();
+    document.getElementById('stepDots').innerHTML = all.map((_, i) => `<span class="${i < stepAt ? 'done' : i === stepAt ? 'now' : ''}"></span>`).join('');
+    const at = document.getElementById('stepOf');
+    if (at) at.textContent = `Step ${stepAt + 1} of ${all.length}`;
+  }
+
+  function renderQuestion() {
+    const all = steps();
+    stepAt = Math.min(stepAt, all.length - 1);
+    const step = all[stepAt];
+    document.getElementById('back').disabled = stepAt === 0;
+    document.getElementById('next').textContent = step.id === 'review' ? 'Create these locations' : 'Next';
+    const box = document.getElementById('question');
+    if (step.id === 'types') {
+      const names = sectionNames() || [null];
+      box.innerHTML = `<div class="where" id="stepOf"></div><h3>What is each section?</h3>
+        <div class="types">${names.map((name, i) => `<div class="row"><b>${esc(name || 'The building')}</b><div class="pick" data-section="${i}">
+          <button type="button" data-type="rack" class="${layout(i).type === 'rack' ? 'on' : ''}">Rack<small>Pallets on beams, reach trucks</small></button>
+          <button type="button" data-type="shelf" class="${layout(i).type === 'shelf' ? 'on' : ''}">Shelf<small>Boxes, bins, small parts</small></button>
+        </div></div>`).join('')}</div>`;
+    } else if (step.id === 'review') {
+      box.innerHTML = `<div class="where" id="stepOf"></div><h3>Check and create</h3><div id="reviewBody"></div>`;
+    } else {
+      const lay = step.id === 'sections' ? null : layout(step.section);
+      const a = step.id === 'sections' ? answers.sections : lay[step.id];
+      const q = QUESTIONS[step.id](lay || {});
+      const prev = step.section > 0 ? (sectionNames() || [])[step.section - 1] : null;
+      const same = step.id === 'aisles' && step.section > 0
+        ? `<p><button type="button" id="sameAs">Same layout as ${esc(prev || 'the section before')}</button></p>` : '';
+      box.innerHTML = `<div class="where"><span id="stepOf"></span>${step.name ? ' · ' + esc(step.name) + ' (' + esc(lay.type) + ')' : ''}</div>
+        <h3>${esc(q.title)}</h3>${same}
+        <div class="ask">
+          <label for="qCount">How many ${esc(q.unit)}?</label>
+          <div><input id="qCount" name="count" type="number" min="1" max="501" value="${esc(a.count)}" inputmode="numeric"></div>
+          <label for="qName">What do you want to call it?</label>
+          <div><input id="qName" name="name" value="${esc(a.name)}" placeholder="e.g. ${esc(SAMPLES[step.id][0])}, ${esc(SAMPLES[step.id][1])} or ${esc(SAMPLES[step.id][2])}" autocomplete="off">
+            <div class="eg" id="qEg"></div>
+            <div class="gives" id="qGives"></div>
+            <div class="hint" style="margin:6px 0 0">${esc(q.note)}</div>
+          </div>
+        </div>`;
+      progress();
+      const count = document.getElementById('qCount');
+      const name = document.getElementById('qName');
+      const sync = () => {
+        a.count = count.value === '' ? '' : Number(count.value);
+        a.name = name.value;
+        document.getElementById('qEg').innerHTML = 'Examples: ' + exampleChips(step.id, a.count);
+        const out = document.getElementById('qGives');
+        try { const g = gives(step.id, a.name, a.count || 1); out.className = 'gives'; out.textContent = '→ ' + g.text; }
+        catch (e) { out.className = 'gives bad'; out.textContent = e.message.replace(/^\w+: /, ''); }
+        if (step.id === 'sections') { fitLayouts(); progress(); }
+        refreshCodes();
+      };
+      count.oninput = sync;
+      name.oninput = sync;
+      document.getElementById('qEg').onclick = (e) => { const b = e.target.closest('[data-fill]'); if (b) { name.value = b.dataset.fill; sync(); name.focus(); } };
+      const sameBtn = document.getElementById('sameAs');
+      if (sameBtn) sameBtn.onclick = () => {
+        const copy = JSON.parse(JSON.stringify(layout(step.section - 1)));
+        copy.type = lay.type;
+        answers.layouts[step.section] = copy;
+        stepAt += 4;
+        renderQuestion();
+      };
+      sync();
+      (a.count > 1 || step.id !== 'sections' ? name : count).focus();
+      return;
+    }
+    progress();
+    if (step.id === 'review') renderReview();
+    refreshCodes();
+  }
+
+  function refreshCodes() {
+    const box = document.getElementById('codes');
+    try {
+      const out = L.guided(answers, { limit: 6 });
+      box.className = 'codes';
+      box.innerHTML = `<div class="label">${out.total} location${out.total === 1 ? '' : 's'} so far. The first ones:</div>${out.sample.map(esc).join('<br>')}${out.total > out.sample.length ? '<br>…<br>' + esc(out.codes[out.codes.length - 1]) : ''}`;
+      return out;
+    } catch (e) {
+      const early = /name at least one thing/.test(e.message) && steps()[stepAt].id !== 'review';
+      box.className = early ? 'codes' : 'codes bad';
+      box.innerHTML = early ? '<div class="label">Your location codes show here as you answer.</div>' : esc(e.message);
+      return null;
+    }
+  }
+
+  function renderReview() {
+    const body = document.getElementById('reviewBody');
+    let out;
+    try { out = L.guided(answers, { limit: 6 }); }
+    catch (e) { body.innerHTML = `<p class="msg bad">${esc(e.message)}</p>`; return; }
+    body.innerHTML = `<table class="review"><thead><tr><th>Section</th><th>Locations</th><th>Codes</th><th>Each one holds</th></tr></thead><tbody>${out.plans.map((p, i) => `<tr data-row="${i}">
+      <td><b>${esc(p.section || 'The building')}</b><br><span class="hint">${p.type === 'rack' ? 'Rack' : 'Shelf'}</span></td>
+      <td>${p.total}</td>
+      <td><code>${esc(p.sampleCode)}</code><br>to <code>${esc(p.lastCode)}</code></td>
+      <td>${[['heightMm', 'H mm'], ['widthMm', 'W mm'], ['depthMm', 'D mm'], ['maxWeightKg', 'kg']].map(([k, t]) => `<label style="margin:2px 0">${t} <input type="number" min="0" data-cap="${k}" value="${esc(p.capacity[k])}"></label>`).join('')}</td>
+    </tr>`).join('')}</tbody></table><p class="hint">${out.total} locations in all. Codes that already exist are left as they are.</p>`;
+    body.oninput = (e) => {
+      const input = e.target.closest('[data-cap]');
+      if (!input) return;
+      const lay = layout(Number(input.closest('[data-row]').dataset.row));
+      lay.capacity = { ...(lay.capacity || {}), [input.dataset.cap]: input.value === '' ? null : Number(input.value) };
+    };
+  }
+
+  document.getElementById('question').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-type]');
+    if (!b) return;
+    const lay = layout(Number(b.closest('[data-section]').dataset.section));
+    if (lay.type !== b.dataset.type) { lay.type = b.dataset.type; delete lay.capacity; }
+    renderQuestion();
+  });
+  document.getElementById('question').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); document.getElementById('next').click(); } });
+  document.getElementById('back').onclick = () => { stepAt = Math.max(0, stepAt - 1); renderQuestion(); };
+  document.getElementById('next').onclick = async () => {
+    const all = steps();
+    const step = all[stepAt];
+    if (step.id === 'review') {
+      try {
+        const made = await api('POST', '/api/locations/guided', { answers });
+        say(`Created ${made.created} locations${made.skipped ? ', ' + made.skipped + ' already existed' : ''}. First code ${made.sampleCode}.`, true);
+      } catch (err) { say(err.message, false); }
+      return;
+    }
+    if (step.id !== 'types') {
+      const a = step.id === 'sections' ? answers.sections : layout(step.section)[step.id];
+      try { L.seriesFromName(a.name, a.count || 1, step.id); }
+      catch (err) { document.getElementById('qName').focus(); return; }
+    }
+    stepAt++;
+    renderQuestion();
   };
   renderLevels();
   api('GET', '/api/setup').then(render).catch((err) => say(err.message, false));

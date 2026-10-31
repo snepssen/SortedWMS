@@ -167,6 +167,7 @@
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),
+    generateGuided: (wh, a) => wh.generateGuided(req(a.answers, 'answers')),
     saveLocationProfile: (wh, a) => wh.saveLocationProfile(a.profile || a),
     bulkLocations: (wh, a) => wh.bulkLocations(a),
     completeSetup: (wh) => wh.completeSetup(),

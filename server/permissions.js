@@ -163,6 +163,8 @@ const RULES = [
   ['POST', '/api/setup/complete', 'settings.write'],
   ['POST', '/api/locations/preview', 'settings.write'],
   ['POST', '/api/locations/generate', 'settings.write'],
+  ['POST', '/api/locations/guided/preview', 'settings.write'],
+  ['POST', '/api/locations/guided', 'settings.write'],
   ['GET', '/api/location-profiles', 'locations.read'],
   ['POST', '/api/location-profiles', 'technical.write'],
   ['POST', '/api/locations/bulk', 'technical.write'],
