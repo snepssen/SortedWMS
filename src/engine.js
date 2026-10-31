@@ -1409,6 +1409,7 @@
     /** Pallets standing in a location of another category → move to their own. */
     planRelocations() {
       let n = 0;
+      if (typeof this.module === 'function' && !this.module('trucks')) return n; // Auto-Shift needs trucks
       for (const loc of this._racks()) {
         if (!loc.sscc || !loc.category) continue;
         const pallet = this.pallets[loc.sscc];
@@ -1713,6 +1714,7 @@
       this._checkDwell();
       this._rebindBlockPicks();
       this.planRemnants();
+      if (typeof this.module === 'function' && !this.module('trucks')) return; // no trucks: nobody to give a job to
       const waiting = Object.values(this.trucks).filter((t) => t.waiting).sort((a, b) => a.waitingSince - b.waitingSince);
       for (const truck of waiting) {
         const task = this.tasks[truck.taskId];

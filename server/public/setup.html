@@ -96,6 +96,13 @@
     <div id="features"></div>
     <p><button type="button" id="saveFeatures">Save features</button></p>
   </section>
+  <section>
+    <h2>What do you use?</h2>
+    <p class="hint">Leave out what this place does not need; its screens disappear. A preset fills this in, and you can change it any time.</p>
+    <div id="modules"></div>
+    <label><input type="checkbox" id="simple"> <span><b>Simple screens</b> — one short menu for whoever signs in, for a person running the place alone.</span></label>
+    <p><button type="button" id="saveModules">Save</button></p>
+  </section>
   <section id="guide">
     <h2>4. Your locations</h2>
     <p class="hint">A few questions about the building. Type what you call the first one and the rest follow: <b>01</b> gives 01, 02, 03; <b>A</b> gives A, B, C; <b>Shelf 1</b> gives Shelf1, Shelf2; or write every name, split by commas.</p>
@@ -215,6 +222,8 @@
     state = data;
     document.getElementById('who').textContent = data.setup && data.setup.preset ? 'Preset ' + data.setup.preset : 'Not finished yet';
     document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
+    document.getElementById('modules').innerHTML = data.modules.modules.map((m) => `<label><input type="checkbox" name="${esc(m.id)}" ${m.on ? 'checked' : ''}> <span><b>${esc(m.label)}</b> — ${esc(m.hint)}</span></label>`).join('');
+    document.getElementById('simple').checked = data.modules.simple;
     document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
     document.getElementById('examples').innerHTML = data.examples.map((ex) => `<div class="ex"><div><b>${esc(ex.title)}</b><div class="hint">${esc(ex.blurb)}</div></div><code>${esc(ex.preview.sampleCode)}</code><button type="button" data-example="${esc(ex.id)}">Use this</button></div>`).join('');
     if (data.setup && data.setup.guided && data.setup.guided.layouts) { answers = JSON.parse(JSON.stringify(data.setup.guided)); stepAt = 0; }
@@ -247,6 +256,12 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target).entries());
     try { await api('POST', '/api/config', data); say('Place saved. Days use ' + data.timeZone + '.', true); }
+    catch (err) { say(err.message, false); }
+  };
+  document.getElementById('saveModules').onclick = async () => {
+    const modules = { simple: document.getElementById('simple').checked };
+    for (const box of document.querySelectorAll('#modules input')) modules[box.name] = box.checked;
+    try { await api('POST', '/api/setup/modules', { modules }); say('Saved. The menus follow on the next page load.', true); }
     catch (err) { say(err.message, false); }
   };
   document.getElementById('saveFeatures').onclick = async () => {

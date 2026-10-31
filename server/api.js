@@ -375,13 +375,16 @@
       return {
         setup: wh().setup || { completed: false },
         features: wh().features,
-        presets: PRESETS.map((p) => ({ id: p.id, name: p.name, summary: p.summary, features: p.features, locationPlan: p.locationPlan, virtual: p.virtual, categories: p.categories })),
+        presets: PRESETS.map((p) => ({ id: p.id, name: p.name, summary: p.summary, features: p.features, modules: p.modules, locationPlan: p.locationPlan, virtual: p.virtual, categories: p.categories })),
         featureList: FEATURES.map(([id, label, hint]) => ({ id, label, hint })),
+        modules: wh().moduleList(),
         examples: Object.values(EXAMPLES).map((ex) => ({ ...ex, preview: require('../src/locations').expand(ex.plan, { limit: 6 }) })),
         levels: LEVELS,
       };
     });
     on('POST', '/api/setup/preset', (_, q, b, by) => run('applyPreset', b, by));
+    on('GET', '/api/modules', () => wh().moduleList());
+    on('POST', '/api/setup/modules', (_, q, b, by) => run('setModules', { modules: b.modules || b }, by));
     on('POST', '/api/setup/features', (_, q, b, by) => run('setFeatures', { features: b.features || b }, by));
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
@@ -541,10 +544,31 @@
       return handleOnce(method, rawUrl, body, by);
     }
 
+    // Changes that belong to a module are refused while it is off. Reads still answer.
+    const MODULE_ROUTES = [
+      ['trucks', /^\/api\/(devices|aisles\/|shift\/start|plan\/counts)/],
+      ['waves', /^\/api\/waves/],
+      ['kitting', /^\/api\/(val|work-orders)/],
+      ['stations', /^\/api\/(stations\/[^/]+\/scan|pallets\/[^/]+\/process)/],
+      ['billing', /^\/api\/clients\/[^/]+\/(tariff|space)$/],
+      ['clients', /^\/api\/clients/],
+      ['sites', /^\/api\/sites/],
+    ];
+    function moduleOff(method, path) {
+      if (method === 'GET' || typeof wh().module !== 'function') return null;
+      const hit = MODULE_ROUTES.find(([, re]) => re.test(path));
+      return hit && !wh().module(hit[0]) ? hit[0] : null;
+    }
+
     function handleOnce(method, rawUrl, body, by) {
       const url = new URL(rawUrl, 'http://x');
       const route = routes.find((r) => r.method === method && r.re.test(url.pathname));
       if (!route) return { status: 404, body: { error: `No route ${method} ${url.pathname}` } };
+      const off = moduleOff(method, url.pathname);
+      if (off) {
+        const label = (wh().moduleList().modules.find((m) => m.id === off) || {}).label || off;
+        return { status: 409, body: { error: `${label} is switched off for this warehouse. An administrator can turn it on in setup.`, module: off } };
+      }
       const answer = (out) => {
       if (out && out.contentType) return { status: out.status || 200, body: out.raw != null ? out.raw : out.body, contentType: out.contentType };
       if (out && out.status && out.error) return { status: out.status, body: { error: out.error } };

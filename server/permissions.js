@@ -173,6 +173,8 @@ const RULES = [
   ['GET', '/api/setup', 'settings.write'],
   ['POST', '/api/setup/preset', 'settings.write'],
   ['POST', '/api/setup/features', 'settings.write'],
+  ['POST', '/api/setup/modules', 'settings.write'],
+  ['GET', '/api/modules', 'wms.read'],
   ['POST', '/api/setup/complete', 'settings.write'],
   ['POST', '/api/locations/preview', 'settings.write'],
   ['POST', '/api/locations/generate', 'settings.write'],
