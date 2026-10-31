@@ -19,9 +19,9 @@ const { permissionFor } = require('./permissions');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware });
+  const api = createApi({ store, printers, hardware, backups });
   const pages = {
     '/': 'index.html', '/index.html': 'index.html',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
@@ -179,8 +179,15 @@ function main() {
     const { seedDemo } = require('./seed');
     console.log(seedDemo(store));
   }
+  const sample = (process.argv.find((a) => a.startsWith('--sample=')) || '').slice('--sample='.length);
+  if (sample) {
+    const { loadSample } = require('./samples');
+    console.log(loadSample(store, sample));
+  }
+  // A copy of the database a day, the newest 14 kept. SORTED_BACKUPS=0 turns it off.
+  const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups'), { keep: Number(process.env.SORTED_BACKUP_KEEP) || 14 });
   const hardware = createHardware({ printers, store });
-  const server = createServer({ store, printers, auth, hardware });
+  const server = createServer({ store, printers, auth, hardware, backups });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   const port = Number(process.env.PORT || 8080);
   server.listen(port, () => {
@@ -189,11 +196,11 @@ function main() {
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
     if (demoUsers.length) console.log(`Demo sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
   });
-  const stop = () => { clearInterval(tick); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }
 
 if (require.main === module) main();
 
-module.exports = { createServer };
+module.exports = { createServer, main };

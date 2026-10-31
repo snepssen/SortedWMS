@@ -2,9 +2,7 @@
 
 A warehouse system for whoever is deploying it: a distribution centre, a high-value store, a home garage, or a small maker. A fresh warehouse has temperature zones, lot and expiry, FEFO, and high-value PAL/MASTER plates turned off. A preset turns on the ones that building uses. The chilled reach-truck warehouse is one sample preset.
 
-**Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. An administrator builds the building in the [setup wizard](http://localhost:8080/setup): pick a preset, turn features on or off, and generate location codes. Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
-
-**Sign in locally** with `npm run start:demo`, then open `http://localhost:8080/login`. Each account lands on its own view at `/app`. Accounts, permissions and the default passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+**Start it** with `./start.sh`, then open `http://localhost:8080/login` and sign in as `admin` / `sorted-admin`. To look around first: `./start.sh demo` (the chilled reach-truck demo) or `./start.sh sample home` (also `maker` and `3pl`). An administrator builds the building in the [setup wizard](http://localhost:8080/setup): pick a preset, turn features on or off, and generate location codes. Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 The guided simulation is still there for a coordinator walkthrough. It uses made-up stock to show how setup, office decisions and scanner work connect. For that presentation, use the [presenter guide](https://snepssen.github.io/SortedWMS/demo.html), then the guided scenarios. The [demo SOP](https://snepssen.github.io/SortedWMS/sop.html) explains the same workflows; it is not an approved site procedure. The Pages demo has no server, so it does not ask you to sign in.
 
@@ -227,15 +225,22 @@ On top of the reach-truck rules already in `src/engine.js`:
 
 ## Running the WMS
 
-The server shares one source of truth between the role views, handheld, desk and office screens. It needs Node.js 22.13 or newer and nothing else (no packages to install; the database is SQLite built into Node). The same commands run on macOS and Linux.
+The server shares one source of truth between the role views, handheld, desk and office screens. It needs Node.js 22.13 or newer and nothing else (no packages to install, no Docker; the database is SQLite built into Node). `./start.sh` checks for Node and offers to install it when it is missing (Homebrew, or nvm into your home folder; it never runs `sudo`). The same commands run on macOS and Linux.
 
 ```
+./start.sh                 # your warehouse in data/sorted.db; a new one starts as an empty building
+./start.sh demo            # the chilled reach-truck demo in data/demo.db, with made-up stock and orders
+./start.sh sample home     # a home bin wall (also: maker, 3pl), each in its own data/sample-<kind>.db
+./start.sh backup          # copy the database into data/backups now
+./start.sh backups         # list the backups
+./start.sh restore <file>  # put a backup back, with SortedWMS stopped
+./start.sh setup           # check what SortedWMS needs
 npm test
-npm start              # warehouse from server/site.example.json, plus the demo accounts
-npm run start:demo     # the same, with made-up stock, 4 handhelds and 2 orders
 ```
 
-Then open `http://localhost:8080/login`.
+Then open `http://localhost:8080/login`. Your own warehouse gets only the `admin` account; set `SORTED_ADMIN_PASSWORD` before the first start, or change the password after signing in. The demo and the samples also get the accounts below.
+
+**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. Copy that folder somewhere else as well. `npm start` and `npm run start:demo` still work and use `server/site.example.json`.
 
 | Username | Password | View |
 | --- | --- | --- |

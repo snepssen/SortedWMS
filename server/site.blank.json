@@ -1,0 +1,6 @@
+{
+  "name": "New warehouse",
+  "_comment": "An empty building: a dock and two shipping lanes. The setup wizard (/setup) chooses the type of warehouse, what it uses, and builds the locations.",
+  "layout": { "aisles": [], "bays": 1, "levels": 1, "positions": [10], "outLanes": 2 },
+  "categories": {}
+}

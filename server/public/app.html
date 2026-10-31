@@ -351,8 +351,12 @@
         <div class="checks">${boxes}</div><p><button class="primary" ${current.fixed ? 'disabled' : ''}>Save ${esc(current.label)}</button></p></form></section>`;
     },
     async settings() {
-      const [summary, hw] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware')]);
-      return `<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
+      const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
+      const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. Copy that folder somewhere else too: another disk, a USB stick or cloud storage. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
+        ${bk.dir ? `<form class="form" data-act="backup-now"><button class="primary">Back up now</button></form>` : ''}
+        ${table(['Backup', 'Size', 'Made'], bk.backups.map((b) => `<tr><td><code>${esc(b.file)}</code></td><td>${kb(b.bytes)}</td><td>${esc(new Date(b.at).toLocaleString())}</td></tr>`))}</section>` : '';
+      return `${backupBox}<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
         <form class="form" data-act="config"><label>Trucks per aisle<input name="aisleCap" type="number" min="1" value="${esc(summary.config.aisleCap)}"></label><button class="primary">Save</button></form>
         <h3>Country and timezone</h3>
         <p class="hint">Billing days, seasons, rate-card dates and the journal use this warehouse's local midnight. Daylight saving is included.</p>
@@ -850,6 +854,7 @@
       return api('POST', '/api/roles/' + data.role, { permissions });
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
+    if (name === 'backup-now') return api('POST', '/api/backups', {});
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
     if (name === 'client-item') return api('POST', '/api/items', { ...data, palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' });
