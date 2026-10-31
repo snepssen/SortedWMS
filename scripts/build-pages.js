@@ -64,7 +64,7 @@ fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out,
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 
 // The WMS screens with the in-browser backend loaded before their own script.
-const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
+const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
 fs.mkdirSync(path.join(out, 'server'), { recursive: true });
 for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.example.json')) {
   fs.copyFileSync(path.join(root, f), path.join(out, f));

@@ -2991,7 +2991,7 @@
             const ahead = this._blockSeq(loc.lane);
             const i = ahead.indexOf(p.sscc);
             if (ahead.slice(0, i).some((s) => !this.pallets[s].orderId)) return false;
-          } else if (loc.kind !== 'rack' && loc.kind !== 'bin' && loc.kind !== 'mezzanine') return false;
+          } else if (loc.kind !== 'rack') return false; // bins and the mezzanine are for pickers on foot, never a reach-truck job
           const t = live.get(p.sscc);
           return !t || (t.type === 'SHIFT' && t.status === 'open');
         })

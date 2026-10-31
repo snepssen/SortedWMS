@@ -173,13 +173,17 @@
     binTake: (wh, a, by) => wh.binTake({ ...a, loc: req(a.loc, 'loc'), by }),
     binMove: (wh, a, by) => wh.binMove({ ...a, from: req(a.from, 'from'), to: req(a.to, 'to'), by }),
     binCount: (wh, a, by) => wh.binCount({ ...a, loc: req(a.loc, 'loc'), by }),
+    planWave: (wh, a, by) => wh.planWave({ id: a.id || null, orders: a.orders || null, by }),
+    confirmWaveTask: (wh, a, by) => wh.confirmWaveTask({ task: req(a.task, 'task'), scan: a.scan, by }),
+    setWaveConfig: (wh, a) => wh.setWaveConfig(a.config || a),
+    cancelWave: (wh, a, by) => wh.cancelWave({ id: req(a.id, 'id'), by }),
     generateGuided: (wh, a) => wh.generateGuided(req(a.answers, 'answers')),
     saveLocationProfile: (wh, a) => wh.saveLocationProfile(a.profile || a),
     bulkLocations: (wh, a) => wh.bulkLocations(a),
     completeSetup: (wh) => wh.completeSetup(),
 
     // Clock tick: dwell timers, waiting trucks, escalations
-    tick: (wh) => wh.dispatch(),
+    tick: (wh) => { wh.dispatch(); if (typeof wh.autoWave === 'function') wh.autoWave(); },
   };
 
   return { COMMANDS };

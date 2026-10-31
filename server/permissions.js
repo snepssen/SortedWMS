@@ -93,7 +93,7 @@ const DEFAULTS = {
   ],
   machine: [
     'stock.read', 'holders.read', 'holders.write', 'locations.read', 'tasks.read',
-    'putaway.execute', 'moves.execute', 'scans.execute', 'wms.read', 'labels.print', 'sites.switch',
+    'putaway.execute', 'moves.execute', 'picks.execute', 'scans.execute', 'wms.read', 'labels.print', 'sites.switch',
   ],
   client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read'],
 };
@@ -165,6 +165,13 @@ const RULES = [
   ['POST', '/api/locations/generate', 'settings.write'],
   ['POST', '/api/locations/guided/preview', 'settings.write'],
   ['POST', '/api/items/:itemNo/units', 'items.write'],
+  ['GET', '/api/waves', 'tasks.read'],
+  ['GET', '/api/waves/tasks', 'tasks.read'],
+  ['GET', '/api/waves/queue', 'tasks.read'],
+  ['POST', '/api/waves/config', 'orders.write'],
+  ['POST', '/api/waves', 'orders.write'],
+  ['POST', '/api/waves/tasks/:task/confirm', 'picks.execute'],
+  ['POST', '/api/waves/:id/cancel', 'orders.write'],
   ['GET', '/api/bins', 'stock.read'],
   ['GET', '/api/bins/:code', 'stock.read'],
   ['POST', '/api/bins/put', 'inbound.write'],

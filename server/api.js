@@ -394,6 +394,13 @@
     on('POST', '/api/bins/move', (_, q, b, by) => run('binMove', b, by));
     on('POST', '/api/bins/count', (_, q, b, by) => run('binCount', b, by));
     on('POST', '/api/bins/:code/mode', ({ code }, q, b, by) => run('setBinMode', { code: decodeURIComponent(code), mixed: b.mixed }, by));
+    on('GET', '/api/waves', () => Object.values(wh().waves || {}).slice(-30).reverse());
+    on('GET', '/api/waves/queue', () => ({ settings: wh().waveSettings(), active: wh().activeWave() ? wh().activeWave().id : null, queue: wh().waveQueue() }));
+    on('POST', '/api/waves/config', (_, q, b, by) => run('setWaveConfig', { config: b }, by));
+    on('GET', '/api/waves/tasks', (_, q) => wh().waveTasks({ kind: q.kind || null }));
+    on('POST', '/api/waves', (_, q, b, by) => run('planWave', b, by));
+    on('POST', '/api/waves/tasks/:task/confirm', ({ task }, q, b, by) => run('confirmWaveTask', { task: decodeURIComponent(task), scan: b.scan }, by));
+    on('POST', '/api/waves/:id/cancel', ({ id }, q, b, by) => run('cancelWave', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/locations/guided/preview', (_, q, b) => {
       const out = require('../src/locations').guided(b.answers || b, { limit: 24 });
       return { total: out.total, sample: out.sample, sampleCode: out.sampleCode, plans: out.plans.map(({ section, type, total, sampleCode, lastCode, capacity }) => ({ section, type, total, sampleCode, lastCode, capacity })) };

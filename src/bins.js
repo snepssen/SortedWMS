@@ -176,7 +176,7 @@
      * With an order, the quantity counts against that order's piece line and
      * waits, staged under the bin code, for packing.
      */
-    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, by, event = 'picked', to = null } = {}) {
+    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, by, event = 'picked', to = null, at = null } = {}) {
       const bin = this._bin(loc);
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
       const lines = this.binStock[bin.code] || [];
@@ -213,13 +213,13 @@
         open.picks = open.picks || [];
         open.picks.push({ bin: bin.code, qty: amount, from: bin.code, t: this.now(), by: actor });
         order.staged = order.staged || [];
-        for (const t of taken) order.staged.push({ itemNo: t.itemNo, qty: t.qty, holder: bin.code, batch: t.batch, expiry: t.expiry });
+        for (const t of taken) order.staged.push({ itemNo: t.itemNo, qty: t.qty, holder: bin.code, batch: t.batch, expiry: t.expiry, at: at || null });
         const piece = order.lines.filter((l) => l.kind === 'each');
         const done = piece.every((l) => (l.picked || 0) >= l.units);
         if (!order.lines.some((l) => l.kind !== 'each' && l.pallets)) order.status = done ? 'ready' : 'picking';
         else if (order.status === 'open') order.status = 'picking';
       }
-      this.recordMovement({ from: bin.code, to: to || (order ? `ORDER-${order.id}` : null), qty: amount, event, by: actor, note: order ? `${item.itemNo} for ${order.id}` : item.itemNo });
+      this.recordMovement({ from: bin.code, to: to || at || (order ? `ORDER-${order.id}` : null), qty: amount, event, by: actor, note: order ? `${item.itemNo} for ${order.id}` : item.itemNo });
       this.log(`${bin.code} - ${amount} ${item.uom || ''} ${item.itemNo}${order ? ` for ${order.id}` : ''}`.replace(/\s+/g, ' '));
       if (typeof this.planReplenishment === 'function') this.planReplenishment();
       return { loc: bin.code, itemNo: item.itemNo, qty: amount, taken, orderId: order ? order.id : null, contents: this.binContents(bin.code) };

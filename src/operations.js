@@ -725,7 +725,8 @@
       this.labelLog.unshift(slip);
       this.printQueue.unshift({ id: slip.id, printer: 'SIM', at: slip.at, label: slip.data, zpl });
       const piece = order.lines.filter((l) => l.kind === 'each');
-      const packedOf = (itemNo) => Object.values(this.holders).filter((h) => h.orderId === order.id && h.series === 'OUT' && h.cartonStatus && h.cartonStatus !== 'open').reduce((s, h) => s + h.packed.filter((p) => p.itemNo === itemNo).reduce((n, p) => n + p.qty, 0), 0);
+      const wholeOf = (itemNo) => order.lines.filter((l) => l.kind === 'each' && l.itemNo === itemNo).reduce((s, l) => s + (this._wholePalletUnits ? this._wholePalletUnits(l) : 0), 0);
+      const packedOf = (itemNo) => wholeOf(itemNo) + Object.values(this.holders).filter((h) => h.orderId === order.id && h.series === 'OUT' && h.cartonStatus && h.cartonStatus !== 'open').reduce((s, h) => s + h.packed.filter((p) => p.itemNo === itemNo).reduce((n, p) => n + p.qty, 0), 0);
       if (piece.length && piece.every((l) => (l.picked || 0) >= l.units && packedOf(l.itemNo) >= l.units) && !order.lines.some((l) => l.pallets)) order.status = 'packed';
       this.recordMovement({ holder: box.id, from: null, to: order.lane, qty, event: 'packed', by: by || this._actor || 'office', note: `${box.lengthMm}×${box.widthMm}×${box.heightMm} mm, ${box.weightKg} kg` });
       this.log(`Closed carton ${box.id} for order ${order.id}`);
@@ -739,9 +740,10 @@
       if (!boxes.length) throw new Error('No closed cartons to dispatch');
       const piece = order.lines.filter((l) => l.kind === 'each');
       for (const line of piece) {
-        const packed = boxes.reduce((s, h) => s + h.packed.filter((p) => p.itemNo === line.itemNo).reduce((n, p) => n + p.qty, 0), 0);
+        const packed = boxes.reduce((s, h) => s + h.packed.filter((p) => p.itemNo === line.itemNo).reduce((n, p) => n + p.qty, 0), 0) + (this._wholePalletUnits ? this._wholePalletUnits(line) : 0);
         if ((line.picked || 0) < line.units || packed < line.units) throw new Error(`Order ${order.id} still needs ${line.itemNo} packed`);
       }
+      if (piece.some((l) => (l.wholePallets || []).length)) throw new Error(`Order ${order.id} has whole pallets too. Stage it as one shipment`);
       const actor = by || this._actor || 'office';
       for (const box of boxes) {
         const from = box.loc;
@@ -969,14 +971,14 @@
       const piece = order.lines.filter((l) => l.kind === 'each');
       for (const line of piece) if ((line.picked || 0) < line.units) throw new Error(`Order ${order.id} still needs ${line.itemNo} picked`);
       const holders = [];
-      for (const sscc of order.lines.flatMap((l) => l.allocated || [])) {
+      for (const sscc of order.lines.flatMap((l) => (l.allocated || []).concat(l.wholePallets || []))) {
         const pallet = this.pallets[sscc];
         if (!pallet) throw new Error(`Missing pallet ${sscc}`);
         holders.push({ kind: 'pallet', id: pallet.holderId || pallet.sscc, sscc: pallet.sscc, itemNo: pallet.itemNo, qty: pallet.qty, loc: pallet.loc, loaded: false });
       }
       const boxes = Object.values(this.holders || {}).filter((h) => h.orderId === order.id && h.series === 'OUT' && (h.cartonStatus === 'closed' || h.cartonStatus === 'staged'));
       for (const line of piece) {
-        const packed = boxes.reduce((s, h) => s + (h.packed || []).filter((p) => p.itemNo === line.itemNo).reduce((n, p) => n + p.qty, 0), 0);
+        const packed = boxes.reduce((s, h) => s + (h.packed || []).filter((p) => p.itemNo === line.itemNo).reduce((n, p) => n + p.qty, 0), 0) + (this._wholePalletUnits ? this._wholePalletUnits(line) : 0);
         if (packed < line.units) throw new Error(`Order ${order.id} still needs ${line.itemNo} packed`);
       }
       for (const box of boxes) {
