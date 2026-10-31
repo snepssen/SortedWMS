@@ -69,7 +69,8 @@
     for (const [id, categories] of [['HH01', ['YOG']], ['HH02', ['YOG']], ['HH03', ['CHE']], ['HH04', ['CHE']]]) {
       store.exec('addTruck', { id, categories }, 'seed');
     }
-    for (const id of ['HH01', 'HH02', 'HH03', 'HH04']) store.exec('assignOperator', { id, operator: 'machine' }, 'seed');
+    // The demo trucks take every job; the manager gives a truck a duty on the Floor screen.
+    for (const [id, operator] of [['HH01', 'inbound'], ['HH02', 'picker'], ['HH03', 'stock'], ['HH04', 'picker']]) store.exec('assignOperator', { id, operator }, 'seed');
     const free = Object.values(store.wh.pallets).filter((p) => p.loc && !p.orderId && store.wh.locations[p.loc] && store.wh.locations[p.loc].kind === 'rack' && !p.holderId);
     const pair = free.slice(-2);
     if (pair.length === 2) {

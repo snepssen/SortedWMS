@@ -178,6 +178,7 @@
      */
     proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, by, event = 'picked', to = null, at = null } = {}) {
       const bin = this._bin(loc);
+      if (this._assertNotHeld) this._assertNotHeld(bin.code);
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
       const lines = this.binStock[bin.code] || [];
       let mine = lines.filter((l) => l.itemNo === item.itemNo && (!batch || l.batch === batch));
@@ -268,7 +269,7 @@
         }
         this.adjustments = this.adjustments || [];
         this.adjustments.unshift({ t: this.now(), loc: bin.code, itemNo: found.itemNo, before, after: target, reason, by: actor });
-        if (this.adjustments.length > 500) this.adjustments.length = 500;
+        if (this.adjustments.length > 5000) this.adjustments.length = 5000;
         this.recordMovement({ from: bin.code, to: bin.code, qty: target - before, event: 'counted', by: actor, note: `${found.itemNo} ${before} → ${target}` });
       }
       bin.lastCount = this.now();

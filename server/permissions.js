@@ -29,6 +29,9 @@ const PERMISSIONS = [
   ['holders.write', 'Add, move and load holders'],
   ['stock.read', 'View stock'],
   ['stock.adjust', 'Adjust stock with a reason'],
+  ['stock.create', 'Create stock that was found or missed'],
+  ['stock.delete', 'Delete stock, with a reason'],
+  ['stock.check', 'Hold a location for a stock check'],
   ['inbound.read', 'View inbound and ASNs'],
   ['inbound.write', 'Create inbound deliveries'],
   ['orders.read', 'View orders'],
@@ -38,6 +41,7 @@ const PERMISSIONS = [
   ['picks.execute', 'Pick orders'],
   ['putaway.execute', 'Put stock away and replenish'],
   ['moves.execute', 'Move and transfer stock'],
+  ['replenish.execute', 'Top up pick faces and bins'],
   ['counts.execute', 'Run cycle counts'],
   ['tasks.read', 'View tasks'],
   ['tasks.assign', 'Assign and prioritise tasks'],
@@ -63,8 +67,9 @@ const ROLES = [
   ['manager', 'Manager / supervisor'],
   ['office', 'Office'],
   ['technician', 'Technical'],
-  ['operator', 'Operator'],
-  ['machine', 'Machine operator'],
+  ['inbound', 'Inbound'],
+  ['picker', 'Picker'],
+  ['stock', 'Stock / inventory'],
   ['client', 'Client'],
 ];
 
@@ -80,20 +85,28 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
     'equipment.read', 'equipment.write', 'holders.read', 'stock.read', 'wms.read', 'labels.print', 'sites.switch',
   ],
-  operator: [
-    'stock.read', 'holders.read', 'holders.write', 'locations.read', 'items.read',
-    'tasks.read', 'picks.execute', 'moves.execute', 'counts.execute', 'inbound.read', 'inbound.write', 'val.execute',
-    'scans.execute', 'labels.print', 'wms.read', 'orders.read', 'outbound.write', 'sites.switch',
+  // Division of labour on the floor. Inbound receives and puts away.
+  // Pickers pick waves to the post-pick lanes and whole pallets to the docks.
+  // Stock control counts, corrects, creates and deletes stock, checks stock
+  // and locations, transfers, replenishes and runs Auto-Shift.
+  inbound: [
+    'inbound.read', 'inbound.write', 'putaway.execute', 'scans.execute', 'holders.read', 'holders.write',
+    'labels.print', 'stock.read', 'items.read', 'locations.read', 'tasks.read', 'wms.read', 'sites.switch',
   ],
-  machine: [
-    'stock.read', 'holders.read', 'holders.write', 'locations.read', 'tasks.read',
-    'putaway.execute', 'moves.execute', 'picks.execute', 'scans.execute', 'wms.read', 'labels.print', 'sites.switch',
+  picker: [
+    'picks.execute', 'orders.read', 'outbound.write', 'val.execute', 'scans.execute', 'holders.read', 'stock.check',
+    'labels.print', 'stock.read', 'items.read', 'locations.read', 'tasks.read', 'wms.read', 'sites.switch',
+  ],
+  stock: [
+    'counts.execute', 'moves.execute', 'stock.adjust', 'stock.create', 'stock.delete', 'stock.check', 'replenish.execute', 'reports.read',
+    'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
+    'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
   ],
   client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read'],
 };
@@ -187,7 +200,16 @@ const RULES = [
   ['POST', '/api/val/start', 'val.execute'],
   ['POST', '/api/val/scan', 'val.execute'],
   ['POST', '/api/stock/adjust', 'stock.adjust'],
-  ['POST', '/api/replenish', 'putaway.execute'],
+  ['POST', '/api/stock/create', 'stock.create'],
+  ['POST', '/api/stock/correct', 'stock.delete'],
+  ['GET', '/api/stock/at/:code', 'stock.read'],
+  ['GET', '/api/checks', 'stock.read'],
+  ['POST', '/api/checks', 'stock.check'],
+  ['POST', '/api/checks/:id/close', 'stock.adjust'],
+  ['GET', '/api/reports/stock-changes', 'reports.read'],
+  ['GET', '/api/reports/stock-changes.csv', 'reports.read'],
+  ['POST', '/api/stock/:sscc/delete', 'stock.delete'],
+  ['POST', '/api/replenish', 'replenish.execute'],
   ['POST', '/api/orders/:id/pack', 'outbound.write'],
   ['POST', '/api/orders/:id/carton', 'outbound.write'],
   ['POST', '/api/orders/:id/dispatch-cartons', 'outbound.write'],
@@ -195,7 +217,7 @@ const RULES = [
   ['POST', '/api/cartons/:id/close', 'outbound.write'],
   ['POST', '/api/work-orders', 'val.execute'],
   ['POST', '/api/pick-faces', 'putaway.execute'],
-  ['POST', '/api/replenishment/plan', 'putaway.execute'],
+  ['POST', '/api/replenishment/plan', 'replenish.execute'],
   ['GET', '/api/returns', 'inbound.read'],
   ['POST', '/api/returns', 'inbound.write'],
   ['POST', '/api/returns/:id/grade', 'inbound.write'],
@@ -242,6 +264,8 @@ const RULES = [
   ['POST', '/api/devices', 'tasks.assign'],
   ['POST', '/api/devices/:id/categories', 'tasks.assign'],
   ['POST', '/api/devices/:id/operator', 'tasks.assign'],
+  ['POST', '/api/devices/:id/duty', 'tasks.assign'],
+  ['POST', '/api/devices/:id/equipment', 'tasks.assign'],
   ['POST', '/api/devices/:id/mode', 'scans.execute'],
   ['POST', '/api/devices/:id/scan', 'scans.execute'],
   ['POST', '/api/devices/:id/qty', 'scans.execute'],

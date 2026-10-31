@@ -1262,7 +1262,7 @@
       let palletDays = 0;
       for (const p of Object.values(this.pallets)) {
         if (ownerOfPallet(p) !== client.id || !p.receivedAt) continue;
-        const shipped = p.status === 'shipped' ? ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
+        const shipped = p.status === 'shipped' ? p.goneAt || ((this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred')) || {}).t || p.receivedAt : now;
         const a = Math.max(p.receivedAt, start == null ? p.receivedAt : start);
         const b = Math.min(shipped, end == null ? shipped : end);
         if (b <= a) continue;
@@ -1450,7 +1450,7 @@
           let end = now;
           if (p.status === 'shipped') {
             const move = (this.movements || []).find((m) => m.sscc === p.sscc && (m.event === 'shipped' || m.event === 'transferred'));
-            end = move ? move.t : p.receivedAt;
+            end = p.goneAt || (move ? move.t : p.receivedAt);
           }
           palletDays += Math.max(0, (end - p.receivedAt) / day);
         }

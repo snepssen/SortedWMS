@@ -35,11 +35,11 @@ test('an administrator reset forces a new password, and five failures lock the a
   try {
     const admin = cookieOf((await app.call('POST', '/api/login', { username: 'admin', password: 'sorted-admin' })).headers);
     const users = await app.call('GET', '/api/users', null, { cookie: admin });
-    const operator = users.body.users.find((u) => u.username === 'operator');
+    const operator = users.body.users.find((u) => u.username === 'picker');
     const reset = await app.call('POST', `/api/users/${operator.id}/reset-password`, {}, { cookie: admin });
     assert.equal(reset.status, 200);
     assert.ok(reset.body.temporaryPassword.length >= 8);
-    const signed = await app.call('POST', '/api/login', { username: 'operator', password: reset.body.temporaryPassword });
+    const signed = await app.call('POST', '/api/login', { username: 'picker', password: reset.body.temporaryPassword });
     assert.equal(signed.body.user.mustChangePassword, true);
     const cookie = cookieOf(signed.headers);
     assert.equal((await app.call('GET', '/api/orders', null, { cookie })).status, 403);
@@ -83,7 +83,7 @@ test('each warehouse keeps its own plate counter, and site access follows the us
     const created = await app.call('POST', '/api/sites', { id: 'north', name: 'North room', preset: 'home-garage' }, { cookie: admin });
     assert.equal(created.status, 200, created.body && created.body.error);
     assert.equal(created.body.id, 'NORTH');
-    const user = await app.call('POST', '/api/users', { username: 'siteop', password: 'sorted-site', role: 'operator', displayName: 'Site Op' }, { cookie: admin });
+    const user = await app.call('POST', '/api/users', { username: 'siteop', password: 'sorted-site', role: 'picker', displayName: 'Site Op' }, { cookie: admin });
     assert.equal((await app.call('POST', `/api/users/${user.body.user.id}`, { sites: ['NORTH'] }, { cookie: admin })).status, 200);
     const op = cookieOf((await app.call('POST', '/api/login', { username: 'siteop', password: 'sorted-site' })).headers);
     assert.equal((await app.call('GET', '/api/summary', null, { cookie: op })).status, 403);
