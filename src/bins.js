@@ -299,6 +299,27 @@
       return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, packs: item.packs || [], total: rows.reduce((s, r) => s + r.qty, 0), bins: rows };
     };
 
+    /**
+     * Where to put an item away: a bin that already holds it and has room,
+     * else an empty bin. Bins held for a check, and one-item bins of another
+     * item, are left out.
+     */
+    proto.suggestBin = function (itemNo, qty = 1) {
+      const item = this.items[itemNo] || (this._unitFromCode(itemNo) || {}).item;
+      if (!item) throw new Error(`Unknown item ${itemNo}`);
+      const n = Math.max(1, Number(qty) || 1);
+      const byCode = (a, b) => a.code.localeCompare(b.code, undefined, { numeric: true });
+      const usable = Object.values(this.locations).filter((l) => BIN_KINDS.includes(l.kind) && !l.blocked && !l.checkHold && !(l.category && item.category && l.category !== item.category));
+      const room = (l) => {
+        try { this._assertBinTakes(l, item, n); return true; } catch (e) { return false; }
+      };
+      const lines = (l) => (this.binStock && this.binStock[l.code]) || [];
+      const holding = usable.filter((l) => lines(l).some((x) => x.itemNo === item.itemNo) && room(l)).sort(byCode);
+      const empty = usable.filter((l) => !lines(l).length && room(l)).sort(byCode);
+      const pick = holding.map((l) => ({ loc: l.code, why: `already holds ${item.itemNo}` })).concat(empty.map((l) => ({ loc: l.code, why: 'empty' })));
+      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, best: pick[0] || null, others: pick.slice(1, 4) };
+    };
+
     /** Every bin that holds something, in code order. */
     proto.binList = function ({ limit = 200 } = {}) {
       const codes = Object.keys(this.binStock || {}).filter((c) => (this.binStock[c] || []).length).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
