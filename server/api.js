@@ -408,6 +408,10 @@
     on('POST', '/api/waves', (_, q, b, by) => run('planWave', b, by));
     on('POST', '/api/waves/tasks/:task/confirm', ({ task }, q, b, by) => run('confirmWaveTask', { task: decodeURIComponent(task), scan: b.scan }, by));
     on('POST', '/api/waves/:id/cancel', ({ id }, q, b, by) => run('cancelWave', { id: decodeURIComponent(id) }, by));
+    on('POST', '/api/locations/rename/preview', (_, q, b) => ({ pairs: wh().renamePlan(b) }));
+    on('POST', '/api/locations/rename', (_, q, b, by) => run('renameLocations', b, by));
+    on('GET', '/api/locations/aliases', () => wh().aliasList());
+    on('POST', '/api/locations/aliases/drop', (_, q, b, by) => run('dropAliases', b, by));
     on('POST', '/api/locations/guided/preview', (_, q, b) => {
       const out = require('../src/locations').guided(b.answers || b, { limit: 24 });
       return { total: out.total, sample: out.sample, sampleCode: out.sampleCode, plans: out.plans.map(({ section, type, total, sampleCode, lastCode, capacity }) => ({ section, type, total, sampleCode, lastCode, capacity })) };

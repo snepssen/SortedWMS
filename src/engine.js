@@ -486,6 +486,8 @@
         const found = Object.keys(this.locations).find((code) => code.toUpperCase() === raw);
         if (found) return found;
       }
+      const renamed = this.aliases && this.aliases[raw]; // an old code still on a label
+      if (renamed && this.locations[renamed]) return renamed;
       const s = raw.replace(/[\s-]/g, ''); // "AA-03-C-2" and "AA 03 C 2" read as AA03C2
       let m = /^([A-Z])([A-Z])(\d{2})([A-Z])(\d)$/.exec(s);
       if (!m && cell) {

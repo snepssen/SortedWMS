@@ -185,6 +185,8 @@
     planWave: (wh, a, by) => wh.planWave({ id: a.id || null, orders: a.orders || null, by }),
     confirmWaveTask: (wh, a, by) => wh.confirmWaveTask({ task: req(a.task, 'task'), scan: a.scan, by }),
     setWaveConfig: (wh, a) => wh.setWaveConfig(a.config || a),
+    renameLocations: (wh, a) => wh.renameLocations(a),
+    dropAliases: (wh, a) => wh.dropAliases(a),
     claimWaveTask: (wh, a, by) => wh.claimWaveTask({ task: req(a.task, 'task'), by }),
     releaseWaveTask: (wh, a, by) => wh.releaseWaveTask({ task: req(a.task, 'task'), by }),
     shortWaveTask: (wh, a, by) => wh.shortWaveTask({ task: req(a.task, 'task'), found: a.found, by }),
