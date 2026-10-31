@@ -491,6 +491,8 @@
     on('POST', '/api/stock/correct', (_, q, b, by) => run('correctItem', b, by));
     on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null }));
     on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/putaway/:sscc', ({ sscc }) => wh().putAwaySlot(decodeURIComponent(sscc)));
+    on('POST', '/api/putaway', (_, q, b, by) => run('putAwayPallet', b, by));
     on('POST', '/api/stock/create', (_, q, b, by) => run('createStock', b, by));
     on('POST', '/api/stock/:sscc/delete', ({ sscc }, q, b, by) => run('deleteStock', { sscc: decodeURIComponent(sscc), reason: b.reason }, by));
     on('GET', '/api/equipment', () => ({ equipment: Object.values(wh().equipment || {}), faults: wh().faults || [], maintenance: (wh().maintenance || []).slice(0, 100) }));

@@ -1172,6 +1172,39 @@
       return true;
     };
 
+    /**
+     * Put a received pallet away by hand, without a truck job: the place the
+     * system would choose, or one the person names. Only from the dock, a lane
+     * or a station; moving stock already in storage is a stock-control transfer.
+     */
+    proto.putAwaySlot = function (sscc) {
+      const pallet = this._pallet(sscc);
+      const slot = this._findSlot(pallet, pallet.loc, {});
+      return { sscc: pallet.sscc, itemNo: pallet.itemNo, from: pallet.loc, to: slot ? slot.code : null };
+    };
+
+    proto.putAwayPallet = function ({ sscc, to = null, by } = {}) {
+      const pallet = this._pallet(sscc);
+      if (pallet.status === 'shipped') throw new Error(`Pallet …${pallet.sscc.slice(-6)} is not in stock`);
+      const at = pallet.loc && this.locations[pallet.loc];
+      if (at && (at.kind === 'rack' || at.kind === 'block')) throw new Error(`Pallet …${pallet.sscc.slice(-6)} is already in storage at ${at.code}. Stock control moves it with a transfer`);
+      const live = this._liveTaskFor(pallet.sscc);
+      if (live && live.status !== 'open') throw new Error(`Pallet …${pallet.sscc.slice(-6)} has job #${live.id} on ${live.truckId || 'hold'}`);
+      if (live && live.type !== 'PUTAWAY') throw new Error(`Pallet …${pallet.sscc.slice(-6)} has a ${live.type.toLowerCase()} job (#${live.id})`);
+      const slot = to ? this._loc(this.resolve(to)) : this._findSlot(pallet, pallet.loc, {});
+      if (!slot) throw new Error(`No free ${this.categories[this.items[pallet.itemNo].category] || ''} slot for this pallet`.replace('  ', ' '));
+      if (slot.kind !== 'rack' && slot.kind !== 'block') throw new Error(`Put a pallet away into a rack or a block lane, not ${slot.code}. Loose stock goes into bins from the Bins screen`);
+      if (slot.checkHold) throw new Error(`${slot.code} is held for stock check ${slot.checkHold}`);
+      if (slot.kind === 'rack') {
+        const mine = live && slot.reservedBy === live.id;
+        if (!this._slotFree(slot, pallet) && !(mine && !slot.sscc)) throw new Error(`${slot.code} is not free for this pallet (taken, reserved, blocked, another category, or it does not fit)`);
+      }
+      const r = this.transferPallet(pallet.sscc, slot.code, { by: by || this._actor || 'inbound' });
+      if (!r.ok) throw new Error(r.text);
+      this.log(`Put away …${pallet.sscc.slice(-6)} at ${slot.code} by hand`);
+      return { sscc: pallet.sscc, to: slot.code };
+    };
+
     /** Create one pallet of stock, for stock control (not receiving). */
     proto.createStock = function ({ code, sscc = null, itemNo, qty, batch = null, expiry = null, reason = 'found', by } = {}) {
       if (!ADJUST_REASONS.includes(reason)) throw new Error(`Reason must be one of: ${ADJUST_REASONS.join(', ')}`);
