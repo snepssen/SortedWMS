@@ -89,20 +89,24 @@
       for (const p of Object.values(this.pallets)) {
         // An Auto-Shift nobody has started yet does not stop a pick, as for the trucks' own picks.
         const job = live.get(p.sscc);
-        if (!p.loc || p.orderId || this.shipState(p) !== 'ok' || p.qualityHold || p.quarantine || (job && !(job.type === 'SHIFT' && job.status === 'open'))) continue;
+        // Short-dated pallets stay in: an order that takes fewer days left may use them.
+        const state = this.shipState(p);
+        if (!p.loc || p.orderId || (state !== 'ok' && state !== 'short') || p.qualityHold || p.quarantine || (job && !(job.type === 'SHIFT' && job.status === 'open'))) continue;
         const loc = this.locations[p.loc];
         if (!loc || loc.kind !== 'rack' || loc.structural || loc.blocked) continue;
-        pallets.set(p.sscc, { sscc: p.sscc, itemNo: p.itemNo, loc: p.loc, batch: p.batch, expiry: p.expiry, receivedAt: p.receivedAt, qty: p.qty, free: p.qty, open: p.openBox || 0, whole: true });
+        pallets.set(p.sscc, { sscc: p.sscc, itemNo: p.itemNo, loc: p.loc, batch: p.batch, expiry: p.expiry, allowShort: Boolean(p.allowShort), receivedAt: p.receivedAt, qty: p.qty, free: p.qty, open: p.openBox || 0, whole: true });
       }
+      // Loose stock by lot: one row per bin, item, batch and best-before.
       const bins = new Map();
       for (const [code, lines] of Object.entries(this.binStock || {})) {
         const loc = this.locations[code];
         if (!loc || loc.blocked || loc.checkHold || loc.role === 'quarantine' || loc.role === 'return' || loc.quarantine) continue;
         for (const l of lines) {
-          const key = `${l.itemNo}|${code}`;
-          const row = bins.get(key) || { itemNo: l.itemNo, loc: code, free: 0, expiry: null, since: Infinity };
+          const state = this._lotState(l.itemNo, l, 0);
+          if (state === 'held' || state === 'expired') continue;
+          const key = lotKey(l.itemNo, code, l.batch, l.expiry);
+          const row = bins.get(key) || { itemNo: l.itemNo, loc: code, batch: l.batch || null, expiry: l.expiry || null, free: 0, since: Infinity };
           row.free += l.qty;
-          if (l.expiry && (!row.expiry || l.expiry < row.expiry)) row.expiry = l.expiry;
           row.since = Math.min(row.since, l.since);
           bins.set(key, row);
         }
@@ -110,7 +114,12 @@
       const planned = new Map();
       for (const t of this._openWaveTasks()) {
         planned.set(`${t.orderId}|${t.itemNo}`, (planned.get(`${t.orderId}|${t.itemNo}`) || 0) + t.qty);
-        if (t.kind === 'bin') { const b = bins.get(`${t.itemNo}|${t.loc}`); if (b) b.free -= t.qty; continue; }
+        if (t.kind === 'bin') {
+          // Tasks planned before lots were tracked name only the bin.
+          const b = 'batch' in t ? bins.get(lotKey(t.itemNo, t.loc, t.batch, t.expiry)) : [...bins.values()].find((r) => r.itemNo === t.itemNo && r.loc === t.loc);
+          if (b) b.free -= t.qty;
+          continue;
+        }
         const p = pallets.get(t.sscc);
         if (!p) continue;
         p.whole = false;
@@ -120,6 +129,10 @@
       }
       return { pallets, bins, planned };
     };
+
+    function lotKey(itemNo, loc, batch, expiry) {
+      return `${itemNo}|${loc}|${batch || ''}|${expiry || ''}`;
+    }
 
     function copyStock(s) {
       const pallets = new Map();
@@ -141,7 +154,9 @@
         if (left <= 0) continue;
         const item = this.items[line.itemNo];
         const per = stepOf(item);
-        const racks = () => [...stock.pallets.values()].filter((p) => p.itemNo === line.itemNo && p.free > 0).sort(byAge);
+        const min = this._minDaysFor(order, line.itemNo);
+        const fits = (r) => this._lotState(line.itemNo, { expiry: r.expiry, allowShort: r.allowShort }, min) === 'ok';
+        const racks = () => [...stock.pallets.values()].filter((p) => p.itemNo === line.itemNo && p.free > 0 && fits(p)).sort(byAge);
         const add = (t) => { tasks.push({ orderId: order.id, itemNo: line.itemNo, ...t }); left -= t.qty; };
         // 1. Whole pallets that fit, straight to the dock.
         for (const p of racks()) {
@@ -163,12 +178,12 @@
         }
         if (!left) continue;
         // 3. The rest: bins that hold all of it, else an opened box, else a new box.
-        const bins = [...stock.bins.values()].filter((b) => b.itemNo === line.itemNo && b.free > 0).sort(byAge);
+        const bins = [...stock.bins.values()].filter((b) => b.itemNo === line.itemNo && b.free > 0 && fits(b)).sort(byAge);
         if (bins.reduce((s, b) => s + b.free, 0) >= left) {
           for (const b of bins) {
             if (!left) break;
             const take = Math.min(left, b.free);
-            add({ kind: 'bin', role: 'picker', qty: take, loc: b.loc, expiry: b.expiry });
+            add({ kind: 'bin', role: 'picker', qty: take, loc: b.loc, batch: b.batch, expiry: b.expiry });
             b.free -= take;
           }
           continue;
@@ -309,7 +324,8 @@
       const line = order.lines.find((l) => l.kind === 'each' && l.itemNo === task.itemNo);
       if (!line || (line.picked || 0) + task.qty > line.units) throw new Error(`Order ${order.id} does not need ${task.qty} more ${task.itemNo}`);
       if (task.kind === 'bin') {
-        this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, orderId: order.id, serials, by: actor, at: task.dropTo || null });
+        const lot = 'batch' in task ? { batch: task.batch, expiry: task.expiry || null } : {};
+        this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, ...lot, orderId: order.id, serials, by: actor, at: task.dropTo || null });
       } else {
         const pallet = this.pallets[task.sscc];
         if (!pallet || pallet.loc !== task.loc) throw new Error(`Pallet …${task.sscc.slice(-6)} is no longer at ${task.loc}`);
