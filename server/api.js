@@ -296,7 +296,7 @@
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => run('importItems', { rows: b.rows || b }, by));
     on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: b.rows || b }, by));
-    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b }, by));
+    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b, planOnce: true }, by));
     on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
 
     // Clients, items, locations, holders, labels, equipment, reports.
