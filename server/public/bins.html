@@ -101,7 +101,20 @@
   const qty = () => Number(($('qty') || {}).value || 0);
   // What a scanned code is: an item (or one of its boxes), a bin, or nothing known.
   async function itemOf(code) {
-    try { const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code)); return { itemNo: f.itemNo, name: f.name, unit: f.unit, packs: f.packs }; } catch (e) { return null; }
+    try { const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code)); return { itemNo: f.itemNo, name: f.name, unit: f.unit, packs: f.packs, serialized: f.serialized }; } catch (e) { return null; }
+  }
+  // Traced items: one serial number scanned per piece. st.sns collects them, st.need is how many.
+  function serialBox() {
+    return `<div class="kicker" style="margin-top:10px">Serial numbers: ${st.sns.length} of ${st.need}</div><div class="dim">${st.sns.map(esc).join(' · ') || 'Scan the serial number on each piece'}</div>${st.sns.length ? '<p><button type="button" id="undoSn">Undo the last serial</button></p>' : ''}`;
+  }
+  function addSerial(code, itemNo) {
+    const sn = String(code).trim().toUpperCase();
+    if (same(sn, itemNo)) { say('That is the item barcode. Scan the serial number', false); return false; }
+    if (st.sns.includes(sn)) { say(`${sn} is already scanned`, false); return false; }
+    if (st.sns.length >= st.need) { say(`All ${st.need} serials are scanned`, false); return false; }
+    st.sns.push(sn);
+    say('');
+    return true;
   }
   async function binOf(code) {
     try { return await api('GET', '/api/bins/' + encodeURIComponent(code)); } catch (e) { return null; }
@@ -128,8 +141,10 @@
       $('job').innerHTML = `<div class="kicker">Pick for <span class="code">${esc(t.orderId)}</span></div>
         <div class="dim">Go to</div><div class="big">${esc(t.loc)}</div>
         <div class="mid">${esc(t.qty)} ${esc(t.unit || '')} · ${esc(t.itemNo)}</div><div class="dim">${esc(t.name)}${t.expiry ? ` · best before ${esc(t.expiry)}` : ''}</div>
-        ${steps(['Scan the bin', 'Scan the item', 'Take them'], { bin: 0, item: 1, take: 2 }[st.step])}`;
+        ${st.step === 'serials' || (t.serialized && st.step === 'take') ? serialBox() : ''}
+        ${t.serialized ? steps(['Scan the bin', 'Scan the item', 'Serial numbers', 'Take them'], { bin: 0, item: 1, serials: 2, take: 3 }[st.step]) : steps(['Scan the bin', 'Scan the item', 'Take them'], { bin: 0, item: 1, take: 2 }[st.step])}`;
       $('extra').innerHTML = `<div class="row"><button type="button" id="short" class="bad">Not enough here</button><button type="button" id="skip">Later</button></div>${st.step === 'take' ? `<p><button type="button" class="primary" id="took" style="width:100%">Took ${esc(t.qty)}</button></p>` : ''}`;
+      st.redraw = pick.draw;
       $('short').onclick = pick.short;
       $('skip').onclick = async () => { await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/release`, {}).catch(() => {}); say(`${t.loc} left for later`); pick.start(); };
       if ($('took')) $('took').onclick = pick.take;
@@ -147,15 +162,20 @@
       if (st.step === 'item') {
         const found = await itemOf(code);
         if (!found || found.itemNo !== t.itemNo) return say(`${found ? found.itemNo : code} is not ${t.itemNo}. Check the bin`, false);
-        st.step = 'take';
+        if (t.serialized) Object.assign(st, { step: 'serials', sns: [], need: t.qty });
+        else st.step = 'take';
         say('');
+        return pick.draw();
+      }
+      if (st.step === 'serials') {
+        if (addSerial(code, t.itemNo) && st.sns.length === st.need) st.step = 'take';
         return pick.draw();
       }
       if (st.step === 'take') return pick.take();
     },
     async take() {
       const t = st.task;
-      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/confirm`, { scan: t.loc });
+      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/confirm`, { scan: t.loc, serials: t.serialized ? st.sns : null });
       say(`Took ${t.qty} ${t.itemNo} from ${t.loc}. Drop at ${t.dropTo || 'the post-pick lane'}`);
       pick.start();
     },
@@ -180,7 +200,7 @@
       st = { byOrder: true, order: order.id, lines: [] };
       for (const l of order.lines.filter((x) => x.kind === 'each' && (x.picked || 0) < x.units)) {
         const where = await api('GET', '/api/bins?item=' + encodeURIComponent(l.itemNo));
-        st.lines.push({ itemNo: l.itemNo, name: where.name, unit: where.unit, need: l.units - (l.picked || 0), bins: where.bins });
+        st.lines.push({ itemNo: l.itemNo, name: where.name, unit: where.unit, serialized: where.serialized, need: l.units - (l.picked || 0), bins: where.bins });
       }
       pick.nextLine();
     },
@@ -203,11 +223,23 @@
         $('job').querySelector('.steps').outerHTML = steps(['Scan the bin', 'Scan the item', 'Take them'], 1);
         return say('');
       }
-      const found = await itemOf(code);
-      if (!found || found.itemNo !== line.itemNo) return say(`${found ? found.itemNo : code} is not ${line.itemNo}`, false);
       const bin = line.bins.find((b) => b.loc === st.bin);
       const take = Math.min(line.need, bin.qty);
-      await api('POST', '/api/bins/take', { loc: st.bin, itemNo: line.itemNo, qty: take, orderId: st.order });
+      if (st.step2 === 'serials') {
+        if (!addSerial(code, line.itemNo)) return;
+        $('job').querySelector('.sn').innerHTML = serialBox();
+        if (st.sns.length < st.need) return;
+      } else {
+        const found = await itemOf(code);
+        if (!found || found.itemNo !== line.itemNo) return say(`${found ? found.itemNo : code} is not ${line.itemNo}`, false);
+        if (line.serialized) {
+          Object.assign(st, { step2: 'serials', sns: [], need: take });
+          st.redraw = () => { $('job').querySelector('.sn').innerHTML = serialBox(); };
+          $('job').insertAdjacentHTML('beforeend', `<div class="sn">${serialBox()}</div>`);
+          return say('');
+        }
+      }
+      await api('POST', '/api/bins/take', { loc: st.bin, itemNo: line.itemNo, qty: take, orderId: st.order, serials: line.serialized ? st.sns : null });
       line.need -= take;
       bin.qty -= take;
       say(`Took ${take} ${line.itemNo} from ${st.bin}`);
@@ -228,16 +260,25 @@
         try { found = await api('GET', '/api/bins/suggest?item=' + encodeURIComponent(code)); } catch (e) { return say(`${code} is not an item or a box barcode`, false); }
         const box = await itemOf(code);
         const pack = box && (box.packs || []).find((p) => same(p.barcode, code));
-        st = { step: 'qty', code, itemNo: found.itemNo, pack, hint: found };
+        st = { step: 'qty', code, itemNo: found.itemNo, pack, hint: found, serialized: found.serialized, sns: [], need: 0 };
         $('job').innerHTML = `<div class="kicker">Put away</div><div class="mid">${esc(found.itemNo)}</div><div class="dim">${esc(found.name)}</div>
           ${found.best ? `<div class="dim" style="margin-top:8px">Put it in</div><div class="big">${esc(found.best.loc)}</div><div class="dim">${esc(found.best.why)}${found.others.length ? ` · or ${found.others.map((o) => esc(o.loc)).join(', ')}` : ''}</div>` : '<div class="msg bad">No bin has room. Scan any bin</div>'}
-          ${qtyBox(1, pack ? `How many ${pack.unit} (of ${pack.per})` : `How many ${found.unit || ''}`)}${steps(['Item', 'How many', 'Scan the bin'], 2)}`;
-        $('extra').innerHTML = '';
+          ${qtyBox(1, pack ? `How many ${pack.unit} (of ${pack.per})` : `How many ${found.unit || ''}`)}<div class="sn"></div>${steps(found.serialized ? ['Item', 'How many', 'Serial numbers', 'Scan the bin'] : ['Item', 'How many', 'Scan the bin'], 2)}`;
+        $('extra').innerHTML = found.serialized ? '<p class="dim">Scan the serial number on each piece, then the bin. <button type="button" id="noSn">No serials this time</button></p>' : '';
+        if ($('noSn')) $('noSn').onclick = () => { st.serialized = false; $('extra').innerHTML = '<p class="dim">Without serials: scan the bin.</p>'; $('job').querySelector('.sn').innerHTML = ''; };
+        st.redraw = () => { $('job').querySelector('.sn').innerHTML = serialBox(); };
         return say('');
       }
       const n = qty();
       if (!(n > 0)) return say('Enter how many', false);
-      const done = await api('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n });
+      if (st.serialized) {
+        st.need = n * (st.pack ? st.pack.per : 1);
+        if (st.sns.length < st.need) {
+          if (addSerial(code, st.itemNo)) st.redraw();
+          return;
+        }
+      }
+      const done = await api('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
       say(`Put ${done.qty} ${done.unit || ''} ${done.itemNo} in ${done.loc}`);
       put.start();
     },
@@ -265,12 +306,21 @@
         if (!line) return say(`${found ? found.itemNo : code} is not in ${st.from}`, false);
         st.step = 'to';
         st.itemNo = line.itemNo;
-        $('job').innerHTML = `<div class="kicker">Move from <span class="code">${esc(st.from)}</span></div><div class="mid">${esc(line.itemNo)}</div><div class="dim">${esc(line.name)} · ${esc(line.qty)} here</div>${qtyBox(line.qty)}<div class="dim" style="margin-top:8px">Then scan the bin it goes to</div>${steps(['From bin', 'Item', 'How many', 'To bin'], 3)}`;
+        Object.assign(st, { serialized: Boolean(found.serialized), sns: [], need: 0 });
+        $('job').innerHTML = `<div class="kicker">Move from <span class="code">${esc(st.from)}</span></div><div class="mid">${esc(line.itemNo)}</div><div class="dim">${esc(line.name)} · ${esc(line.qty)} here</div>${qtyBox(found.serialized ? 1 : line.qty)}<div class="sn"></div><div class="dim" style="margin-top:8px">${found.serialized ? 'Scan the serial number on each piece, then the bin it goes to' : 'Then scan the bin it goes to'}</div>${steps(['From bin', 'Item', 'How many', 'To bin'], 3)}`;
+        st.redraw = () => { $('job').querySelector('.sn').innerHTML = serialBox(); };
         return say('');
       }
       const n = qty();
       if (!(n > 0)) return say('Enter how many', false);
-      const done = await api('POST', '/api/bins/move', { from: st.from, to: code, itemNo: st.itemNo, qty: n });
+      if (st.serialized) {
+        st.need = n;
+        if (st.sns.length < st.need) {
+          if (addSerial(code, st.itemNo)) st.redraw();
+          return;
+        }
+      }
+      const done = await api('POST', '/api/bins/move', { from: st.from, to: code, itemNo: st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
       say(`Moved ${done.qty} ${done.itemNo} from ${done.from} to ${done.to}`);
       move.start();
     },
@@ -284,12 +334,16 @@
       $('extra').innerHTML = '';
     },
     draw() {
-      $('job').innerHTML = `<div class="kicker">Counting <span class="code">${esc(st.loc)}</span></div><div class="mid">${st.itemNo ? esc(st.itemNo) : 'Scan an item in the bin'}</div>${st.itemNo ? `<div class="dim">${esc(st.name || '')}</div>${qtyBox('', `How many ${st.unit || ''} are there`)}<p><button type="button" class="primary" id="save" style="width:100%">Save count</button></p>` : ''}
+      const counting = st.itemNo && st.serialized
+        ? `<div class="dim">${esc(st.name || '')}</div><div class="kicker" style="margin-top:10px">Serial numbers scanned: ${st.sns.length}</div><div class="dim">${st.sns.map(esc).join(' · ') || 'Scan the serial number on every piece in the bin'}</div>${st.sns.length ? '<p><button type="button" id="undoSn">Undo the last serial</button></p>' : ''}<p><button type="button" class="primary" id="save" style="width:100%">Save count: ${st.sns.length}</button></p>`
+        : st.itemNo ? `<div class="dim">${esc(st.name || '')}</div>${qtyBox('', `How many ${st.unit || ''} are there`)}<p><button type="button" class="primary" id="save" style="width:100%">Save count</button></p>` : '';
+      $('job').innerHTML = `<div class="kicker">Counting <span class="code">${esc(st.loc)}</span></div><div class="mid">${st.itemNo ? esc(st.itemNo) : 'Scan an item in the bin'}</div>${counting}
         ${st.done.length ? `<div class="dim" style="margin-top:8px">Counted: ${st.done.map((d) => `${esc(d.itemNo)} ${esc(d.after)}${d.difference ? ` (was ${esc(d.before)})` : ''}`).join(' · ')}</div>` : ''}`;
       $('extra').innerHTML = '<p><button type="button" id="binDone" style="width:100%">Bin done</button></p>';
       if ($('save')) $('save').onclick = count.save;
       $('binDone').onclick = count.finish;
       if ($('qty')) $('qty').focus();
+      st.redraw = count.draw;
     },
     async scan(code) {
       if (st.step === 'bin') {
@@ -299,20 +353,32 @@
         say('');
         return count.draw();
       }
+      if (st.itemNo && st.serialized) {
+        if (!code) return count.save();
+        st.need = Infinity;
+        if (addSerial(code, st.itemNo)) count.draw();
+        return;
+      }
       if (st.itemNo && ($('qty') || {}).value) return count.save();
       const found = await itemOf(code);
       if (!found) return say(`${code} is not an item`, false);
-      Object.assign(st, { itemNo: found.itemNo, name: found.name, unit: found.unit });
+      Object.assign(st, { itemNo: found.itemNo, name: found.name, unit: found.unit, serialized: Boolean(found.serialized), sns: [] });
       say('');
       count.draw();
     },
     async save() {
-      const raw = ($('qty') || {}).value;
-      if (raw === '' || raw == null) return say('Enter the count', false);
-      const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, counted: Number(raw) });
+      let r;
+      if (st.serialized) r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, serials: st.sns });
+      else {
+        const raw = ($('qty') || {}).value;
+        if (raw === '' || raw == null) return say('Enter the count', false);
+        r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, counted: Number(raw) });
+      }
       st.done.push(r);
       st.itemNo = null;
-      say(r.difference ? `${r.itemNo} was ${r.before}, now ${r.after}` : `${r.itemNo}: ${r.after}, as booked`, !r.difference);
+      st.serialized = false;
+      const lost = r.serials && r.serials.missing.length ? ` Missing: ${r.serials.missing.join(', ')}` : '';
+      say(r.difference || lost ? `${r.itemNo} was ${r.before}, now ${r.after}.${lost}` : `${r.itemNo}: ${r.after}, as booked`, !r.difference && !lost);
       count.draw();
     },
     async finish() {
@@ -329,7 +395,7 @@
       $('job').onclick = async (e) => {
         const b = e.target.closest('[data-zero]');
         if (!b) return;
-        const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: b.dataset.zero, counted: 0 });
+        const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: b.dataset.zero, counted: 0, serials: [] });
         st.done.push(r);
         $('job').onclick = null;
         count.finish();
@@ -375,6 +441,7 @@
   }
   $('modes').onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
   document.addEventListener('click', (e) => {
+    if (e.target.id === 'undoSn' && st.sns && st.sns.length) { st.sns.pop(); if (st.step === 'take') st.step = 'serials'; if (st.redraw) st.redraw(); return; }
     const b = e.target.closest('[data-step]');
     if (!b || !$('qty')) return;
     $('qty').value = Math.max(0, (Number($('qty').value) || 0) + Number(b.dataset.step));

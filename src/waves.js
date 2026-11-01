@@ -87,7 +87,9 @@
       const live = typeof this._liveMap === 'function' ? this._liveMap() : new Map();
       const pallets = new Map();
       for (const p of Object.values(this.pallets)) {
-        if (!p.loc || p.orderId || this.shipState(p) !== 'ok' || p.qualityHold || p.quarantine || live.get(p.sscc)) continue;
+        // An Auto-Shift nobody has started yet does not stop a pick, as for the trucks' own picks.
+        const job = live.get(p.sscc);
+        if (!p.loc || p.orderId || this.shipState(p) !== 'ok' || p.qualityHold || p.quarantine || (job && !(job.type === 'SHIFT' && job.status === 'open'))) continue;
         const loc = this.locations[p.loc];
         if (!loc || loc.kind !== 'rack' || loc.structural || loc.blocked) continue;
         pallets.set(p.sscc, { sscc: p.sscc, itemNo: p.itemNo, loc: p.loc, batch: p.batch, expiry: p.expiry, receivedAt: p.receivedAt, qty: p.qty, free: p.qty, open: p.openBox || 0, whole: true });
@@ -293,7 +295,7 @@
     };
 
     /** A picker confirms a task. Scanning the pallet, its slot or the bin proves they are there. */
-    proto.confirmWaveTask = function ({ task: taskId, scan = null, by } = {}) {
+    proto.confirmWaveTask = function ({ task: taskId, scan = null, serials = null, by } = {}) {
       const { wave, task } = this._waveTask(taskId);
       if (task.status !== 'open') throw new Error(`Task ${task.id} is ${task.status}`);
       const actor = by || this._actor || 'picker';
@@ -307,7 +309,7 @@
       const line = order.lines.find((l) => l.kind === 'each' && l.itemNo === task.itemNo);
       if (!line || (line.picked || 0) + task.qty > line.units) throw new Error(`Order ${order.id} does not need ${task.qty} more ${task.itemNo}`);
       if (task.kind === 'bin') {
-        this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, orderId: order.id, by: actor, at: task.dropTo || null });
+        this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, orderId: order.id, serials, by: actor, at: task.dropTo || null });
       } else {
         const pallet = this.pallets[task.sscc];
         if (!pallet || pallet.loc !== task.loc) throw new Error(`Pallet …${task.sscc.slice(-6)} is no longer at ${task.loc}`);
@@ -322,6 +324,7 @@
           this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: task.loc, to: task.dropTo, qty: task.qty, event: 'picked', by: actor, note: `${task.itemNo} whole pallet for ${order.id}` });
         } else {
           if (pallet.qty < task.qty) throw new Error(`Pallet …${task.sscc.slice(-6)} has ${pallet.qty}, not ${task.qty}`);
+          const sns = this._serialsOut ? this._serialsOut(this.items[task.itemNo], serials, task.qty, task.loc) : null;
           const open = pallet.openBox || 0;
           if (task.box === 'open' && open < task.qty) throw new Error(`The opened box on …${task.sscc.slice(-6)} has ${open}, not ${task.qty}`);
           pallet.qty -= task.qty;
@@ -333,6 +336,7 @@
           line.picks.push({ sscc: pallet.sscc, qty: task.qty, from: task.loc, t: this.now(), by: actor });
           order.staged = order.staged || [];
           order.staged.push({ itemNo: task.itemNo, qty: task.qty, holder: pallet.sscc, batch: pallet.batch || null, expiry: pallet.expiry || null, at: task.dropTo || null });
+          if (sns) this._serialsSet(sns, task.itemNo, { status: 'picked', loc: null, orderId: order.id, event: 'picked', by: actor, note: `from pallet …${pallet.sscc.slice(-6)} at ${task.loc}` });
           const how = task.box === 'whole' ? 'whole boxes' : task.box === 'new' ? 'box opened' : task.box === 'open' ? 'from the opened box' : 'loose';
           this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: task.loc, to: task.dropTo || `ORDER-${order.id}`, qty: task.qty, event: 'picked', by: actor, note: `${task.itemNo} for ${order.id}, ${how}` });
           if (pallet.qty === 0) {
@@ -377,7 +381,7 @@
       return this._openWaveTasks()
         .filter((t) => (!kind || t.kind === kind) && (!who || !t.claimedBy || t.claimedBy === who))
         .sort((a, b) => (who ? (b.claimedBy === who) - (a.claimedBy === who) : 0) || near(a, b))
-        .map((t) => ({ ...t, name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null, packs: this.items[t.itemNo] ? this.items[t.itemNo].packs || [] : [] }));
+        .map((t) => ({ ...t, name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null, packs: this.items[t.itemNo] ? this.items[t.itemNo].packs || [] : [], serialized: Boolean(this.items[t.itemNo] && this.items[t.itemNo].serialized) }));
     };
 
     /** A picker takes a task, so nobody else walks to it. */

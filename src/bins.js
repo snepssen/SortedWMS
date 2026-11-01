@@ -153,12 +153,13 @@
       }
     };
 
-    proto.binPut = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, expiry = null, by, event = 'received', note = null } = {}) {
+    proto.binPut = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, expiry = null, serials = null, by, event = 'received', note = null } = {}) {
       const bin = this._bin(loc);
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
       if (item.status === 'archived') throw new Error(`Item ${item.itemNo} is archived`);
       if (item.status === 'pending') throw new Error(`Item ${item.itemNo} is waiting for approval`);
       this._assertBinTakes(bin, item, amount);
+      const sns = event === 'moved' || !this._serialsIn ? null : this._serialsIn(item, serials, amount);
       const lines = this.binStock[bin.code] = this.binStock[bin.code] || [];
       const lot = this.feature('lotExpiry') ? { batch: batch ? String(batch).trim() : null, expiry: expiry || null } : { batch: null, expiry: null };
       const same = lines.find((l) => l.itemNo === item.itemNo && l.batch === lot.batch && l.expiry === lot.expiry);
@@ -166,6 +167,7 @@
       else lines.push({ itemNo: item.itemNo, qty: amount, batch: lot.batch, expiry: lot.expiry, clientId: item.clientId || null, since: this.now() });
       const actor = by || this._actor || 'operator';
       this.recordMovement({ from: null, to: bin.code, qty: amount, event, by: actor, note: note || item.itemNo });
+      if (sns && sns.length) this._serialsSet(sns, item.itemNo, { status: 'in', loc: bin.code, orderId: null, event, by: actor });
       this.log(`${bin.code} + ${amount} ${item.uom || ''} ${item.itemNo}`.replace(/\s+/g, ' '));
       if (typeof this.planReplenishment === 'function' && event === 'received') this.planReplenishment();
       return { loc: bin.code, itemNo: item.itemNo, qty: amount, unit: item.uom || null, contents: this.binContents(bin.code) };
@@ -176,7 +178,7 @@
      * With an order, the quantity counts against that order's piece line and
      * waits, staged under the bin code, for packing.
      */
-    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, by, event = 'picked', to = null, at = null } = {}) {
+    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, serials = null, by, event = 'picked', to = null, at = null } = {}) {
       const bin = this._bin(loc);
       if (this._assertNotHeld) this._assertNotHeld(bin.code);
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
@@ -195,6 +197,8 @@
         const need = open.units - (open.picked || 0);
         if (amount > need) throw new Error(`Order ${order.id} only needs ${need} more of ${item.itemNo}`);
       }
+      // A move carries its serials itself (binMove); everything else names them here.
+      const sns = event === 'moved' || !this._serialsOut ? null : this._serialsOut(item, serials, amount, bin.code);
       const fefo = this.feature('fefo');
       mine = mine.slice().sort((a, b) => (fefo && a.expiry !== b.expiry ? String(a.expiry || '9999').localeCompare(String(b.expiry || '9999')) : 0) || a.since - b.since);
       let left = amount;
@@ -221,30 +225,39 @@
         else if (order.status === 'open') order.status = 'picking';
       }
       this.recordMovement({ from: bin.code, to: to || at || (order ? `ORDER-${order.id}` : null), qty: amount, event, by: actor, note: order ? `${item.itemNo} for ${order.id}` : item.itemNo });
+      if (sns) this._serialsSet(sns, item.itemNo, { status: order ? 'picked' : 'out', loc: null, orderId: order ? order.id : null, event, by: actor, note: `from ${bin.code}` });
       this.log(`${bin.code} - ${amount} ${item.uom || ''} ${item.itemNo}${order ? ` for ${order.id}` : ''}`.replace(/\s+/g, ' '));
       if (typeof this.planReplenishment === 'function') this.planReplenishment();
-      return { loc: bin.code, itemNo: item.itemNo, qty: amount, taken, orderId: order ? order.id : null, contents: this.binContents(bin.code) };
+      return { loc: bin.code, itemNo: item.itemNo, qty: amount, taken, orderId: order ? order.id : null, serials: sns || null, contents: this.binContents(bin.code) };
     };
 
     /** Move loose stock from one bin to another, keeping batch and expiry. */
-    proto.binMove = function ({ from, to, itemNo = null, code = null, qty = 1, unit = null, batch = null, by } = {}) {
+    proto.binMove = function ({ from, to, itemNo = null, code = null, qty = 1, unit = null, batch = null, serials = null, by } = {}) {
       const source = this._bin(from);
       const dest = this._bin(to);
       if (source.code === dest.code) throw new Error('Move to a different bin');
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
       if (item.status === 'archived') throw new Error(`Item ${item.itemNo} is archived`);
       this._assertBinTakes(dest, item, amount);
+      if (this._assertNotHeld) this._assertNotHeld(source.code);
+      const sns = this._serialsOut ? this._serialsOut(item, serials, amount, source.code) : null;
       const out = this.binTake({ loc: source.code, itemNo: item.itemNo, qty: amount, batch, by, event: 'moved', to: dest.code });
       for (const t of out.taken) this.binPut({ loc: dest.code, itemNo: t.itemNo, qty: t.qty, batch: t.batch, expiry: t.expiry, by, event: 'moved', note: `${item.itemNo} from ${source.code}` });
+      if (sns) this._serialsSet(sns, item.itemNo, { status: 'in', loc: dest.code, orderId: null, event: 'moved', by: by || this._actor, note: `from ${source.code}` });
       return { from: source.code, to: dest.code, itemNo: item.itemNo, qty: amount, contents: { from: this.binContents(source.code), to: this.binContents(dest.code) } };
     };
 
     /** Count one item in a bin. A difference corrects the bin and is kept as an adjustment. */
-    proto.binCount = function ({ loc, itemNo = null, code = null, counted, unit = null, reason = 'recount', by } = {}) {
+    proto.binCount = function ({ loc, itemNo = null, code = null, counted = null, unit = null, reason = 'recount', serials = null, by } = {}) {
       const bin = this._bin(loc);
       const found = itemNo ? this.items[itemNo] : (this._unitFromCode(code) || {}).item;
       if (!found) throw new Error(`Unknown item ${itemNo || code}`);
       if (!COUNT_REASONS.includes(reason)) throw new Error(`Reason is one of ${COUNT_REASONS.join(', ')}`);
+      // A traced item is counted by scanning its serials.
+      const sc = found.serialized && this._serialsCount && serials != null ? this._serialsCount(found, serials, bin.code, by || this._actor) : null;
+      if (sc && counted != null && counted !== '' && Number(counted) !== sc.sns.length) throw new Error(`${sc.sns.length} serials scanned, but the count says ${counted}`);
+      if (sc) { counted = sc.sns.length; unit = null; }
+      if (counted == null || counted === '') throw new Error(found.serialized ? 'Scan the serial numbers in the bin, or enter the count' : 'Enter the count');
       const n = Number(counted);
       if (!Number.isInteger(n) || n < 0) throw new Error('The count is a whole number, 0 or more');
       const target = n === 0 ? 0 : this.toBaseUnits(found.itemNo, n, unit);
@@ -273,8 +286,9 @@
         this.recordMovement({ from: bin.code, to: bin.code, qty: target - before, event: 'counted', by: actor, note: `${found.itemNo} ${before} → ${target}` });
       }
       bin.lastCount = this.now();
-      this.log(`Counted ${bin.code}: ${found.itemNo} ${before} → ${target}`);
-      return { loc: bin.code, itemNo: found.itemNo, before, after: target, difference: target - before };
+      const serialNews = sc ? sc.commit() : null;
+      this.log(`Counted ${bin.code}: ${found.itemNo} ${before} → ${target}${serialNews && serialNews.missing.length ? `, ${serialNews.missing.length} serial${serialNews.missing.length === 1 ? '' : 's'} missing` : ''}`);
+      return { loc: bin.code, itemNo: found.itemNo, before, after: target, difference: target - before, serials: serialNews };
     };
 
     proto.binContents = function (code) {
@@ -296,7 +310,7 @@
         for (const l of lines) if (l.itemNo === item.itemNo) rows.push({ loc: code, qty: l.qty, unit: item.uom || null, batch: l.batch, expiry: l.expiry, since: l.since, packs: packText(item, l.qty) });
       }
       rows.sort((a, b) => (fefo && a.expiry !== b.expiry ? String(a.expiry || '9999').localeCompare(String(b.expiry || '9999')) : 0) || a.since - b.since);
-      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, packs: item.packs || [], total: rows.reduce((s, r) => s + r.qty, 0), bins: rows };
+      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, packs: item.packs || [], serialized: Boolean(item.serialized), total: rows.reduce((s, r) => s + r.qty, 0), bins: rows };
     };
 
     /**
@@ -317,7 +331,7 @@
       const holding = usable.filter((l) => lines(l).some((x) => x.itemNo === item.itemNo) && room(l)).sort(byCode);
       const empty = usable.filter((l) => !lines(l).length && room(l)).sort(byCode);
       const pick = holding.map((l) => ({ loc: l.code, why: `already holds ${item.itemNo}` })).concat(empty.map((l) => ({ loc: l.code, why: 'empty' })));
-      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, best: pick[0] || null, others: pick.slice(1, 4) };
+      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, serialized: Boolean(item.serialized), best: pick[0] || null, others: pick.slice(1, 4) };
     };
 
     /** Every bin that holds something, in code order. */

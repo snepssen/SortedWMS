@@ -1257,6 +1257,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadSerials() {
+      if (typeof require === 'function') {
+        try { return require('./serials'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedSerials;
+    }
+
     function loadRenames() {
       if (typeof require === 'function') {
         try { return require('./renames'); } catch (e) { /* browser */ }
@@ -1421,6 +1428,8 @@
     if (sheets && sheets.install) sheets.install(Warehouse, deps);
     const renames = loadRenames();
     if (renames && renames.install) renames.install(Warehouse, deps);
+    const serials = loadSerials();
+    if (serials && serials.install) serials.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();
