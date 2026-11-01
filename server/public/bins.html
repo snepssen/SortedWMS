@@ -42,14 +42,20 @@
   .msg { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); }
   .msg.ok { border-color: var(--ok); color: var(--ok); }
   .msg.bad { border-color: var(--bad); color: var(--bad); }
+  #net { padding: 6px 12px; font-size: 14px; border-bottom: 1px solid var(--line); display: none; }
+  #net.off { display: block; background: #2a2210; color: var(--warn); }
+  #net.bad { display: block; background: #2a1414; color: var(--bad); }
+  #net button { min-height: 32px; padding: 4px 10px; font-size: 14px; margin-left: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--dim); font-weight: 600; }
 </style>
 <script src="camera.js"></script>
+<script src="src/offline-queue.js"></script>
 </head>
 <body>
 <header><b>Bins</b><span class="who" id="who"></span><a href="app" id="back">App</a></header>
+<div id="net" aria-live="polite"></div>
 <nav class="modes" id="modes"></nav>
 <main>
   <div class="card" id="job"></div>
@@ -67,18 +73,134 @@
   let mode = null;
   let st = {};
 
-  async function api(method, path, body) {
+  // A failure to reach the server, as opposed to the server saying no.
+  const offline = (msg) => Object.assign(new Error(msg || 'No connection'), { network: true });
+  async function api(method, path, body, requestId = null) {
     if (window.SortedLocal) {
-      const r = await window.SortedLocal.fetch(method, path, body, { operator: (me && me.username) || 'picker' });
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: (me && me.username) || 'picker', requestId });
       if (r.status >= 400) throw new Error((r.body && r.body.error) || 'Refused');
       return r.body;
     }
-    const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    let res;
+    try {
+      res = await fetch(path, { method, signal: ctl.signal, headers: { 'content-type': 'application/json', ...(requestId ? { 'x-request-id': requestId } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    } catch (e) {
+      throw offline();
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent('/bins')); throw new Error('Sign in required'); }
+    if (res.status >= 502) throw offline(`The server is not answering (${res.status})`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
   }
+
+  // ---- Working offline ----------------------------------------------------------
+  // Changes made without a connection wait on the phone and go out in order when
+  // it is back; a refusal stops the rest so nothing runs on the wrong stock.
+  // Lookups use the copy below, refreshed while online.
+  let queue = null;
+  let seq = 0;
+  let cache = { at: null, items: [], bins: {}, tasks: [] };
+  const CACHE_KEY = () => `sorted.bins.cache.${(me && me.username) || 'anyone'}`;
+  function saveCache() { try { localStorage.setItem(CACHE_KEY(), JSON.stringify(cache)); } catch (e) { /* storage optional */ } }
+  function loadCache() { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY()) || 'null'); if (c && c.bins) cache = c; } catch (e) { /* storage optional */ } }
+  async function refreshCache() {
+    if (window.SortedLocal || (queue && queue.snapshot().pending.length)) return;
+    try {
+      const [items, bins, tasks] = await Promise.all([
+        can('items.read') || can('stock.read') ? api('GET', '/api/items') : [],
+        api('GET', '/api/bins'),
+        can('picks.execute') && modOn('waves') ? api('GET', '/api/waves/tasks?kind=bin&mine=1') : [],
+      ]);
+      cache = {
+        at: Date.now(),
+        items: items.map((i) => ({ itemNo: i.itemNo, name: i.name, unit: i.uom || null, gtin: i.gtin || null, unitGtin: i.unitGtin || null, codes: i.codes || [], barcodes: (i.barcodes || []).map((b) => b.value), packs: i.packs || [], serialized: Boolean(i.serialized) })),
+        bins: Object.fromEntries((bins.bins || []).map((b) => [b.code, b])),
+        tasks,
+      };
+      saveCache();
+    } catch (e) { /* keep the copy we have */ }
+  }
+  function findItem(code) {
+    const k = String(code || '').trim().toUpperCase();
+    for (const i of cache.items) {
+      const pack = i.packs.find((p) => same(p.barcode, k));
+      if (pack || same(i.itemNo, k) || same(i.gtin, k) || same(i.unitGtin, k) || i.codes.some((c) => same(c, k)) || i.barcodes.some((b) => same(b, k))) return { itemNo: i.itemNo, name: i.name, unit: i.unit, packs: i.packs, serialized: i.serialized, pack: pack || null };
+    }
+    return null;
+  }
+  function cachedBin(code) {
+    const key = Object.keys(cache.bins).find((c) => same(c, code));
+    return key ? cache.bins[key] : null;
+  }
+  // Keep the copy in step with what was just done, until the next refresh.
+  function cacheChange(loc, itemNo, delta, set = null) {
+    const bin = cachedBin(loc) || (cache.bins[loc] = { code: loc, mixed: true, lines: [] });
+    let line = bin.lines.find((l) => l.itemNo === itemNo);
+    if (!line) { const i = cache.items.find((x) => x.itemNo === itemNo) || {}; line = { itemNo, name: i.name || '', qty: 0, unit: i.unit || null }; bin.lines.push(line); }
+    line.qty = set != null ? set : Math.max(0, line.qty + delta);
+    bin.lines = bin.lines.filter((l) => l.qty > 0);
+    saveCache();
+  }
+  /** A change: sent now when possible, else kept on the phone. Returns the answer, or { queued: true }. */
+  async function write(method, path, body) {
+    const id = `${(me && me.username) || 'bins'}-${Date.now().toString(36)}-${++seq}`;
+    if (!queue || window.SortedLocal) return api(method, path, body);
+    if (queue.snapshot().pending.length) { queue.enqueue({ method, path, body, id }); showNet(); flush(); return { queued: true }; }
+    try {
+      return await api(method, path, body, id);
+    } catch (e) {
+      if (!e.network) throw e;
+      queue.enqueue({ method, path, body, id });
+      showNet();
+      return { queued: true };
+    }
+  }
+  let flushing = false;
+  async function flush() {
+    if (!queue || flushing || !queue.snapshot().pending.length) return showNet();
+    flushing = true;
+    try {
+      const r = await queue.flush((item) => api(item.method, item.path, item.body, item.id));
+      if (r.stopped === null) { await refreshCache(); if (r.sent) say(`Back online: ${r.sent} saved scan${r.sent === 1 ? '' : 's'} sent`); }
+    } finally {
+      flushing = false;
+      showNet();
+    }
+  }
+  // A saved change in words, for the list of ones the warehouse did not accept.
+  function describe(item) {
+    const b = item.body || {};
+    const task = (item.path.match(/tasks\/([^/]+)\//) || [])[1];
+    if (/\/confirm$/.test(item.path)) return `Pick ${decodeURIComponent(task)}`;
+    if (/\/short$/.test(item.path)) return `Not enough for ${decodeURIComponent(task)}`;
+    if (/\/(claim|release)$/.test(item.path)) return `${/claim$/.test(item.path) ? 'Taking' : 'Leaving'} ${decodeURIComponent(task)}`;
+    if (item.path.endsWith('/bins/put')) return `Put ${b.qty} ${b.code || b.itemNo} in ${b.loc}`;
+    if (item.path.endsWith('/bins/take')) return `Take ${b.qty} ${b.itemNo} from ${b.loc}`;
+    if (item.path.endsWith('/bins/move')) return `Move ${b.qty} ${b.itemNo} from ${b.from} to ${b.to}`;
+    if (item.path.endsWith('/bins/count')) return `Count of ${b.itemNo} in ${b.loc}`;
+    return item.path;
+  }
+  function showNet() {
+    const el = $('net');
+    if (!queue) return;
+    const { pending, conflicts } = queue.snapshot();
+    if (conflicts.length) {
+      el.className = 'bad';
+      el.innerHTML = `${conflicts.length} saved scan${conflicts.length === 1 ? ' was' : 's were'} not accepted${pending.length ? `; ${pending.length} more wait behind ${conflicts.length === 1 ? 'it' : 'them'}` : ''}: ${conflicts.map((c, i) => `<div>${esc(describe(c))}: ${esc(c.error)} <button type="button" data-drop="${i}">Discard</button></div>`).join('')}${pending.length ? '<button type="button" id="retry">Send the rest</button>' : ''}`;
+    } else if (pending.length) {
+      el.className = 'off';
+      el.innerHTML = `Offline: ${pending.length} scan${pending.length === 1 ? '' : 's'} saved on this phone, sent when the connection is back. <button type="button" id="retry">Try now</button>`;
+    } else {
+      el.className = '';
+      el.innerHTML = '';
+    }
+  }
+  const queuedNote = () => { const n = queue ? queue.snapshot().pending.length : 0; return `Saved on this phone (${n} waiting). It goes to the warehouse when the connection is back`; };
   const can = (p) => !me || !me.permissions || me.permissions.includes(p);
   const modOn = (id) => !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   const say = (text, ok = true) => { $('say').innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'bad'}">${esc(text)}</div>` : ''; if (navigator.vibrate) navigator.vibrate(ok ? 40 : [80, 60, 80]); };
@@ -101,7 +223,7 @@
   const qty = () => Number(($('qty') || {}).value || 0);
   // What a scanned code is: an item (or one of its boxes), a bin, or nothing known.
   async function itemOf(code) {
-    try { const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code)); return { itemNo: f.itemNo, name: f.name, unit: f.unit, packs: f.packs, serialized: f.serialized }; } catch (e) { return null; }
+    try { const f = await api('GET', '/api/bins?item=' + encodeURIComponent(code)); return { itemNo: f.itemNo, name: f.name, unit: f.unit, packs: f.packs, serialized: f.serialized }; } catch (e) { return e.network ? findItem(code) : null; }
   }
   // Traced items: one serial number scanned per piece. st.sns collects them, st.need is how many.
   function serialBox() {
@@ -117,7 +239,11 @@
     return true;
   }
   async function binOf(code) {
-    try { return await api('GET', '/api/bins/' + encodeURIComponent(code)); } catch (e) { return null; }
+    try { return await api('GET', '/api/bins/' + encodeURIComponent(code)); } catch (e) {
+      if (!e.network) return null;
+      // Offline: the copy, or a bin we have no copy of (empty as far as we know).
+      return cachedBin(code) || (findItem(code) ? null : { code: String(code).trim(), mixed: true, lines: [], unknown: true });
+    }
   }
 
   // ---- Pick ------------------------------------------------------------------
@@ -125,14 +251,18 @@
     async start() {
       st = {};
       if (!modOn('waves')) return pick.byOrder();
-      const tasks = await api('GET', '/api/waves/tasks?kind=bin&mine=1');
+      let tasks;
+      try { tasks = await api('GET', '/api/waves/tasks?kind=bin&mine=1'); cache.tasks = tasks; saveCache(); } catch (e) {
+        if (!e.network) throw e;
+        tasks = cache.tasks || [];
+      }
       const t = tasks[0];
       if (!t) {
         $('job').innerHTML = '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
         st.step = 'order';
         return;
       }
-      if (t.claimedBy !== me.username) { try { await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/claim`, {}); } catch (e) { return pick.start(); } }
+      if (t.claimedBy !== me.username) { try { await write('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/claim`, {}); t.claimedBy = me.username; } catch (e) { cache.tasks = (cache.tasks || []).filter((x) => x.id !== t.id); return pick.start(); } }
       st = { task: t, step: 'bin' };
       pick.draw();
     },
@@ -146,7 +276,7 @@
       $('extra').innerHTML = `<div class="row"><button type="button" id="short" class="bad">Not enough here</button><button type="button" id="skip">Later</button></div>${st.step === 'take' ? `<p><button type="button" class="primary" id="took" style="width:100%">Took ${esc(t.qty)}</button></p>` : ''}`;
       st.redraw = pick.draw;
       $('short').onclick = pick.short;
-      $('skip').onclick = async () => { await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/release`, {}).catch(() => {}); say(`${t.loc} left for later`); pick.start(); };
+      $('skip').onclick = async () => { await write('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/release`, {}).catch(() => {}); cache.tasks = (cache.tasks || []).filter((x) => x.id !== t.id).concat({ ...t, claimedBy: null }); saveCache(); say(`${t.loc} left for later`); pick.start(); };
       if ($('took')) $('took').onclick = pick.take;
     },
     async scan(code) {
@@ -175,16 +305,20 @@
     },
     async take() {
       const t = st.task;
-      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/confirm`, { scan: t.loc, serials: t.serialized ? st.sns : null });
-      say(`Took ${t.qty} ${t.itemNo} from ${t.loc}. Drop at ${t.dropTo || 'the post-pick lane'}`);
+      const r = await write('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/confirm`, { scan: t.loc, serials: t.serialized ? st.sns : null });
+      cache.tasks = (cache.tasks || []).filter((x) => x.id !== t.id);
+      cacheChange(t.loc, t.itemNo, -t.qty);
+      say(r.queued ? `Took ${t.qty} ${t.itemNo}. ${queuedNote()}` : `Took ${t.qty} ${t.itemNo} from ${t.loc}. Drop at ${t.dropTo || 'the post-pick lane'}`);
       pick.start();
     },
     async short() {
       const t = st.task;
       const found = prompt(`How many ${t.itemNo} are there? (empty if none)`, '');
       if (found === null) return;
-      await api('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/short`, { found: found === '' ? null : Number(found) });
-      say(`${t.loc} is held for a stock check. The pick is planned again from other stock.`, false);
+      const r = await write('POST', `/api/waves/tasks/${encodeURIComponent(t.id)}/short`, { found: found === '' ? null : Number(found) });
+      cache.tasks = (cache.tasks || []).filter((x) => x.id !== t.id && x.loc !== t.loc);
+      saveCache();
+      say(r.queued ? `${t.loc} reported. ${queuedNote()}` : `${t.loc} is held for a stock check. The pick is planned again from other stock.`, false);
       pick.start();
     },
     // Without pick waves: scan an order and pick its piece lines from the bins.
@@ -194,7 +328,8 @@
       $('extra').innerHTML = '';
     },
     async order(code) {
-      const orders = await api('GET', '/api/orders');
+      let orders;
+      try { orders = await api('GET', '/api/orders'); } catch (e) { if (e.network) return say('Picking an order by its number needs the connection', false); throw e; }
       const order = orders.find((o) => same(o.id, code));
       if (!order) return say(`No order ${code}`, false);
       st = { byOrder: true, order: order.id, lines: [] };
@@ -239,10 +374,11 @@
           return say('');
         }
       }
-      await api('POST', '/api/bins/take', { loc: st.bin, itemNo: line.itemNo, qty: take, orderId: st.order, serials: line.serialized ? st.sns : null });
+      const r = await write('POST', '/api/bins/take', { loc: st.bin, itemNo: line.itemNo, qty: take, orderId: st.order, serials: line.serialized ? st.sns : null });
       line.need -= take;
       bin.qty -= take;
-      say(`Took ${take} ${line.itemNo} from ${st.bin}`);
+      cacheChange(st.bin, line.itemNo, -take);
+      say(r.queued ? `Took ${take} ${line.itemNo}. ${queuedNote()}` : `Took ${take} ${line.itemNo} from ${st.bin}`);
       pick.nextLine();
     },
   };
@@ -257,7 +393,12 @@
     async scan(code) {
       if (st.step === 'item') {
         let found;
-        try { found = await api('GET', '/api/bins/suggest?item=' + encodeURIComponent(code)); } catch (e) { return say(`${code} is not an item or a box barcode`, false); }
+        try { found = await api('GET', '/api/bins/suggest?item=' + encodeURIComponent(code)); } catch (e) {
+          const known = e.network && findItem(code);
+          if (!known) return say(`${code} is not an item or a box barcode`, false);
+          const holding = Object.values(cache.bins).find((b) => b.lines.some((l) => l.itemNo === known.itemNo));
+          found = { itemNo: known.itemNo, name: known.name, unit: known.unit, serialized: known.serialized, best: holding ? { loc: holding.code, why: `held ${known.itemNo} when last online` } : null, others: [] };
+        }
         const box = await itemOf(code);
         const pack = box && (box.packs || []).find((p) => same(p.barcode, code));
         st = { step: 'qty', code, itemNo: found.itemNo, pack, hint: found, serialized: found.serialized, sns: [], need: 0 };
@@ -278,8 +419,10 @@
           return;
         }
       }
-      const done = await api('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
-      say(`Put ${done.qty} ${done.unit || ''} ${done.itemNo} in ${done.loc}`);
+      const done = await write('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
+      const pieces = n * (st.pack ? st.pack.per : 1);
+      cacheChange(code, st.itemNo, pieces);
+      say(done.queued ? `Put ${pieces} ${st.itemNo} in ${code}. ${queuedNote()}` : `Put ${done.qty} ${done.unit || ''} ${done.itemNo} in ${done.loc}`);
       put.start();
     },
   };
@@ -320,8 +463,10 @@
           return;
         }
       }
-      const done = await api('POST', '/api/bins/move', { from: st.from, to: code, itemNo: st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
-      say(`Moved ${done.qty} ${done.itemNo} from ${done.from} to ${done.to}`);
+      const done = await write('POST', '/api/bins/move', { from: st.from, to: code, itemNo: st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
+      cacheChange(st.from, st.itemNo, -n);
+      cacheChange(code, st.itemNo, n);
+      say(done.queued ? `Moved ${n} ${st.itemNo} to ${code}. ${queuedNote()}` : `Moved ${done.qty} ${done.itemNo} from ${done.from} to ${done.to}`);
       move.start();
     },
   };
@@ -368,11 +513,21 @@
     },
     async save() {
       let r;
-      if (st.serialized) r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, serials: st.sns });
+      let n;
+      if (st.serialized) { n = st.sns.length; r = await write('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, serials: st.sns }); }
       else {
         const raw = ($('qty') || {}).value;
         if (raw === '' || raw == null) return say('Enter the count', false);
-        r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, counted: Number(raw) });
+        n = Number(raw);
+        r = await write('POST', '/api/bins/count', { loc: st.loc, itemNo: st.itemNo, counted: n });
+      }
+      cacheChange(st.loc, st.itemNo, 0, n);
+      if (r.queued) {
+        st.done.push({ itemNo: st.itemNo, after: n, before: null, difference: 0 });
+        st.itemNo = null;
+        st.serialized = false;
+        say(`${st.done[st.done.length - 1].itemNo}: ${n}. ${queuedNote()}`);
+        return count.draw();
       }
       st.done.push(r);
       st.itemNo = null;
@@ -395,8 +550,9 @@
       $('job').onclick = async (e) => {
         const b = e.target.closest('[data-zero]');
         if (!b) return;
-        const r = await api('POST', '/api/bins/count', { loc: st.loc, itemNo: b.dataset.zero, counted: 0, serials: [] });
-        st.done.push(r);
+        const r = await write('POST', '/api/bins/count', { loc: st.loc, itemNo: b.dataset.zero, counted: 0, serials: [] });
+        cacheChange(st.loc, b.dataset.zero, 0, 0);
+        st.done.push(r.queued ? { itemNo: b.dataset.zero, after: 0, before: null, difference: 0 } : r);
         $('job').onclick = null;
         count.finish();
       };
@@ -421,7 +577,14 @@
         $('job').innerHTML = `<div class="kicker">Item</div><div class="mid">${esc(f.itemNo)}</div><div class="dim">${esc(f.name)} · ${esc(f.total)} ${esc(f.unit || '')} in bins</div>
           <table><tr><th>Bin</th><th>Qty</th><th>Best before</th></tr>${f.bins.map((b) => `<tr><td><b>${esc(b.loc)}</b></td><td>${esc(b.qty)}</td><td>${esc(b.expiry || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="dim">Not in any bin</td></tr>'}</table>`;
         say('');
-      } catch (e) { say(`${code} is not a bin or an item`, false); }
+      } catch (e) {
+        const known = e.network && findItem(code);
+        if (!known) return say(`${code} is not a bin or an item`, false);
+        const where = Object.values(cache.bins).flatMap((b) => b.lines.filter((l) => l.itemNo === known.itemNo).map((l) => ({ loc: b.code, qty: l.qty })));
+        $('job').innerHTML = `<div class="kicker">Item, as last seen online</div><div class="mid">${esc(known.itemNo)}</div><div class="dim">${esc(known.name)}</div>
+          <table><tr><th>Bin</th><th>Qty</th></tr>${where.map((b) => `<tr><td><b>${esc(b.loc)}</b></td><td>${esc(b.qty)}</td></tr>`).join('') || '<tr><td colspan="2" class="dim">Not in any bin</td></tr>'}</table>`;
+        say('');
+      }
     },
   };
 
@@ -458,9 +621,31 @@
   async function start() {
     try {
       if (window.SortedLocal) me = { username: 'demo', displayName: 'Demo', permissions: null };
-      else me = (await api('GET', '/api/session')).user;
-    } catch (e) { return; }
+      else {
+        me = (await api('GET', '/api/session')).user;
+        try { localStorage.setItem('sorted.bins.me', JSON.stringify(me)); } catch (e) { /* storage optional */ }
+      }
+    } catch (e) {
+      // Offline when the page opens: work as the person last signed in on this phone.
+      let last = null;
+      try { last = JSON.parse(localStorage.getItem('sorted.bins.me') || 'null'); } catch (x) { last = null; }
+      if (!e.network || !last) { $('job').innerHTML = `<div class="mid">${esc(e.network ? 'No connection, and nobody has signed in on this phone yet.' : e.message)}</div>`; return; }
+      me = last;
+    }
     try { MODS = await api('GET', '/api/modules'); } catch (e) { MODS = null; }
+    if (window.SortedOffline && !window.SortedLocal) {
+      queue = window.SortedOffline.createOfflineQueue(localStorage, `sorted.bins.queue.${me.username}`);
+      loadCache();
+      showNet();
+      flush().then(refreshCache);
+      window.addEventListener('online', () => flush());
+      setInterval(() => { if (queue.snapshot().pending.length) flush(); else refreshCache(); }, 30000);
+      $('net').onclick = async (e) => {
+        if (e.target.id === 'retry') return flush();
+        const d = e.target.closest('[data-drop]');
+        if (d) { queue.discardConflict(d.dataset.drop); showNet(); await refreshCache(); }
+      };
+    }
     $('who').textContent = me.displayName ? `${me.displayName} · ${me.username}` : me.username;
     if (window.SortedLocal) $('back').href = 'app.html';
     let saved = null;
