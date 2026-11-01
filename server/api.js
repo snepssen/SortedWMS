@@ -267,6 +267,8 @@
       return { ...r, moves: Array.isArray(r.moves) ? r.moves.length : r.moves };
     });
     on('POST', '/api/locations/:code/unblock', ({ code }, q, b, by) => run('unblockLocation', { code: wh().resolve(decodeURIComponent(code)) }, by));
+    on('GET', '/api/pallets/:sscc/serials', ({ sscc }) => wh().palletSerialList(sscc));
+    on('POST', '/api/pallets/:sscc/serials', ({ sscc }, q, b, by) => run('palletSerials', { sscc, serials: b.serials }, by));
     on('POST', '/api/pallets/:sscc/status', ({ sscc }, q, b, by) => run('setPalletStatus', { sscc, status: b.status, reason: b.reason }, by));
     on('POST', '/api/pallets/:sscc/temperature', ({ sscc }, q, b, by) => run('recordTemperature', { sscc, temperature: b.temperature, min: b.min, max: b.max, reason: b.reason }, by));
     on('POST', '/api/pallets/:sscc/quality-release', ({ sscc }, q, b, by) => run('releaseQualityHold', { sscc, reason: b.reason }, by));

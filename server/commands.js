@@ -185,6 +185,7 @@
     planWave: (wh, a, by) => wh.planWave({ id: a.id || null, orders: a.orders || null, by }),
     confirmWaveTask: (wh, a, by) => wh.confirmWaveTask({ task: req(a.task, 'task'), scan: a.scan, serials: a.serials || null, by }),
     setItemSerials: (wh, a) => wh.setItemSerials(req(a.itemNo, 'itemNo'), a.on !== false),
+    palletSerials: (wh, a, by) => wh.palletSerials({ sscc: req(a.sscc, 'sscc'), serials: a.serials, by }),
     setWaveConfig: (wh, a) => wh.setWaveConfig(a.config || a),
     renameLocations: (wh, a) => wh.renameLocations(a),
     dropAliases: (wh, a) => wh.dropAliases(a),

@@ -142,6 +142,8 @@
       return `<section><h2>Inbound receiving</h2><p class="hint">On foot, with a handheld. A full pallet is labelled PAL and MASTER after it is received. Lower-value lines use an INB plate.</p>
         <form class="form" data-act="issue-plates"><label>Received pallet SSCC<input name="sscc" required placeholder="18 digit SSCC"></label><button class="primary">Issue PAL + MASTER</button></form>
         <form class="form" data-act="issue-series"><input type="hidden" name="series" value="INB"><label>Item<input name="itemNo" value="Y1002"></label><label>Qty<input name="qty" type="number" value="1"></label><label>Location<input name="loc" value="DOCK-IN"></label><button>Issue INB plate</button></form>
+        <h3>Serial numbers on a pallet</h3><p class="hint">For a traced item: paste or scan one serial per piece. The supplier's pallet list can carry them too, and then they are booked at receiving. They follow the pallet and ship with it, without scanning again.</p>
+        <form class="form" data-act="pallet-serials"><label>Pallet SSCC<input name="sscc" required autocomplete="off"></label><label>Serials<textarea name="serials" rows="2" cols="34" placeholder="one per piece, spaces or new lines between" required></textarea></label><button>Book serials</button></form><div id="psOut"></div>
         <h3>Open deliveries</h3>${table(['Delivery', 'Supplier', 'ASN', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || d.id)}</td><td>${esc(d.status)}</td></tr>`))}
         <h3>INB plates</h3>${plateTable(inbound)}</section>
         ${can('putaway.execute') ? `<section><h2>Put away by hand</h2><p class="hint">${modOn('trucks') ? 'For a pallet the trucks are not taking.' : 'No trucks here: put received pallets away yourself.'} Scan the pallet to see where the system would put it, then scan that slot, or another one.</p>
@@ -858,6 +860,12 @@
       const q = codes.length > 200 ? `prefix=${encodeURIComponent(data.to.trim())}` : `codes=${encodeURIComponent(codes.join(','))}`;
       const slot = document.getElementById('renameOut');
       if (slot) slot.innerHTML = `<p class="msg ok">Renamed ${r.renamed}. The old codes still scan. <a href="#" data-sheet="${esc(q)}">Print the new labels</a></p>`;
+      return;
+    }
+    if (form.dataset.act === 'pallet-serials') {
+      const r = await api('POST', '/api/pallets/' + encodeURIComponent(data.sscc.trim()) + '/serials', { serials: data.serials.split(/[\s,;]+/).filter(Boolean) });
+      form.reset();
+      document.getElementById('psOut').innerHTML = msg(`Pallet …${r.sscc.slice(-6)}: ${r.serials.length} serials of ${r.itemNo} booked${r.dropped.length ? `; ${r.dropped.length} no longer on it marked missing` : ''}.`, true);
       return;
     }
     if (form.dataset.act === 'return-find') {
