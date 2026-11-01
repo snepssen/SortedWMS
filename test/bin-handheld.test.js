@@ -84,7 +84,10 @@ test('the bin handheld page is served, and pickers claim and report through the 
   try {
     const page = await fetch(base + '/bins');
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /<script src="camera.js"><\/script>/);
+    const html = await page.text();
+    assert.match(html, /<script src="camera.js"><\/script>/);
+    assert.match(html, /<script src="src\/offline-queue.js"><\/script>/, 'scans wait on the phone when offline');
+    assert.equal((await fetch(base + '/src/offline-queue.js')).status, 200);
     const office = await login('office', 'sorted-office');
     const picker = await login('picker', 'sorted-picker');
     const inbound = await login('inbound', 'sorted-inbound');
