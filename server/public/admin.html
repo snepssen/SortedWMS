@@ -324,7 +324,7 @@
     const ex = {
       items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nY1010;8712345000017;Skyr natural 450 g;YOG;120;10;rack',
       locations: 'code;category;blocked;check\n38-02-0-10;CHE;0;47\nAA01A1;YOG;0;',
-      orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;1\n4601;Fresh Market;OUT-01;C2001;1;CHANGE;1',
+      orders: 'orderId;customer;lane;itemNo;pallets;units;minDays;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;;;1\n4601;Fresh Market;OUT-01;C2001;1;;;CHANGE;1\n4602;Corner shop;OUT-02;Y1002;;24;3;;',
       stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
     };
     const box = (k, title, note) => `<section><h2 id="im-title-${k}">${title}</h2><p class="hint">${note}</p><textarea id="im-${k}" aria-labelledby="im-title-${k}">${esc(ex[k])}</textarea>
@@ -332,7 +332,7 @@
     return `<div class="grid">
       ${box('locations', 'Location table', 'Paste from Excel or CSV (comma, semicolon or tab). Codes in either naming. Sets category and blocked per location; mismatched pallets get relocation jobs.')}
       ${box('items', 'Item master', 'Items already known are skipped. storage: rack or block.')}
-      ${box('orders', 'Orders', 'One row per order line; rows with the same order number make one order. process: a route such as CHANGE, or empty. verifyLoading: 1 to load with the trailer scanner.')}
+      ${box('orders', 'Orders', 'One row per order line; rows with the same order number make one order. pallets: whole pallets (1 when empty); units: a number of pieces instead, picked in a wave. minDays: the fewest days of best-before this customer takes, or empty to use the minimum set on the item. process: a route such as CHANGE, or empty. verifyLoading: 1 to load with the trailer scanner.')}
       ${box('stock', 'Opening stock', 'One row per pallet. Leave sscc empty to have one made up. Rows with errors are skipped and listed.')}
     </div>`;
   }

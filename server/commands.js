@@ -81,20 +81,34 @@
       for (const r of a.rows || []) {
         const id = String(r.orderId || r.order || '').trim();
         if (!id) { out.errors.push('A row without an order number'); continue; }
-        if (!orders.has(id)) orders.set(id, { id, customer: r.customer, lane: r.lane, lines: [], verifyLoading: /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || '')) });
+        if (!orders.has(id)) orders.set(id, { id, customer: r.customer, lane: r.lane, lines: [], verifyLoading: /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || '')), minDays: r.minDays == null || String(r.minDays).trim() === '' ? null : Number(r.minDays) });
         const order = orders.get(id);
         if ((r.customer && r.customer !== order.customer) || (r.lane && r.lane !== order.lane)) {
           if (!invalid.has(id)) out.errors.push(`${id}: Rows disagree on customer or shipping lane`);
           invalid.add(id);
         }
         order.verifyLoading ||= /^(1|true|yes|ja)$/i.test(String(r.verifyLoading || ''));
-        const line = { itemNo: String(r.itemNo || r.item || '').trim(), pallets: r.pallets == null || String(r.pallets).trim() === '' ? 1 : Number(r.pallets) };
+        // A line in units is picked in a wave; otherwise it is whole pallets (one when blank).
+        const units = r.units == null || String(r.units).trim() === '' ? null : Number(r.units);
+        const line = units != null ? { itemNo: String(r.itemNo || r.item || '').trim(), units } : { itemNo: String(r.itemNo || r.item || '').trim(), pallets: r.pallets == null || String(r.pallets).trim() === '' ? 1 : Number(r.pallets) };
         if (r.process) line.process = String(r.process).trim();
         orders.get(id).lines.push(line);
       }
-      for (const o of orders.values()) {
-        if (invalid.has(o.id)) continue;
-        try { wh.addOrder(o); out.added++; } catch (e) { out.errors.push(`${o.id}: ${e.message}`); }
+      // Imports journaled with planOnce plan ground moves and dispatch once, after the last order;
+      // older imports in a journal replay as they ran, after each order.
+      const once = a.planOnce === true;
+      wh._planLater = once;
+      try {
+        for (const o of orders.values()) {
+          if (invalid.has(o.id)) continue;
+          try { wh.addOrder(o); out.added++; } catch (e) { out.errors.push(`${o.id}: ${e.message}`); }
+        }
+      } finally {
+        wh._planLater = false;
+      }
+      if (once && out.added) {
+        wh.planGround();
+        wh.dispatch();
       }
       return out;
     },

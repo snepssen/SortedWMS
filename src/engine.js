@@ -1176,8 +1176,10 @@
         if (l.short) this.log(`Order ${id}: ${l.short} pallet(s) of ${item.itemNo} short — not enough usable stock`);
       }
       this.log(`Order ${id} for ${customer}: ${order.lines.reduce((s, l) => s + l.allocated.length, 0)} pallets to ${lane}`);
-      this.planGround();
-      this.dispatch();
+      if (!this._planLater) {
+        this.planGround();
+        this.dispatch();
+      }
       return order;
     }
 
@@ -2386,7 +2388,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live' || k === '_planLater') continue;
         out[k] = v;
       }
       return out;
