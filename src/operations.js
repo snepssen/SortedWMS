@@ -1,6 +1,6 @@
 /*
  * Order-driven floor work that sits on the reach-truck engine: piece picks,
- * kit work orders, cartons, pick-face replenishment, returns, availability
+ * kit work orders, cartons, pick-face replenishment, availability
  * and 3PL charges. Installed onto Warehouse.prototype from foundation.js.
  */
 (function (root, factory) {
@@ -871,60 +871,6 @@
       this.log(`Top-up ${qty} of ${pallet.itemNo} at ${task.to} on ${holder.id}`);
       this.dispatch();
       return { task, holder, source: pallet };
-    };
-
-    proto.receiveReturn = function ({ id, orderId, itemNo, qty, loc = null, by } = {}) {
-      const order = this.orders[String(orderId)];
-      if (!order) throw new Error(`No order ${orderId}`);
-      if (!order.lines.some((l) => l.itemNo === itemNo)) throw new Error(`${itemNo} was not on order ${order.id}`);
-      const amount = whole(qty, 'Return quantity');
-      const code = loc ? this.resolve(loc) : null;
-      if (code) {
-        const place = this._loc(code);
-        if (place.kind !== 'virtual' || !['return', 'quarantine', 'staging'].includes(place.role)) throw new Error('Receive a return at a virtual return, quarantine or staging location');
-      }
-      this.returns = this.returns || {};
-      const rid = String(id || '').trim();
-      if (!rid) throw new Error('A return needs an id');
-      if (this.returns[rid]) throw new Error(`Return ${rid} already exists`);
-      const actor = by || this._actor || 'office';
-      const rma = { id: rid, orderId: order.id, itemNo, qty: amount, loc: code, status: 'received', grade: null, holderId: null, receivedAt: this.now(), by: actor, history: [{ t: this.now(), event: 'received', by: actor, to: code, qty: amount }] };
-      this.returns[rid] = rma;
-      this.recordMovement({ from: null, to: code, qty: amount, event: 'received', by: actor, note: `RMA ${rid} order ${order.id}` });
-      this.log(`Return ${rid} received for order ${order.id}: ${itemNo} × ${amount}`);
-      return rma;
-    };
-
-    proto.gradeReturn = function ({ id, grade, to = null, by } = {}) {
-      const rma = (this.returns || {})[String(id)];
-      if (!rma) throw new Error(`Unknown return ${id}`);
-      if (rma.status !== 'received') throw new Error(`Return ${rma.id} is already ${rma.status}`);
-      if (!['restock', 'quarantine', 'scrap'].includes(grade)) throw new Error('Grade a return as restock, quarantine or scrap');
-      const actor = by || this._actor || 'office';
-      if (grade === 'scrap') {
-        rma.status = 'scrapped';
-        rma.grade = 'scrap';
-        rma.history.push({ t: this.now(), event: 'scrapped', by: actor, qty: rma.qty });
-        this.recordMovement({ from: rma.loc, to: null, qty: rma.qty, event: 'scrapped', by: actor, note: `RMA ${rma.id}` });
-        this.log(`Return ${rma.id} scrapped`);
-        return rma;
-      }
-      const dest = this.resolve(to);
-      const place = this._loc(dest);
-      if (grade === 'quarantine') {
-        if (place.kind !== 'virtual' || place.role !== 'quarantine') throw new Error('Quarantine a return at a virtual quarantine location');
-        rma.status = 'quarantine';
-      } else if (place.kind === 'virtual' && place.role !== 'staging') throw new Error('Restock into a bin, mezzanine, rack or staging location');
-      const minted = this.allocatePlate('ST');
-      const holder = this._makePlate(minted, { type: 'st', loc: dest, contents: [{ itemNo: rma.itemNo, qty: rma.qty, batch: `RMA-${rma.id}`, expiry: null }] });
-      rma.holderId = holder.id;
-      rma.loc = dest;
-      rma.grade = grade;
-      if (grade === 'restock') rma.status = 'restocked';
-      rma.history.push({ t: this.now(), event: grade, by: actor, to: dest, qty: rma.qty, holder: holder.id });
-      this.recordMovement({ holder: holder.id, from: null, to: dest, qty: rma.qty, event: grade === 'quarantine' ? 'moved' : 'received', by: actor, note: `RMA ${rma.id} ${grade}` });
-      this.log(`Return ${rma.id} graded ${grade} at ${dest}`);
-      return rma;
     };
 
     proto.exportStock = function ({ itemNo, qty, toSite, fromSite = null, by } = {}) {

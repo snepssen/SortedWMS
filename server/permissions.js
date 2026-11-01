@@ -238,6 +238,7 @@ const RULES = [
   ['POST', '/api/pick-faces', 'putaway.execute'],
   ['POST', '/api/replenishment/plan', 'replenish.execute'],
   ['GET', '/api/returns', 'inbound.read'],
+  ['GET', '/api/orders/:id/returnable', 'inbound.read'],
   ['POST', '/api/returns', 'inbound.write'],
   ['POST', '/api/returns/:id/grade', 'inbound.write'],
   ['GET', '/api/reports/availability', 'reports.read'],

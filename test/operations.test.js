@@ -101,17 +101,18 @@ test('returns are received against an order and graded with history', () => {
   assert.equal(rma.status, 'received');
   assert.equal(rma.history[0].event, 'received');
   const held = w.gradeReturn({ id: 'RMA-1', grade: 'quarantine', to: 'QRET', by: 'morgan' });
-  assert.equal(held.status, 'quarantine');
+  assert.equal(held.status, 'held');
   assert.equal(w.holders[held.holderId].loc, 'QRET');
   assert.ok(held.history.some((h) => h.event === 'quarantine'));
   const scrap = w.receiveReturn({ id: 'RMA-2', orderId: 'SO5', itemNo: 'SKU1', qty: 1, loc: 'RETURNS' });
   w.gradeReturn({ id: scrap.id, grade: 'scrap', by: 'morgan' });
-  assert.equal(w.returns['RMA-2'].status, 'scrapped');
+  assert.equal(w.returns['RMA-2'].status, 'done');
+  assert.equal(w.returns['RMA-2'].lines[0].scrapped, 1);
   assert.ok(w.movementsFor({}).some((m) => m.event === 'scrapped'));
   const back = w.receiveReturn({ id: 'RMA-3', orderId: 'SO5', itemNo: 'SKU1', qty: 1, loc: 'RETURNS' });
   const restocked = w.gradeReturn({ id: back.id, grade: 'restock', to: 'MEZZ-A1' });
-  assert.equal(restocked.status, 'restocked');
-  assert.equal(w.holders[restocked.holderId].loc, 'MEZZ-A1');
+  assert.equal(restocked.status, 'done');
+  assert.equal(w.binContents('MEZZ-A1').lines.find((l) => l.itemNo === 'SKU1').qty, 1, 'restocked as loose stock pickers can take');
 });
 
 test('available-to-sell and low stock follow on-hand, allocations and the reorder point', () => {
