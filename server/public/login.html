@@ -32,7 +32,7 @@
     <button type="submit">Sign in</button>
     <p class="err" id="err" role="alert"></p>
   </form>
-  <div class="hint">
+  <div class="hint" id="demo">
     <p>Demo accounts. The password is <code>sorted-</code> plus the username (<code>sorted-admin</code>, <code>sorted-tech</code>, …).</p>
     <table>
       <tr><th>Username</th><th>Role</th></tr>
@@ -67,12 +67,18 @@
         const second = await fetch('/api/login/totp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mfaToken: body.mfaToken, code }) });
         const again = await second.json().catch(() => ({}));
         if (!second.ok) { document.getElementById('err').textContent = again.error || 'That code was refused'; return; }
-        location.assign(dest);
+        location.assign(after(again.user));
       };
       return;
     }
-    location.assign(dest);
+    location.assign(after(body.user));
   };
+  // A password someone else knows is changed first; the app asks for it, then goes on.
+  function after(user) {
+    if (!user || !user.mustChangePassword) return dest;
+    return dest === '/app' ? '/app' : '/app?next=' + encodeURIComponent(dest);
+  }
+  fetch('/api/login/info').then((r) => r.json()).then((info) => { if (!info.demoUsers) document.getElementById('demo').hidden = true; }).catch(() => {});
 })();
 </script>
 </body>

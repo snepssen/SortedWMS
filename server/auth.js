@@ -351,6 +351,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     if (!verifyPassword(current, row.password_hash)) throw new Error('Current password is wrong');
     if (String(next || '').length < 8) throw new Error('Password must be at least 8 characters');
     if (String(next) === String(current)) throw new Error('Choose a different password');
+    if (DEMO_USERS.some(([, known]) => known === String(next))) throw new Error('That password is printed on the sign-in page of every SortedWMS. Choose your own');
     db.prepare('UPDATE users SET password_hash = ?, must_change = 0 WHERE id = ?').run(hashPassword(next), row.id);
     record('password-changed', row.username, null);
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
@@ -429,11 +430,30 @@ function createAuth(db, { now = () => Date.now() } = {}) {
         roles: ROLES.map(([id, label]) => ({ id, label, permissions: permissionsFor(id), fixed: id === 'administrator' })),
       };
     },
-    ensureAdmin({ username = 'admin', password = 'sorted-admin', displayName = 'Administrator' } = {}) {
-      if (getUser(username)) return { created: false, username: String(username).toLowerCase() };
+    /**
+     * The first administrator. With `mustChange` (a real warehouse started on
+     * the well-known password) it has to choose its own password at the first
+     * sign-in; one still on that password from before is flagged too.
+     */
+    ensureAdmin({ username = 'admin', password = 'sorted-admin', displayName = 'Administrator', mustChange = false } = {}) {
+      const name = String(username).toLowerCase();
+      const row = db.prepare('SELECT * FROM users WHERE username = ?').get(name);
+      if (row) {
+        if (mustChange && !row.must_change && row.active && verifyPassword(password, row.password_hash)) {
+          db.prepare('UPDATE users SET must_change = 1 WHERE id = ?').run(row.id);
+          record('password-must-change', 'bootstrap', { username: name });
+          return { created: false, username: name, mustChange: true };
+        }
+        return { created: false, username: name, mustChange: Boolean(row.must_change) };
+      }
       const user = insertUser({ username, password, role: 'administrator', displayName });
+      if (mustChange) db.prepare('UPDATE users SET must_change = 1 WHERE username = ?').run(user.username);
       record('bootstrap-admin', 'bootstrap', { username: user.username });
-      return { created: true, username: user.username };
+      return { created: true, username: user.username, mustChange: Boolean(mustChange) };
+    },
+    /** Whether the demo sign-ins exist, so the sign-in page only lists them then. */
+    hasDemoUsers() {
+      return DEMO_USERS.filter(([u]) => u !== 'admin').some(([u]) => { const r = getUser(u); return r && r.active; });
     },
     ensureDemoUsers() {
       const created = [];

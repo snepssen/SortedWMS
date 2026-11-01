@@ -1195,12 +1195,13 @@
       document.body.dataset.role = me.role;
       $('#title').textContent = 'Change password';
       $('#who').textContent = me.displayName;
-      $('#main').innerHTML = `<section><h2>Choose a new password</h2><p class="hint">An administrator reset this account. The next screen opens after the password changes.</p><form class="form" id="pw"><label>Current password<input name="current" type="password" required></label><label>New password<input name="next" type="password" required minlength="8"></label><button class="primary">Save password</button></form></section>`;
+      $('#main').innerHTML = `<section><h2>Choose a new password</h2><p class="hint">${me.role === 'administrator' ? 'This is a new warehouse, and its starting password is printed on every sign-in page.' : 'An administrator reset this account.'} Choose your own, at least 8 characters. The next screen opens after it changes.</p><p id="pwErr"></p><form class="form" id="pw"><label>Current password<input name="current" type="password" required></label><label>New password<input name="next" type="password" required minlength="8"></label><button class="primary">Save password</button></form></section>`;
       document.getElementById('pw').onsubmit = async (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target));
-        await api('POST', '/api/password', data);
-        location.assign('/app');
+        try { await api('POST', '/api/password', data); } catch (err) { document.getElementById('pwErr').innerHTML = msg(err.message, false); return; }
+        const next = new URLSearchParams(location.search).get('next') || '';
+        location.assign(next.startsWith('/') && !next.startsWith('//') ? next : '/app');
       };
       return;
     }

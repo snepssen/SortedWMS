@@ -43,6 +43,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
     };
     if (req.method === 'GET' && pages[url.pathname]) {
+      // Someone who must choose a password first gets the screen that asks for it.
+      if (auth && /^\/(setup|admin|handheld|bins|kit|station|desk|loading|keys|card)(\.html)?$/.test(url.pathname)) {
+        const pending = auth.userFromRequest(req);
+        if (pending && pending.mustChangePassword) return send(302, '', 'text/plain', { location: `/app?next=${encodeURIComponent(url.pathname + url.search)}` });
+      }
       const file = path.join(ROOT, pages[url.pathname]);
       return send(200, fs.readFileSync(file), types[path.extname(file)]);
     }
@@ -75,6 +80,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         return send(200, { ok: true }, 'application/json; charset=utf-8', { 'set-cookie': auth.clearCookie() });
       }
       if (access.public && req.method === 'GET' && url.pathname === '/api/health') return send(200, { ok: true, auth: Boolean(auth) });
+      if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') return send(200, { demoUsers: auth.hasDemoUsers() });
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
         return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
@@ -173,7 +179,8 @@ function main() {
   const auth = createAuth(store.db);
   const adminUser = process.env.SORTED_ADMIN_USER || 'admin';
   const adminPass = process.env.SORTED_ADMIN_PASSWORD || 'sorted-admin';
-  const boot = auth.ensureAdmin({ username: adminUser, password: adminPass, displayName: 'Administrator' });
+  // A real warehouse (no demo sign-ins) never keeps the password printed on the sign-in page.
+  const boot = auth.ensureAdmin({ username: adminUser, password: adminPass, displayName: 'Administrator', mustChange: adminPass === 'sorted-admin' && process.env.SORTED_DEMO_USERS === '0' });
   const demoUsers = process.env.SORTED_DEMO_USERS === '0' ? [] : auth.ensureDemoUsers();
   if (process.argv.includes('--seed-demo') && !Object.keys(store.wh.pallets).length) {
     const { seedDemo } = require('./seed');
@@ -192,7 +199,8 @@ function main() {
   const port = Number(process.env.PORT || 8080);
   server.listen(port, () => {
     console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin  ·  demo: /`);
-    if (boot.created && adminPass === 'sorted-admin') console.log(`Administrator ${boot.username} / sorted-admin  (set SORTED_ADMIN_PASSWORD to change it)`);
+    if (boot.mustChange) console.log(`Administrator ${boot.username} / sorted-admin: sign in and choose a new password`);
+    else if (boot.created && adminPass === 'sorted-admin') console.log(`Administrator ${boot.username} / sorted-admin  (set SORTED_ADMIN_PASSWORD to change it)`);
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
     if (demoUsers.length) console.log(`Demo sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
   });
