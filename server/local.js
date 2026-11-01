@@ -3,7 +3,7 @@
  * and API as server/, with the journal kept in this browser's localStorage.
  * Pages open in other tabs or frames share it: each replays what the others
  * added, which gives the same state because the engine only takes time from
- * the journal. Load after src/*.js, server/commands.js, site.js, seed.js, api.js.
+ * the journal. Load after src/*.js, server/commands.js, site.js, api.js.
  */
 (function (root) {
   'use strict';
@@ -110,9 +110,8 @@
     },
   };
 
-  const ready = fetch(`${base}server/site.example.json`).then((r) => r.json()).then((site) => {
+  const ready = fetch(`${base}server/site.blank.json`).then((r) => r.json()).then((site) => {
     const store = new LocalStore(site);
-    if (!store.data.rows.length) root.SortedSeed.seedDemo(store);
     const api = root.SortedApi.createApi({ store, printers });
     addEventListener('storage', (e) => { if (e.key === KEY || e.key === null) store.sync(); });
     setInterval(() => store.tick(), 10000);
@@ -127,7 +126,7 @@
       const out = await api.handle(method, path, body || {}, String(operator || 'office').slice(0, 40), requestId || null);
       return JSON.parse(JSON.stringify(out)); // a copy, like over the network
     },
-    async reset() { const { store } = await ready; store.reset(); root.SortedSeed.seedDemo(store); },
+    async reset() { const { store } = await ready; store.reset(); },
     async store() { return (await ready).store; },
   };
 })(typeof self !== 'undefined' ? self : this);

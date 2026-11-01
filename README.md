@@ -1,46 +1,14 @@
 # SortedWMS
 
-A warehouse system for whoever is deploying it: a distribution centre, a high-value store, a home garage, or a small maker. A fresh warehouse has temperature zones, lot and expiry, FEFO, and high-value PAL/MASTER plates turned off. A preset turns on the ones that building uses. The chilled reach-truck warehouse is one sample preset.
+An open-source warehouse management system for any warehouse: a wall of bins at home, a small maker, a 3PL with clients and invoices, a high-value store, or a reach-truck distribution centre. It sets its own standard for how a WMS should work, rather than copying any one company's. MIT licensed.
 
-**Start it** with `./start.sh`, then open `http://localhost:8080/login` and sign in as `admin` / `sorted-admin`. To look around first: `./start.sh demo` (the chilled reach-truck demo) or `./start.sh sample home` (also `maker` and `3pl`). An administrator builds the building in the [setup wizard](http://localhost:8080/setup): pick a preset, turn features on or off, and generate location codes. Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+**Try it in your browser: https://snepssen.github.io/SortedWMS/**. The real screens run in the browser, starting as an empty building: open the setup wizard, add your categories and items one by one, and work it. Nothing leaves your browser.
 
-The guided simulation is still there for a coordinator walkthrough. It uses made-up stock to show how setup, office decisions and scanner work connect. For that presentation, use the [presenter guide](https://snepssen.github.io/SortedWMS/demo.html), then the guided scenarios. The [demo SOP](https://snepssen.github.io/SortedWMS/sop.html) explains the same workflows; it is not an approved site procedure. The Pages demo has no server, so it does not ask you to sign in.
+**Run it yourself** with `./start.sh` (Node 22.13 or newer, nothing else: no packages, no Docker), then open `http://localhost:8080/login` and sign in as `admin` / `sorted-admin`. A new warehouse asks the admin to choose their own password before anything else, then the [setup wizard](http://localhost:8080/setup) shapes the building: a preset, the features it uses, categories, and location codes. To look around first: `./start.sh sample home` (also `maker` and `3pl`). Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
-**Try the simulation: https://snepssen.github.io/SortedWMS/**. It runs in the browser, on a computer or a phone.
+A fresh warehouse has temperature zones, lot and expiry, FEFO and high-value PAL/MASTER plates turned off, and one category, General. A preset turns on what that kind of building uses; anything can be switched later.
 
-To run it locally, open `index.html` in a browser. No install or server needed.
-
-**Guided scenarios:** `walkthrough.html` has nine selectable workflows. Each uses the existing engine with isolated, in-memory stock and a fixed demonstration clock. Switching or restarting a scenario starts fresh without resetting the free-play WMS.
-
-- **Receiving to shipping (22 steps):** protein drinks through partitioning, receiving, Auto put-away, FEFO allocation, damage replacement, pallet change, check & label, shipping and batch trace.
-- **Auto-Shift & partitioning (8 steps):** bring the next-out yoghurt pallet down, change its location's partition, then relocate it into yoghurt storage.
-- **Manual work & corrections (17 steps):** choose one of two orders, pick and label it, put away a dock pallet, correct a misplaced pallet, and recover stock displaced onto the location-unknown list. A pending pick follows the corrected location.
-- **Stock counts & accuracy (9 steps):** three blind location counts in six scans, a correct match and two differences, followed by reconciliation and count results in the office.
-- **Temperature & quality holds (12 steps):** receive a yoghurt pallet, record an out-of-range temperature, store it on hold, allocate eligible replacement stock, record a follow-up, and release it with a review reason. The example limits are demonstration values, not product requirements.
-- **Batch recall & traceability (22 steps):** identify an earlier shipped recipient, hold ready and uncollected stock, replace an uncollected pick from another batch, catch a late receipt, and release the batch without clearing an independent temperature hold.
-- **Physical quarantine & release (13 steps):** designate a chilled rack position, request segregation of a temperature-held pallet, scan it into quarantine, record independent quality and quarantine decisions, and scan it back into normal storage before allocation.
-- **Trailer loading & dispatch (27 steps):** pick and label two pallets, assign a trailer, reject a wrong destination and incomplete departure, stop a newly held load, unload and review it, reload, seal, dispatch and trace the shipment.
-- **Trailer readiness & refrigeration (26 steps):** require an air reading and condition inspection, hold a warm trailer, require a separate release after correction, expire a check between scans, stop a wet trailer after loading, unload, reinspect, release and dispatch with retained evidence.
-
-Switch between Admin, Office, Scanner and Station to inspect the same warehouse state, including jobs, stock, corrections and the audit. These are demonstration views, not access-controlled roles. Browser labels are generated but are not sent to a printer. Recorded trailer refrigeration checks are implemented; continuous monitoring and door/dock interlocks remain future work.
-
-For a local preview of the guided shift, run `npm run build:pages`, then serve `_site/` with a static HTTP server. The guided shift needs HTTP to load the example site configuration.
-
-**Try the handheld and office screens: https://snepssen.github.io/SortedWMS/wms.html**. These are the real WMS screens with made-up stock. On Pages there's no server, so the WMS runs inside the browser and changes stay in that browser. A button scans whatever the handheld asks for, since a computer has no scanner.
-
-**Whole floor (free play).** The *Whole floor* view in `wms.html` is for a rush:
-- **Drop in work:** hundreds of picks and inbound pallets at once. Items, customers, shipping lanes and delivery sizes are drawn at random from the stock free to ship and the rack space left, in one journaled command (`dropWorkload`, `POST /api/workload`), so it replays exactly.
-- **Drivers:** every handheld on Auto drives itself, scanning what its screen asks for, with the time a reach truck takes to get there. Run at real speed (1×) or up to 30×. Untick a truck to drive it yourself.
-- **Watch it organise:** the workload board shows the queue in dispatch order, and every truck's scanner screen is live, with a countdown to its next scan. *Open* shows that truck on the full handheld.
-- **Trucks:** add more (yoghurt, cheese or any category). Ready orders are collected by trailers automatically if you want.
-
-**Demo kit: https://snepssen.github.io/SortedWMS/kit.html**. A label wall that shows, big enough to scan off a screen, the barcode a handheld needs next, plus a print sheet of sample pallet labels in the real supplier formats. The demo script is in [docs/DEMO.md](docs/DEMO.md).
-
-**How to work with it: [docs/SOP.md](docs/SOP.md)**, demonstration procedures step by step for every role. The [demo check record](docs/DEMO-CHECK.md) documents the browser checks and what still needs physical-device verification.
-
-To run the actual WMS (server, handheld screens, office screens), see [Running the WMS](#running-the-wms) below.
-
-The demo site is rebuilt and published automatically on every push (`.github/workflows/pages.yml`): it runs the tests, wraps the page with `scripts/build-pages.js` and deploys to GitHub Pages. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
+A better demo, built on the full WMS, is on the [roadmap](docs/ROADMAP.md). Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What it does
 
@@ -65,7 +33,7 @@ The job order can change with the time of day: windows like `06:00-10:00 RECEIVE
 
 While carrying, scanning a pallet or an item only shows stock information; scanning the pallet on the forks says where it goes, for when the driver has forgotten. An item number or EAN scanned in Auto shows the stock check. Auto does everything, so drivers rarely need another mode.
 
-Each truck is set to the **categories its operator works** (yoghurt, cheese, protein drinks), and only gets jobs in those. Trucks can also be set to *Auto-Shift only* or *Paused*.
+Each truck is set to the **categories its operator works** (say bulk, chilled and fast movers), and only gets jobs in those. Trucks can also be set to *Auto-Shift only* or *Paused*.
 
 **No more than 2 reach trucks in one aisle** (adjustable). A third truck gets work elsewhere. A driver carrying a pallet towards a full aisle waits at the entry and is let in when a truck leaves.
 
@@ -82,7 +50,7 @@ Each truck is set to the **categories its operator works** (yoghurt, cheese, pro
   - The manager can let a single short pallet ship anyway (e.g. a customer accepts it).
 - **Blocked stock never ships.** That covers pallets reported damaged, or expired on arrival. The coordinator can release them.
 - **Temperature checks and quality holds:** Stock & trace in the office records a pallet's measured temperature, the limits used, an inspection note and the operator. Out-of-range readings create a separate quality hold. In-range follow-ups do not clear it; release requires a recorded reason and leaves independent damage blocks intact. Uncollected picks get replacement stock, and shipment checks eligibility again before removing any pallets. These are recorded spot checks, not continuous temperature monitoring. Physical segregation is requested separately in Quarantine.
-- **Batch recalls:** The office's Batch recalls view previews stock and shipped recipients for an exact item and batch, then records a reasoned hold. The rule catches later receipts and opening-stock imports, replaces uncollected picks only with eligible stock, and blocks checking and final shipment even after labels were confirmed. A carried pallet may still be dropped safely. Affected orders remain in the report after replacement; shortage lines are not automatically refilled. Release records a decision without clearing temperature, damage or quarantine holds. History survives replay and permits a new hold after release. Customer contact, customer returns and disposal are not implemented; this is a demonstrator, not a certified recall system.
+- **Batch recalls:** The office's Batch recalls view previews stock and shipped recipients for an exact item and batch, then records a reasoned hold. The rule catches later receipts and opening-stock imports, replaces uncollected picks only with eligible stock, and blocks checking and final shipment even after labels were confirmed. A carried pallet may still be dropped safely. Affected orders remain in the report after replacement; shortage lines are not automatically refilled. Release records a decision without clearing temperature, damage or quarantine holds. History survives replay and permits a new hold after release. Customer contact, customer returns and disposal are not implemented; SortedWMS is not a certified recall system.
 - **Physical quarantine:** Quarantine in the office designates empty, unreserved rack positions while keeping their existing product category. Normal put-away never selects them. An explicit pallet request creates an urgent Auto-Shift job; a full, blocked or unmatched area leaves it queued. Each pickup and drop uses the usual scanner workflow, with exclusive destination reservations and no override into ordinary storage. Requests can replace allocated stock, including checked stock on a shipping lane. Return requires a recorded decision after independent damage, temperature and recall holds are clear, then a scan into a matching normal rack before allocation is allowed. Corrective transfers preserve the restriction, and unexpected stock imported or transferred into quarantine acquires it. Zone decisions and pallet history are journaled. Only rack pallets outside process workflows are supported; block stacks, disposal, physical access controls and continuous temperature monitoring remain out of scope. Holds do not automatically trigger segregation: the office must request it. Site configuration may optionally include `quarantine: [{from: "AH10A1", to: "AH10A3", reason: "Chilled hold area"}]`.
 - **Verified trailer loading:** New office orders have **Verify trailer loading** checked by default. Their Loading link opens a dedicated scanner at `/loading` on the server or `loading.html` on Pages. Once the complete order is checked and staged, assign a trailer ID. Scan each pallet SSCC followed by its `TRAILER-<ID>` location barcode: only the second scan moves stock from the shipping lane to the trailer. Wrong orders, duplicate loads, wrong trailers, unchecked stock and independent holds are rejected. Eligibility and location are rechecked at destination confirmation and again before dispatch. Unload uses a pallet scan followed by the order's shipping-lane scan, even for held stock; ordinary transfers and imports cannot move trailer stock. Pending confirmations are per scanner, survive reload/replay and can be cancelled without moving stock. Every allocated pallet must be loaded, with no shortage or pending scan, before a seal ID permits dispatch. Trailer, seal, operators and load/unload history remain in the shipment and batch trace. One active order owns a trailer; it can be reused after departure. Trailer reassignment, multi-order trailers, partial dispatch and hardware interlocks are not implemented. Existing/API orders default to the earlier office-confirmation workflow unless created with `verifyLoading: true`; opening any loading manifest also makes verification mandatory, with no downgrade switch.
 - **Trailer readiness:** New manifests in the loading screen have **Require trailer inspection** checked by default. Set air-temperature limits and a validity of 1 to 1440 whole minutes before opening; these settings are fixed for that manifest. The screen starts with example 2 to 6 C / 60-minute values, not approved product requirements. Each inspection requires a manual trailer-air reading, explicit refrigeration-running, clean, dry, odor-free and damage-free checks, an operator and a note. Missing or expired passing checks block both loading scans and final dispatch. Any failed condition or out-of-range reading places a sticky trailer hold. A later passing check does not clear it: a separate reasoned release is allowed only while the latest complete passing check is fresh. Cancellation and unloading remain available during holds and expiry. Release never clears independent pallet temperature, recall, damage or quarantine restrictions. Failed checks record the SSCCs aboard at inspection time; they do not automatically create pallet quality holds, so affected goods need a separate quality decision. Shipment history retains readings, conditions, limits, notes, operators, releases and the final passing inspection; historical readiness is evaluated at departure, not expired retrospectively. Reusing a trailer starts a new inspection session.
@@ -114,21 +82,21 @@ Each handheld has a mode bar. Auto is the default; the others are for when a dri
 | Put-away, pick, Auto-Shift | 2 scans: the pallet (or its location), then the drop location |
 | Check & label | 2 scans: the picked pallet, then the new shipping label once it's on |
 | Receiving, supplier label + delivery list | **1 scan**: the bottom barcode (SSCC) |
-| Receiving, full GS1 label (e.g. A-ware Kruibeke) | **2 scans**: item + count + best-before + batch in one barcode, then the SSCC |
+| Receiving, full GS1 label | **2 scans**: item + count + best-before + batch in one barcode, then the SSCC |
 | Receiving, 3-barcode supplier label | 3 scans, any order: top (item + count), middle (best-before + batch), bottom (SSCC) |
-| Receiving, label without batch/date barcodes (e.g. A-ware Packaging) | 2 scans (SSCC, item + count) + batch and best-before typed on the keypad |
+| Receiving, label without batch/date barcodes | 2 scans (SSCC, item + count) + batch and best-before typed on the keypad |
 | Receiving, no usable label | batch → best-before → item → SSCC (4 scans) + 1 tap for quantity |
 
 **Customer requirements.** What a customer wants done with their pallets (*No double-stacked pallets*, *Label on the long side*) is kept per customer in the office, or in the site file. Every pick, drop and check for that customer's order shows it on the handheld in amber: the order number brings it up, with no lookup and nothing typed.
 
-**Check digits.** Every rack location has two digits printed on its label next to the barcode. Scanning the location label is how a drop is confirmed (the MC9401 reads a high-level label from the ground). Only when a label won't scan (frost, damage) does the driver type those two digits instead; that's for drops only, since a pickup is confirmed by the pallet's own label and docks and gates are scanned. The handheld never shows the digits, so typing them proves the driver is at the location. The real labels' digits can be loaded with the location list (a `check` column); otherwise they're worked out from the location code.
+**Check digits.** Every rack location has two digits printed on its label next to the barcode. Scanning the location label is how a drop is confirmed (a long-range scanner reads a high-level label from the ground). Only when a label won't scan (frost, damage) does the driver type those two digits instead; that's for drops only, since a pickup is confirmed by the pallet's own label and docks and gates are scanned. The handheld never shows the digits, so typing them proves the driver is at the location. The printed labels' digits can be loaded with the location list (a `check` column); otherwise they're worked out from the location code.
 
-An SSCC or a known EAN is recognised whenever it's scanned, whatever field is next. So is a supplier's own article number (a `(91)` barcode), and a count in consumer units is converted to cases (960 pots = 80 cases of 12). Typed values are read back on the screen, and dates are typed day-month-year (`09112026`). The two real A-ware labels are worked through in [docs/HARDWARE.md](docs/HARDWARE.md). If the label and the delivery list disagree, the driver is told and nothing is registered.
+An SSCC or a known EAN is recognised whenever it's scanned, whatever field is next. So is a supplier's own article number (a `(91)` barcode), and a count in consumer units is converted to cases (960 pots = 80 cases of 12). Typed values are read back on the screen, and dates are typed day-month-year (`09112026`). If the label and the delivery list disagree, the driver is told and nothing is registered.
 
 The scanner sends its own Enter. A wrong scan explains what's wrong and changes nothing.
 
 ### Gloves on: the command card
-The warehouse is chilled, so drivers wear gloves and the handheld's touch screen and small keys are a nuisance. Every button on the handheld therefore has a barcode on a **command card**: printed from the office (Settings → Command card), laminated, one per truck.
+In a chilled or cold warehouse drivers wear gloves, and the handheld's touch screen and small keys are a nuisance. Every button on the handheld therefore has a barcode on a **command card**: printed from the office (Settings → Command card), laminated, one per truck.
 
 | Scan | Does |
 | --- | --- |
@@ -154,7 +122,7 @@ The system picks the slot, and the driver scans twice. Jobs are created when:
 
 Put-away uses the same slotting rules from the start. It prefers a free position next to the same batch. It sends the next-out pallet low and later batches higher, to keep the ground free. Blocked stock goes to the top.
 
-### Block stacks (cheese crate pallets)
+### Block stacks (crate pallets)
 Crate pallets stand on the floor in block lanes, 6 high. The system knows the stacking order.
 - Each lane holds one item. Up to two batches can share a lane (a setting; 1 = strict).
 - A second batch goes in front of the first. If its best-before is the same or earlier, it ships first anyway, so the system prefers that over opening an empty lane. If it's later, it would bury older stock, so the system only does that when no lane fits better, and it flags the lane (⚠ on the board, a warning in the log).
@@ -172,12 +140,12 @@ Crate pallets stand on the floor in block lanes, 6 high. The system knows the st
 Some pallets go through a process before they ship or go back into storage:
 - **Pallet change:** the hydraulic press flips the load onto a new pallet and back, then it's sealed with foil. A new pallet label prints at the station.
 - **Crates off + foil:** crates removed, load wrapped.
-- **Hole forming:** plate press (plate on) → warm room for a set time → plate press (plate off) → back into storage.
+- **Curing:** plate press (plate on) → curing room for a set time → plate press (plate off) → back into storage.
 
 A process is a **route** of stations. It can be set on an order line ("pallet change before shipping") or started by the coordinator. Every step is tracked:
 - **Moves** between storage, stations and shipping lanes are Auto jobs for the reach trucks: two scans, as always.
 - **At a work station** the operator scans the pallet to start and scans it again when done. The station screen shows the SOP and a timer against the standard time. There's nothing to tick off.
-- **In a dwell room** (the warm room) the system holds the clock. When the time is up it creates the move out and flags it urgent. There are no timers on team leaders' phones.
+- **In a dwell room** (curing, ripening, thawing) the system holds the clock. When the time is up it creates the move out and flags it urgent. There are no timers on team leaders' phones.
 - **The process log** records every step: pallet, station, actual time and standard time. Each pallet keeps its own trail.
 
 ### Receiving desk (two operators)
@@ -191,35 +159,44 @@ The pallet is registered as soon as it's complete, and its put-away goes to the 
 ### Labels
 Checking a picked pallet sends a 4×6" shipping label to the label printer at that shipping lane. The label is ZPL, the language most networked thermal label printers accept on port 9100. It carries the customer, order, item, batch, best-before date, a label barcode the driver scans to confirm it's on, and the GS1-128 SSCC.
 
-The site's printers are Zebra ZT421s. They come in 203 and 300 dpi; each printer's resolution is set in the site file and labels are scaled to it. The office can ask a printer for its status (paper, ribbon, head, pause). The handhelds are Zebra MC9401s: the handheld page has a compact layout for their screen, and Esc and F1–F5 work on their keypad. Setup for both is in [docs/HARDWARE.md](docs/HARDWARE.md).
+Printers come in 203 and 300 dpi; each printer's resolution is set in the site file and labels are scaled to it. The office can ask a Zebra printer for its status (paper, ribbon, head, pause). The handheld page has a compact layout for small scanner screens such as the Zebra MC9401's, and Esc and F1–F5 work on their keypad. Setup for both is in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## Locations
 
 Codes run **Cell > Aisle > Bay > Position > Height**. Any of those levels can be left out, so a garage can be only Bay > Height. Each level is numbers (`01-03-12-2-04`), letters and numbers (`A-03-B12-2-D`), or words (`Garage-Left-Shelf3-Box2-Top`). A colour is the word Red or Blue. The wizard shows a live preview, then creates the locations with default height, width, depth and weight capacity. Virtual locations such as `CONSO00` are added beside the physical ones.
 
-Presets: chilled distribution centre (temperature, lot, expiry and FEFO on; frozen is a zone; high-value plates stay off), high-value (PAL and MASTER plates on), home garage, small maker. The demo site applies the chilled preset and then turns high-value plates on, so the sample labels still print.
+Presets: chilled distribution centre (temperature, lot, expiry and FEFO on; frozen is a zone; high-value plates stay off), high-value (PAL and MASTER plates on), home garage, small maker.
 
 ## What the WMS adds
 
 On top of the reach-truck rules already in `src/engine.js`:
 
-- **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator. An administrator can reset a password without email; the person must change it at the next sign-in. Optional authenticator-app codes (TOTP). Five failed sign-ins lock the account for 15 minutes. A session ends after 30 idle minutes, or 12 hours at the latest.
+- **Accounts.** Scrypt password hashes, cookie sessions, and a bootstrap administrator who chooses their own password at the first sign-in (the starting one is printed here and on the sign-in page of the samples). An administrator can reset a password without email; the person must change it at the next sign-in. Optional authenticator-app codes (TOTP). Five failed sign-ins lock the account for 15 minutes. A session ends after 30 idle minutes, or 12 hours at the latest.
 - **Roles.** Administrator, manager / supervisor, office, technical, inbound, picker, and stock / inventory. Floor roles follow the job; the truck's type (reach, man-up, EPT, cart) is a setting on the truck, and a truck with a duty only gets that duty's jobs. Permissions are a list an administrator can edit. Each role has its own view.
 - **Clients.** Add, edit and archive the owner of the goods. Items and stock carry that client.
 - **Items.** Add, edit, archive or remove. Unit of measure, length, width, height, weight, GTIN and other barcodes.
 - **Locations.** Zones, aisles, racks, levels, bins, mezzanine pick faces, block lanes, and virtual locations such as `CONSO00` (consolidation), staging, returns and quarantine. Height, width, depth and weight capacity. A load that does not fit is refused.
+- **Guided location setup.** The wizard asks how many buildings or sections, whether each is racks or shelves, then aisles, positions and levels, and for each "what do you want to call it?" with examples (1, 01, A, Shelf 1, or words). The codes follow from the answers, with a live preview.
+- **Renaming locations.** One code or every code that starts the same way. Stock, plates, picks and checks move with it, and the old code keeps scanning, so labels can be swapped one shelf at a time.
+- **Loose stock in bins.** Bins and shelves hold loose pieces, packs (a box of 12 is 12 pieces) and mixed items. Put away, pick, move and count by bin. Label sheets print bin and item labels on A4, Letter or roll labels.
+- **Pick waves.** Orders queue and drop into a wave when one is done, or after a maximum wait. Each order is filled with whole pallets first (straight to the dock), then whole boxes from the man-up, then small picks from bins. An order that would need a new box opened waits for one that can share it. Reach trucks never get bin or mezzanine work.
+- **Stock checks and corrections.** Hold a location for a check: nothing is picked or moved there until stock control clears it. A pallet received under the wrong item is corrected in one step (the wrong item out, the right one in on a new plate, under one correction number). Stock changes per day as a report and CSV.
+- **Batch and best-before.** Every pick, pallets, boxes and loose pieces, takes the earliest best-before first and names the batch to take. Expired and recalled batches never go on an order; short-dated ones only go to an order that accepts them (Min days left: higher for a strict buyer, lower for a near-expiry outlet). A recall finds every customer who got the batch, in pallets or in cartons. Stock control lists loose stock near its best-before, with a write-off.
+- **Serial numbers.** Items can be traced one by one: a serial is scanned per piece on the way out (and optionally in), counts are by serial, packing slips and delivery notes list them, and a lookup says where a serial is or which customer and carton it went to. A pallet can carry its serial list from the supplier's ASN, and then ships with it unscanned.
+- **Switchable modules.** Reach trucks, pick waves, kitting, process stations, clients, 3PL billing and more warehouses can each be turned off, and simple screens give one short menu to a person running the place alone.
 - **License plates.** `PAL`, `MASTER`, `ST`, `INB` and `OUT` plus a number that only increases (`PAL0000001`). Each warehouse has its own counters. A full pallet gets a PAL and a MASTER when high-value plates are on. Consolidation keeps one MASTER that already parents those PAL plates: the earliest number, unless the operator names another of those MASTER plates. The other source MASTER plates are retired, the close is written into the history, and those numbers stay retired. The printed MASTER label lists the child PAL numbers. Prefix and padding are set by the technical role.
 - **Labels.** The plate id is the barcode. An SSCC / GS1-128 can be printed as well. ZPL, and HTML for the browser print dialog.
 - **Traceability.** Each movement stores the person, the plate, from, to, time and quantity. A manager can open a person's history or a plate's history.
 - **Orders on the floor.** A sales-order line in units is picked on foot at a mezzanine face and the line quantity goes down, the same way a reach-truck pick takes a pallet. A kit has a bill of materials. A work order, or an order line that names the kit, consumes component plates as they are scanned and counts the finished units.
 - **Packing bench.** Scan a pick into an `OUT` carton, close it with length, width, height and weight, and print an OUT label plus a packing slip. A mixed order (pallets and cartons) stages as one shipment: one delivery note, one load manifest, a scan of every holder, then a single dispatch. Status is staged, loaded, then dispatched.
 - **Replenishment.** A pick face keeps a minimum, a maximum and a trigger. In unit mode the move tops the face up to the maximum and splits that quantity from the source plate. Whole-pallet mode moves one full pallet. Plate numbers default to 7 digits and each series can set its own pad.
-- **Returns.** Receive a return against an order at a virtual return location, then grade it restock, quarantine or scrap. The grade stays on the return's history.
+- **Returns.** Look up the order and book what came back: never more than went out, several items at once, traced items by the serials that left on it. Grade all at once or a few at a time: restock into a bin or rack slot (waves pick it again), hold in quarantine to grade later, or scrap. Restocks and write-offs show on the stock-change report.
 - **Warehouses.** One install can hold more than one site. The header switches site. A user can be limited to some sites. Each site keeps its own plate counters. A transfer ships onto `IN-TRANSIT`, then the destination receives it. A refusal returns the stock to the original plate.
 - **Selling and 3PL.** An available-to-sell CSV or JSON feed per SKU and low-stock alerts from a reorder point. A client rate card prices storage, inbound, outbound and kitting, with volume tiers, seasons, a monthly minimum and a version for each effective date. Days, seasons and versions use the warehouse's timezone, including daylight saving. A card can prorate the minimum, surcharge by a percent or a fixed amount, and count tiers per calendar month or per version. Dedicated space (a cell, an aisle, a bay, a position, a height, or the whole building) is a flat fee. The invoice is CSV or printable HTML, and each line names the tier, season and version it used. Older versions stay read-only.
 - **Client login.** A client sees only their items, stock and orders. They add items one by one (SKU, description, unit, size, weight, barcode text, and food, frozen or high-value when those features are on). They can edit and deactivate items. Approval is off unless the warehouse turns it on. Every change is journaled with the user.
 - **Location profiles.** Technical staff keep profiles (high value, food/chilled, frozen, low value, home/small maker, plus custom ones). A profile sets storage type (shelf, rack or block stack), temperature, security, put-away note, label text and capacity. Bulk create builds a range, for example aisle 01–05, bay 01–20, height A–E. Put-away refuses a move that would exceed capacity, or warns if the profile says so.
 - **Handheld offline queue.** While the handheld is offline, scans stay on the device and send in order when the connection returns. A refusal stops the rest of the queue.
+- **Bin handheld (`/bins`).** Pick, put away, move, count and check on foot, one scan at a time, with the device camera as the scanner where there is no other. It keeps working without a connection: changes queue on the device, sent once each when it is back.
 - **Floor flows already in the engine, now behind a permission:** ASN receiving, put-away, replenishment moves, FEFO picking, packing notes, shipping, cycle counts, quantity adjustments with a reason, search, and CSV stock export. The journal is still the audit trail.
 - **Hardware, partially.** Keyboard-wedge scans, manual entry, and a simulated scan. Printers speak ZPL, can fall back to the browser page, or stay simulated until an address is configured.
 
@@ -229,7 +206,6 @@ The server shares one source of truth between the role views, handheld, desk and
 
 ```
 ./start.sh                 # your warehouse in data/sorted.db; a new one starts as an empty building
-./start.sh demo            # the chilled reach-truck demo in data/demo.db, with made-up stock and orders
 ./start.sh sample home     # a home bin wall (also: maker, 3pl), each in its own data/sample-<kind>.db
 ./start.sh backup          # copy the database into data/backups now
 ./start.sh backups         # list the backups
@@ -238,9 +214,9 @@ The server shares one source of truth between the role views, handheld, desk and
 npm test
 ```
 
-Then open `http://localhost:8080/login`. Your own warehouse gets only the `admin` account; set `SORTED_ADMIN_PASSWORD` before the first start, or change the password after signing in. The demo and the samples also get the accounts below.
+Then open `http://localhost:8080/login`. Your own warehouse gets only the `admin` account, which chooses its own password at the first sign-in (or set `SORTED_ADMIN_PASSWORD` before the first start). The samples also get the accounts below, with the printed passwords.
 
-**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. Copy that folder somewhere else as well. `npm start` and `npm run start:demo` still work and use `server/site.example.json`.
+**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. Copy that folder somewhere else as well. `npm start` also works, on an empty building.
 
 | Username | Password | View |
 | --- | --- | --- |
@@ -258,10 +234,9 @@ On the same network, the older screens are still there:
 - **`/handheld`** on the Android scanners. Enter the handheld ID once; the scanner sends Enter after each scan. The screen keeps the scan field focused and hides the on-screen keyboard (⌨ brings it back).
 - **`/keys`** on a new scanner, once: a key test. It shows every key press (key, code, keyCode), whether the Back key reaches the page, and how scans arrive (as key presses or as pasted text, with the symbology prefix and the GS1 separator if the scanner sends them), with a summary to copy. It needs no server: on Pages it's `keys.html`.
 - **`/card`**: the command card to print (also under Settings in the office).
-- **`/station`** on a PC or tablet at each process station (press, plate press, foil wrapper, warm room): scan to start, scan when done, the SOP and a timer on screen, warm-room countdowns.
+- **`/station`** on a PC or tablet at each process station (press, plate press, foil wrapper, curing room): scan to start, scan when done, the SOP and a timer on screen, warm-room countdowns.
 - **`/desk`** at the two-person receiving desk: the call-out word, scans and typed fields.
 - **`/admin`** in the office: floor overview, jobs (urgent, cancel, release), location template ranges, find, office transfers, location unknown list, stock per item, minimum days to ship, batch trace (which customers got batch X), orders, deliveries, imports from Excel/CSV, audit trail, dispatch settings, label printer status.
-- **`/`** the demo simulation.
 
 Settings, through environment variables:
 
@@ -269,11 +244,13 @@ Settings, through environment variables:
 | --- | --- | --- |
 | `PORT` | 8080 | |
 | `SORTED_DB` | `data/sorted.db` | The database file. Back this file up. Users and sessions live in this file too. |
-| `SORTED_SITE` | `server/site.example.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, clients, printer addresses. Read once, when the database is first created. |
+| `SORTED_SITE` | `server/site.blank.json` | The site: layout, cells, categories, template ranges, block lanes, stations, routes, desks, items, clients, printer addresses. Read once, when the database is first created. |
 | `SORTED_TOKEN` | none | Optional shared secret. If set, a call with header `x-token` is accepted as a service administrator. Sign-in still works without it. |
 | `SORTED_ADMIN_USER` | `admin` | Created when there are no users yet. |
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
 | `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, inbound, picker and stock accounts. |
+
+**How big it gets.** `npm run load-test` builds a made-up warehouse of 14,000 locations, 2,000 items, 6,000 pallets, 8,000 bin lines and 2,000 orders through the real commands, then times what people wait on (`--scale 2` for twice as much). On a laptop: a bin put-away about 0.3 ms, a new order about 5 ms, a pick wave about 10 ms, the stock screen and the order queue under 50 ms, a restart under 0.1 s. Shipped pallets, finished jobs and shipped orders stay for history without slowing the floor.
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 
@@ -284,54 +261,50 @@ Settings, through environment variables:
 | File | What it is |
 | --- | --- |
 | `src/engine.js` | The WMS rules: stock, locations, orders, receiving, dispatch, Auto-Shift. No dependencies; runs in a browser or Node. |
+| `src/locations.js`, `src/presets.js` | Location codes from a naming plan or the guided wizard's answers; warehouse presets and switchable modules. |
+| `src/operations.js` | Piece picks, kits, cartons and packing slips, replenishment, availability, 3PL billing, transfers between sites. |
+| `src/bins.js`, `src/waves.js` | Loose stock in bins (packs, lots, counts); pick waves (pallets, then boxes, then small picks). |
+| `src/corrections.js`, `src/renames.js` | Stock checks and item corrections; renaming locations with the old codes still scanning. |
+| `src/serials.js`, `src/returns.js` | The serial-number register; returns and their grading. |
+| `src/sheets.js`, `src/offline-queue.js` | Label sheet layouts; the queue that keeps a handheld's changes while offline. |
 | `src/workload.js` | Free play: random orders and deliveries over the stock and rack space there is, from a seed. |
 | `src/drivers.js` | Free play: what a driver on Auto scans next, and how long it takes to get there. |
 | `src/gs1.js` | Reads GS1-128 pallet labels, checks SSCC/GTIN check digits. |
 | `src/labels.js` | ZPL shipping, pallet and master labels, plus printable HTML, scaled to the printer's dpi. |
-| `src/barcode.js` | Code 128 and GS1-128 as SVG, for the command card and the demo kit. |
+| `src/barcode.js` | Code 128 and GS1-128 as SVG, for the command card and label sheets. |
 | `server/index.js` | The WMS server: sign-in, JSON API, role pages, clock tick, printing. |
-| `server/auth.js` | Password hashes, sessions, the bootstrap administrator and the demo accounts. |
+| `server/auth.js` | Password hashes, sessions, the bootstrap administrator and the sample accounts. |
 | `server/permissions.js` | Roles and which permission each route needs. |
 | `server/hardware.js` | Wedge / manual / simulated scans, and simulated, browser or network printing. |
 | `src/foundation.js` | Clients, items, locations, holders, labels, equipment and adjustments. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
-| `server/site.example.json` | Example site set-up; copy and edit for the real warehouse. |
-| `server/public/` | `handheld.html` (Android scanners), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
+| `server/site.blank.json` | The empty building a new warehouse starts from. A site file can also carry a layout, block lanes, stations, routes, desks, items and printer addresses (see `test/fixtures/site.json`). |
+| `server/public/` | `app.html` (each role's screens, at `/app`), `setup.html` (the setup wizard), `bins.html` (the bin handheld), `handheld.html` (Android scanners on trucks), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
+| `server/backups.js`, `server/samples.js` | Daily database copies; the home, maker and 3PL sample warehouses. |
+| `scripts/cli.js`, `start.sh` | `./start.sh` and its commands: start, sample, backup, restore, setup. |
+| `scripts/load-test.js` | The load test (`npm run load-test`). |
 | `server/print.js` | Sends ZPL to network label printers. |
-| `server/seed.js` | Made-up stock for `npm run start:demo`. |
 | `server/api.js` | The API routes and screen views; used by the server, and in the browser on Pages. |
 | `server/local.js` | The WMS running in the browser for GitHub Pages: the journal is kept in browser storage. |
-| `index.html` | The demo: floor and block stacks, handhelds, process floor and receiving desk, coordinator tabs, job queue, stock. |
-| `test/` | Regression tests for the demonstrated workflows. Run with `npm test` (Node 22.13+). |
-| `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: the simulated shift, plus the handheld and office screens (`wms.html`) (`npm run build:pages`). |
-| `docs/ROADMAP.md` | What it takes to go from this prototype to a standalone WMS. |
-| `docs/SOP.md` | Standard operating procedures: every task, step by step, for drivers, the coordinator, station and desk operators. |
-| `docs/WORKFLOW-REVIEW.md` | The step-by-step review behind the SOP: what was fixed, what needs a decision, what to build next. |
-| `docs/DEMO.md` | The demo: set-up with a real MC9401 or without hardware, and a 10-minute run. |
-| `server/public/kit.html` | The demo kit (`/kit`): label wall and print sheet. |
+| `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
+| `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page and the real screens running in the browser (`npm run build:pages`). |
+| `docs/ROADMAP.md` | What is done, and what could come next. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
-## Locations
+## Two names per location
 
-Every location has two names, and both barcodes scan. The coordinator chooses which one the screens show.
+A rack location can carry two names, and both barcodes scan; the screens show whichever the coordinator chooses. That is how racks can be relabelled one aisle at a time while everything keeps working.
 
-**On the racks today:** `38-02-0-10` = aisle 38, bay 02, height 0, position 10.
-- Odd bays are on one side of the aisle and even bays on the other, so bay 13 faces bay 14.
-- Height 0 is the ground, 1–4 above it.
-- Positions 10/40/70 run left to right between the rack legs.
+**Numbers:** `38-02-0-10` = aisle 38, bay 02, height 0, position 10. Odd bays are on one side of the aisle and even bays on the other, height 0 is the ground, and positions run left to right between the rack legs.
 
-**Proposed:** `AA03C2` = cell A, rack A, bay 03, level C, position 2 (the format used at Syncreon).
-- The first letter is the warehouse cell. The second is the rack, lettered in a line across the cell: the racks facing each other across the first aisle are A and B, then C and D.
-- Bays count 01–10 front to back on every rack, whatever the one-way direction, so the number tells you how deep in the aisle you are. Facing racks share bay numbers (AA07 faces AB07).
-- Level A is the ground, up to E. Positions 1–3 run left to right between the rack legs.
-- On the floor it's said "A3C2", with the cell assumed. The sticker scans the full `AA03C2`. A driver can also type the short form; the system takes the cell the truck is in.
+**Letters:** `AA03C2` = cell A, rack A, bay 03, level C, position 2. The second letter is the rack, lettered across the cell (the racks facing each other across the first aisle are A and B); bays count front to back on every rack; level A is the ground. On the floor it's said "A3C2", with the cell assumed, and a driver can type that short form.
 
-Because both names scan, the racks can be relabelled one aisle at a time while everything keeps working. The Locations tab shows the old → new list.
+**Location template by range.** Categories are set on a whole selection at once: `AA01A1` → `AZ43F3` is one category, `BB01A1` → `BZ43F3` another. A range can be written in either naming, and partly (`AA` → `AD` means those whole racks). The office sees a preview first (how many locations change, how many pallets will need to move), then applies it. Pallets left in the wrong category get Auto-Shift relocation jobs straight away.
 
-**Location template by range.** Categories are set on a whole selection at once, not one location at a time: `AA01A1` → `AZ43F3` is cheese, `BB01A1` → `BZ43F3` is yoghurt. A range can be written in either naming, and partly: `AA` → `AD` means those whole racks, `31` → `34` whole aisles. The office sees a preview first (how many locations change, how many pallets will need to move), then applies it. Pallets left in the wrong category get Auto-Shift relocation jobs straight away.
+## Contributing
 
-The demo has aisles 31–38. The real list comes with the location table. The demo's items, customers, suppliers and stock are made up.
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how the code is laid out and what a change needs.
 
 ## Licence
 

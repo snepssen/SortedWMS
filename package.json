@@ -2,10 +2,9 @@
   "name": "sortedwms",
   "version": "0.1.0",
   "private": true,
-  "description": "Warehouse management for any building: presets, license plates, roles, and optional food or high-value rules",
+  "description": "Open-source warehouse management for any warehouse, from a wall of bins to a reach-truck distribution centre",
   "scripts": {
     "start": "node --no-warnings server/index.js",
-    "start:demo": "node --no-warnings server/index.js --seed-demo",
     "test": "node --no-warnings --test",
     "build:pages": "node scripts/build-pages.js",
     "load-test": "node --no-warnings scripts/load-test.js"

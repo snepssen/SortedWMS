@@ -15,7 +15,7 @@ const { SAMPLES, loadSample } = require('../server/samples');
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
   w.addClient({ id: 'CL-1', name: 'North Shop' });
-  w.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10, weightKg: 500 });
+  w.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 10, weightKg: 500 });
   return w;
 }
 

@@ -8,8 +8,8 @@ const T0 = Date.UTC(2026, 9, 9, 6, 0);
 function setup() {
   const wh = new Warehouse({ aisles: [31, 32], bays: 4, levels: 2, clock: () => T0, config: { groundNextPerItem: 0, checkAfterPick: false } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96 });
-  wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96 });
+  wh.applyTemplate(wh.selectLocations('31', '32'), 'GEN');
   return wh;
 }
 
@@ -50,7 +50,7 @@ test('check digits: only for a drop; a pickup or a count takes the label, and a 
   assert.ok(wh.scan('RT1', '31-02-0-10').ok);
   assert.match(wh.scan('RT1', p.sscc).text, /Count OK/);
   // Receiving: two digits typed for the count stay a count of cases.
-  wh.addDelivery({ id: 'D1', supplier: 'S', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'S', category: 'GEN', pallets: 1 });
   assert.equal(wh.instruction('RT1').kind, 'receive');
   wh.scan('RT1', `01${GS1.gtin14(wh.items.Y1.gtin)}15261201` + '10B9');
   wh.scan('RT1', `00${GS1.makeSscc(0, '8799990', 77)}`);
@@ -59,7 +59,7 @@ test('check digits: only for a drop; a pickup or a count takes the label, and a 
   assert.equal(Object.values(wh.pallets).find((x) => x.batch === 'B9').qty, 80);
 });
 
-test('check digits: the real labels\' digits can be loaded with the location list', () => {
+test('check digits: printed location labels\' digits can be loaded with the location list', () => {
   const wh = setup();
   wh.importLocations([{ code: '31-01-0-10', check: 7 }, { code: '31-01-0-40', check: '93' }]);
   assert.equal(wh.checkDigit('31-01-0-10'), '07');

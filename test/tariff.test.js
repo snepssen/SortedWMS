@@ -9,14 +9,14 @@ const { createServer } = require('../server/index');
 const { Printers } = require('../server/print');
 const { permissionFor, DEFAULTS } = require('../server/permissions');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function whAt(t) {
   let now = t;
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => now, config: { timeZone: 'UTC', country: 'BE' } });
   w.setFeatures({ lotExpiry: true, fefo: true });
   w.addClient({ id: 'CL-1', name: 'North Shop' });
-  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1' });
+  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'GEN', palletQty: 10, clientId: 'CL-1' });
   w.at = (n) => { now = n; };
   return w;
 }
@@ -235,7 +235,7 @@ test('tariff changes are journaled with the user, and an old version cannot be r
 test('billing days follow the warehouse timezone, including a short and a long DST day', () => {
   const spring = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], outLanes: 1, config: { timeZone: 'Europe/Brussels', country: 'BE' }, clock: () => Date.UTC(2026, 3, 1, 12) });
   spring.addClient({ id: 'CL-1', name: 'North Shop' });
-  spring.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1' });
+  spring.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'GEN', palletQty: 10, clientId: 'CL-1' });
   const start = spring.zonedMidnight('2026-03-29');
   const next = spring.zonedMidnight('2026-03-30');
   assert.equal(next - start, 23 * 3600000);
@@ -324,9 +324,9 @@ test('tariff editing is tariff.write for office and manager', async () => {
   };
   try {
     const operator = await sign('picker', 'sorted-picker');
-    assert.equal((await call('POST', '/api/clients/CL-DAIRY/tariff', { storageRate: 1 }, { cookie: operator })).status, 403);
+    assert.equal((await call('POST', '/api/clients/CL-PAINT/tariff', { storageRate: 1 }, { cookie: operator })).status, 403);
     const office = await sign('office', 'sorted-office');
-    const saved = await call('POST', '/api/clients/CL-DAIRY/tariff', {
+    const saved = await call('POST', '/api/clients/CL-PAINT/tariff', {
       storageBasis: 'pallet-day', storageRate: 1.5, storageTierMode: 'all',
       storageTiers: [{ upTo: 10, rate: 2 }, { upTo: null, rate: 1 }],
       inboundRate: 2, outboundRate: 3, valRate: 0.4, minimum: 40,
@@ -338,17 +338,17 @@ test('tariff editing is tariff.write for office and manager', async () => {
     assert.equal(saved.body[0].storageTierMode, 'all');
     const tomorrow = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
     const manager = await sign('manager', 'sorted-manager');
-    const next = await call('POST', '/api/clients/CL-DAIRY/tariff', {
+    const next = await call('POST', '/api/clients/CL-PAINT/tariff', {
       effectiveFrom: tomorrow, storageBasis: 'pallet-day', storageRate: 2, minimum: 80,
     }, { cookie: manager });
     assert.equal(next.status, 200, next.body && next.body.error);
     assert.equal(next.body[0].readOnly, true);
     assert.equal(next.body[1].readOnly, false);
     assert.equal(next.body[1].createdBy, 'manager');
-    const csv = await call('GET', '/api/reports/invoice.csv?clientId=CL-DAIRY&from=2026-10-01&to=2026-10-15', null, { cookie: office });
+    const csv = await call('GET', '/api/reports/invoice.csv?clientId=CL-PAINT&from=2026-10-01&to=2026-10-15', null, { cookie: office });
     assert.equal(csv.status, 200);
     assert.match(csv.body, /tier","season","version"/);
-    const html = await call('GET', '/api/reports/billing.html?clientId=CL-DAIRY&from=2026-10-01&to=2026-10-15', null, { cookie: manager });
+    const html = await call('GET', '/api/reports/billing.html?clientId=CL-PAINT&from=2026-10-01&to=2026-10-15', null, { cookie: manager });
     assert.match(html.body, /Tier/);
     assert.match(html.body, /Season/);
     assert.match(html.body, /Version/);

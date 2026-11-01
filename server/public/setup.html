@@ -95,6 +95,10 @@
     <p class="hint">Temperature, lot and expiry, FEFO, and high-value PAL/MASTER plates are optional.</p>
     <div id="features"></div>
     <p><button type="button" id="saveFeatures">Save features</button></p>
+    <h3>Your categories</h3>
+    <p class="hint">Every item belongs to one, and a location can be kept for one (racks for bulk, a chilled zone). A preset adds its own; add yours one by one. The same code again renames it.</p>
+    <p id="categories" class="hint"></p>
+    <form id="catForm" class="row"><label>Code <input name="code" required maxlength="12" placeholder="TOOLS" size="8"></label> <label>Name <input name="name" placeholder="Hand tools"></label> <button type="submit">Add category</button></form>
   </section>
   <section>
     <h2>What do you use?</h2>
@@ -150,6 +154,7 @@
 </main>
 <script src="/src/locations.js"></script>
 <script>
+  if (window.SortedLocal) document.querySelectorAll('a[href="/app"]').forEach((a) => { a.href = 'app.html'; });
 (function () {
   'use strict';
   const LEVELS = ['cell', 'aisle', 'bay', 'position', 'height'];
@@ -157,6 +162,11 @@
   let plan = null;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   async function api(method, path, body) {
+    if (window.SortedLocal) { // GitHub Pages: the WMS runs in this browser
+      const r = await window.SortedLocal.fetch(method, path, body, { operator: 'admin' });
+      if (r.status >= 400) throw new Error(r.body.error);
+      return r.body;
+    }
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent('/setup')); throw new Error('Sign in required'); }
     const data = await res.json().catch(() => ({}));
@@ -224,6 +234,7 @@
     document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
     document.getElementById('modules').innerHTML = data.modules.modules.map((m) => `<label><input type="checkbox" name="${esc(m.id)}" ${m.on ? 'checked' : ''}> <span><b>${esc(m.label)}</b> — ${esc(m.hint)}</span></label>`).join('');
     document.getElementById('simple').checked = data.modules.simple;
+    showCategories(data.categories);
     document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
     document.getElementById('examples').innerHTML = data.examples.map((ex) => `<div class="ex"><div><b>${esc(ex.title)}</b><div class="hint">${esc(ex.blurb)}</div></div><code>${esc(ex.preview.sampleCode)}</code><button type="button" data-example="${esc(ex.id)}">Use this</button></div>`).join('');
     if (data.setup && data.setup.guided && data.setup.guided.layouts) { answers = JSON.parse(JSON.stringify(data.setup.guided)); stepAt = 0; }
@@ -263,6 +274,19 @@
     for (const box of document.querySelectorAll('#modules input')) modules[box.name] = box.checked;
     try { await api('POST', '/api/setup/modules', { modules }); say('Saved. The menus follow on the next page load.', true); }
     catch (err) { say(err.message, false); }
+  };
+  function showCategories(cats) {
+    document.getElementById('categories').innerHTML = Object.entries(cats || {}).map(([c, n]) => `<b>${esc(c)}</b> ${esc(n)}`).join(' · ') || 'None yet.';
+  }
+  document.getElementById('catForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      const out = await api('POST', '/api/categories', data);
+      e.target.reset();
+      showCategories((await api('GET', '/api/setup')).categories);
+      say(`${out.added ? 'Added' : 'Renamed'} ${out.code}: ${out.name}.`, true);
+    } catch (err) { say(err.message, false); }
   };
   document.getElementById('saveFeatures').onclick = async () => {
     const features = {};

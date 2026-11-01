@@ -8,10 +8,10 @@ const T0 = Date.UTC(2026, 9, 7, 6, 0);
 function setup(config = {}) {
   const wh = new Warehouse({ aisles: [31, 32, 33, 34], bays: 6, levels: 3, clock: () => T0, config: { groundNextPerItem: 0, checkAfterPick: false, ...config } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96 });
-  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda', category: 'CHE', palletQty: 80 });
-  wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');
-  wh.applyTemplate(wh.selectLocations('33', '34'), 'CHE');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96 });
+  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Soil', category: 'BULK', palletQty: 80 });
+  wh.applyTemplate(wh.selectLocations('31', '32'), 'GEN');
+  wh.applyTemplate(wh.selectLocations('33', '34'), 'BULK');
   const put = (code, itemNo, batch, expiry) => wh.stockPallet(code, { itemNo, batch, expiry });
   return { wh, put };
 }
@@ -38,7 +38,7 @@ test('stock check: a location shows what is in it; a pallet shows where it is an
   const p = put('31-02-0-10', 'Y1', 'B1', '2026-11-01');
   const loc = wh.lookup('31-02-0-10');
   assert.equal(loc.kind, 'location');
-  assert.match(loc.lines[0], /Y1 Yoghurt · B1 · BB 01-11-2026/);
+  assert.match(loc.lines[0], /Y1 Paint · B1 · BB 01-11-2026/);
   assert.equal(wh.lookup('31-02-0-40').lines[0], 'Empty');
   const pal = wh.lookup(p.sscc);
   assert.equal(pal.kind, 'pallet');
@@ -69,7 +69,7 @@ test('Auto: scanning an item or a location while carrying only asks, and the dro
   wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
   wh.addTruck('RT1');
   wh.scan('RT1', p.sscc);
-  assert.match(wh.scan('RT1', 'Y1').text, /Y1 Yoghurt/);
+  assert.match(wh.scan('RT1', 'Y1').text, /Y1 Paint/);
   const r = wh.scan('RT1', other.sscc);
   assert.match(r.text, /At 31-04-0-10\n[\s\S]*You're carrying …\w{6} to OUT-01/);
   assert.equal(wh.pallets[other.sscc].loc, '31-04-0-10');
@@ -99,12 +99,12 @@ test('Auto: a pallet with its own job: pick it, and the shown job goes back to t
 
 test('Auto: a pallet in the wrong category with no job: relocate it', () => {
   const { wh, put } = setup();
-  const misplaced = put('33-02-0-10', 'Y1', 'B1', '2026-11-01'); // yoghurt in a cheese location, no job yet
-  wh.addTruck('RT1', { categories: ['YOG'] });
+  const misplaced = put('33-02-0-10', 'Y1', 'B1', '2026-11-01'); // paint in a garden stock location, no job yet
+  wh.addTruck('RT1', { categories: ['GEN'] });
   const r = wh.scan('RT1', misplaced.sscc);
   assert.match(r.text, /^Relocate it: job #\d+ Shift\. Take it to 3[12]-/);
   const t = wh.tasks[wh.trucks.RT1.taskId];
-  assert.equal(wh.locations[t.to].category, 'YOG');
+  assert.equal(wh.locations[t.to].category, 'GEN');
   assert.equal(t.reason, 'template');
 });
 

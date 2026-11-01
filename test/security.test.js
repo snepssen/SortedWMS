@@ -7,7 +7,7 @@ const { Printers } = require('../server/print');
 const { createServer } = require('../server/index');
 const { createAuth, totpCode } = require('../server/auth');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function cookieOf(headers) {
   const raw = (headers.getSetCookie && headers.getSetCookie()[0]) || headers.get('set-cookie') || '';
@@ -93,7 +93,7 @@ test('each warehouse keeps its own plate counter, and site access follows the us
     assert.equal((await app.call('GET', '/api/summary', null, { cookie: `${op}; sorted_site=NORTH` })).status, 200);
 
     app.store.siteId = 'MAIN';
-    app.store.wh.addItem({ itemNo: 'MOVE1', name: 'Transfer box', category: 'YOG', palletQty: 4 });
+    app.store.wh.addItem({ itemNo: 'MOVE1', name: 'Transfer box', category: 'GEN', palletQty: 4 });
     app.store.wh.stockPallet('DOCK-IN', { itemNo: 'MOVE1', batch: 'T', expiry: '2027-06-01', qty: 4 });
     const before = app.store.wh.holderSeries.ST.next;
     const pallet = Object.values(app.store.wh.pallets).find((p) => p.itemNo === 'MOVE1');

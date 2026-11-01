@@ -6,7 +6,7 @@ The server signs people in. The guided shift in the browser (`index.html`, GitHu
 
 An administrator opens `/setup` after the first sign-in, and can open it again later. The wizard asks for a warehouse preset, which category features are on, and how locations are named. The hierarchy is Cell, Aisle, Bay, Position, Height. Skip a level the building does not have. Numbers, letters, letters-and-numbers, and words are all text. A colour is a word such as Red.
 
-A new warehouse starts with temperature zones, lot and expiry, FEFO, and high-value plates off. Choosing a preset turns on the set that preset carries. The chilled distribution centre preset turns on temperature, lot, expiry and FEFO, and leaves high-value plates off. The high-value preset turns PAL and MASTER plates on. The example site applies `chilled-dc` and then sets `highValueSecurity`, so the demo seed can still issue plates. Unset flags stay off.
+A new warehouse starts with temperature zones, lot and expiry, FEFO, and high-value plates off. Choosing a preset turns on the set that preset carries. The chilled distribution centre preset turns on temperature, lot, expiry and FEFO, and leaves high-value plates off. The high-value preset turns PAL and MASTER plates on. Unset flags stay off.
 
 Worked examples the wizard can load:
 
@@ -21,25 +21,26 @@ Presets: chilled distribution centre (chilled and frozen zones), high-value, hom
 Node.js 22.13 or newer. No packages to install. macOS and Linux use the same commands.
 
 ```
+./start.sh              # your own warehouse: only the admin account
+./start.sh sample home  # a sample warehouse, with every account below
 npm test
-npm run start:demo
 ```
 
-Open `http://localhost:8080/login`. `npm start` builds the example site without the made-up pallets; the accounts are still created.
+Open `http://localhost:8080/login`. On your own warehouse the admin starts on `sorted-admin` and has to choose their own password at the first sign-in, before anything else; any page they open goes to that screen first. An admin still on `sorted-admin` from before is asked at the next start. A new password can't be one of the passwords printed below. `npm start` also starts an empty building; the sample accounts are created there unless `SORTED_DEMO_USERS=0`.
 
 | Variable | Default | |
 | --- | --- | --- |
 | `SORTED_DB` | `data/sorted.db` | Warehouse journal, users and sessions. |
 | `SORTED_ADMIN_USER` | `admin` | First administrator, only if that username does not exist yet. |
-| `SORTED_ADMIN_PASSWORD` | `sorted-admin` | At least 8 characters. Printed at startup only when the default is still in use. |
-| `SORTED_DEMO_USERS` | on | `0` skips the five demo accounts below. |
+| `SORTED_ADMIN_PASSWORD` | `sorted-admin` | At least 8 characters. Set it before the first start and the admin keeps it; left at the default, the admin must change it at the first sign-in. |
+| `SORTED_DEMO_USERS` | on | `0` skips the sample accounts below. |
 | `SORTED_TOKEN` | unset | Optional. A request with header `x-token` is a service administrator and does not need a cookie. |
 
 Passwords are stored as scrypt hashes (`scrypt$N$r$p$salt$hash`). The session cookie is `sorted_session`, HttpOnly, 12 hours. The database stores the SHA-256 of the token, not the token.
 
-## Demo accounts
+## Sample accounts
 
-Created when missing. Existing passwords are not reset.
+Created when missing, for the samples only (`./start.sh` on your own warehouse skips them). Existing passwords are not reset. The sign-in page lists them only where they exist.
 
 | Username | Password | Role | Lands on |
 | --- | --- | --- | --- |
@@ -62,7 +63,7 @@ Floor roles follow the job, not the vehicle. Inbound, pickers and stock control 
 - **Inbound.** Receives deliveries (a full pallet is issued `PAL` and `MASTER`) and puts stock away: pallets into the racks, loose stock into bins. A truck with the inbound duty only gets receiving and put-away jobs.
 - **Picker.** Picks in waves: whole pallets straight to the dock, whole boxes and opened-box pieces on a man-up, bin picks on an EPT or cart, all dropped at the post-pick lane. Also mezzanine picks and VAL/kitting. A truck with the picking duty only gets picks, check and label, and moves to the dock.
 - **Stock / inventory.** Cycle counts, quantity corrections, creating and deleting stock with a reason, stock checks, location lookups, transfers, replenishment and Auto-Shift. A truck with the stock duty only gets Auto-Shift, counts and moves back into storage. Wedge, manual entry, and simulated scan all use the same field.
-- **Trucks.** The manager sets each truck's duty (every job, inbound, picking, or stock and inventory) and equipment on the Floor screen. Assigning a person gives the truck that person's duty. A reach truck and a man-up reach every level; an EPT only takes jobs at ground level and no Auto-Shift; a cart takes no truck jobs. Process-station moves that are not for an order count as stock work. The demo trucks start on every job.
+- **Trucks.** The manager sets each truck's duty (every job, inbound, picking, or stock and inventory) and equipment on the Floor screen. Assigning a person gives the truck that person's duty. A reach truck and a man-up reach every level; an EPT only takes jobs at ground level and no Auto-Shift; a cart takes no truck jobs. Process-station moves that are not for an order count as stock work.
 
 The floor screens (`/admin`, `/handheld`, `/station`, `/desk`, `/loading`) stay. After sign-in the cookie is sent with them. A role that lacks the permission gets 403 rather than a silent change.
 
@@ -74,7 +75,7 @@ An administrator edits a role under **Roles**. The last active administrator can
 
 ## Clients, items, locations, license plates, labels
 
-- A **client** is the owner of the goods (Dairy Co, Noord Kaas, Pulse Drinks, and a kitting demo in the example). Archiving blocks new items, receipts and orders for that owner. Stock already in the building stays.
+- A **client** is the owner of the goods (in a 3PL, each customer whose stock you hold; try `./start.sh sample 3pl`). Archiving blocks new items, receipts and orders for that owner. Stock already in the building stays.
 - An **item** has a unit of measure, pallet quantity, optional GTIN / barcodes, and length, width, height and weight of the stored unit (one pallet). Remove is refused once the item has stock, an order or a holder line; archive it instead.
 - A **location** can be a zone, aisle, rack, level, bin, mezzanine pick face, block lane, or a **virtual** location. Virtual roles are consolidation (`CONSO00`, the `conso00` example) and staging (`STAGE01`). Capacity is height, width, depth (millimetres) and maximum weight (kilograms). Footprint may rotate; height may not. Missing numbers are not treated as zero. Codes are stored in uppercase.
 - A **license plate** is the holder. The series are `PAL` (full pallet), `MASTER` (the parent label), `ST` (stock), `INB` (inbound) and `OUT` (outbound). The id is the prefix plus a zero-padded counter, default `PAL0000001`. Each warehouse keeps its own counters. A counter only moves forward, so a number stays retired once it has been issued. ST, INB and OUT track lower-value quantities and work with high-value plates off. A received full pallet is issued both a PAL and a MASTER when high-value plates are on, with that PAL under the MASTER.
@@ -106,7 +107,7 @@ An administrator edits a role under **Roles**. The last active administrator can
 
 ## Still not in this version
 
-- The GitHub Pages build does not check passwords. `app.html` there is a labelled demo with a role picker.
+- The GitHub Pages build does not check passwords. `app.html` there runs in the browser with a role picker, on an empty building.
 - No password-reset email. The administrator hands over the temporary password.
 - No ERP or EDI connection. Orders and stock still come in through the API or CSV.
 - Real scanners and printers are the wedge and the ZPL transport. There is no DataWedge installer and no USB claim. Without them, the camera scans in Chrome and Edge, and label sheets print on A4 or Letter stickers or a small label printer (see HARDWARE.md).

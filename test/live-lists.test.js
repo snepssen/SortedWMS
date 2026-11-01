@@ -15,7 +15,7 @@ function same(w, label) {
 
 test('the in-memory lists of what is still in play match the data through shipping, deleting, transfers and a restart', () => {
   const w = new Warehouse({ aisles: [1], bays: 3, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 10, 4, 8) });
-  w.addItem({ itemNo: 'BOX', name: 'Box', category: 'YOG', palletQty: 10, uom: 'piece' });
+  w.addItem({ itemNo: 'BOX', name: 'Box', category: 'GEN', palletQty: 10, uom: 'piece' });
   w.generateGuided({ sections: { count: 1, name: 'Shelf' }, layouts: [{ type: 'shelf', positions: { count: 2, name: 'Bin 1' } }] });
   same(w, 'empty');
   const codes = ['01-01-0-10', '01-01-1-10', '01-02-0-10', '01-02-1-10', '01-03-0-10'];

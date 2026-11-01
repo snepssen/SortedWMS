@@ -9,8 +9,8 @@ function setup(config = {}) {
   let t = T0;
   const wh = new Warehouse({ aisles: [31, 32, 33, 34], bays: 6, levels: 3, clock: () => t, config: { groundNextPerItem: 0, checkAfterPick: false, ...config } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96 });
-  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda', category: 'CHE', palletQty: 80 });
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96 });
+  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Soil', category: 'BULK', palletQty: 80 });
   wh.setAisleCell(33, 'B'); wh.setAisleCell(34, 'B');
   return { wh, tick: (min) => { t += min * 60000; } };
 }
@@ -20,12 +20,12 @@ test('template by range in the proposed naming: AA to AD is cell A, BA to BD is 
   const a = wh.selectLocations('AA01A1', 'AD03C3');
   assert.equal(a.length, 2 * 6 * 3 * 3, 'aisles 31–32, both sides, 3 bays per row, 3 levels, 3 positions');
   assert.ok(a.every((c) => ['31', '32'].includes(c.slice(0, 2))));
-  const r = wh.applyTemplate(a, 'CHE');
+  const r = wh.applyTemplate(a, 'BULK');
   assert.equal(r.changed, a.length);
   const b = wh.selectLocations('BA', 'BD'); // partial codes: whole racks
-  wh.applyTemplate(b, 'YOG');
-  assert.equal(wh.locations['33-01-0-10'].category, 'YOG');
-  assert.equal(wh.locations['31-01-0-10'].category, 'CHE');
+  wh.applyTemplate(b, 'GEN');
+  assert.equal(wh.locations['33-01-0-10'].category, 'GEN');
+  assert.equal(wh.locations['31-01-0-10'].category, 'BULK');
 });
 
 test('template selection works on one level or one bay range too', () => {
@@ -37,17 +37,17 @@ test('template selection works on one level or one bay range too', () => {
 
 test('template preview says how many pallets would end up in the wrong category', () => {
   const { wh } = setup();
-  wh.applyTemplate(wh.selectLocations('AA', 'AD'), 'YOG');
+  wh.applyTemplate(wh.selectLocations('AA', 'AD'), 'GEN');
   wh.stockPallet('31-01-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01' });
   const sel = wh.selectLocations('AA01A1', 'AA01A1');
-  const pv = wh.previewTemplate(sel, 'CHE');
+  const pv = wh.previewTemplate(sel, 'BULK');
   assert.deepEqual([pv.locations, pv.changed, pv.palletsToMove], [1, 1, 1]);
-  assert.equal(wh.applyTemplate(sel, 'CHE').moves, 1, 'relocation job created');
+  assert.equal(wh.applyTemplate(sel, 'BULK').moves, 1, 'relocation job created');
 });
 
 test('transfer mode: scan pallet, scan location — recorded as it is', () => {
   const { wh } = setup();
-  wh.applyTemplate(wh.selectLocations('AA', 'BD'), 'YOG');
+  wh.applyTemplate(wh.selectLocations('AA', 'BD'), 'GEN');
   const p = wh.stockPallet('31-01-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01' });
   wh.addTruck('RT1', { mode: 'transfer' });
   assert.match(wh.scan('RT1', p.sscc).text, /Scan the location/);
@@ -96,14 +96,14 @@ test('manual pick: scan an order, get only its picks', () => {
 
 test('manual put-away: scan a pallet at the dock, get its slot', () => {
   const { wh } = setup();
-  wh.applyTemplate(wh.selectLocations('AA', 'BD'), 'YOG');
+  wh.applyTemplate(wh.selectLocations('AA', 'BD'), 'GEN');
   const p = wh.stockPallet('DOCK-IN', { itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01' });
   wh.addTruck('RT1', { mode: 'putaway' });
   const r = wh.scan('RT1', p.sscc);
   assert.match(r.text, /Put it away at/);
   const task = wh.tasks[wh.trucks.RT1.taskId];
   assert.ok(wh.scan('RT1', task.to).ok);
-  assert.equal(wh.locations[p.loc].category, 'YOG');
+  assert.equal(wh.locations[p.loc].category, 'GEN');
 });
 
 test('find mode answers what is where, and changes nothing', () => {
@@ -116,14 +116,14 @@ test('find mode answers what is where, and changes nothing', () => {
 
 test('trace a batch: received from, in stock, shipped to whom', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'YOG', pallets: 2, at: 'desk' });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'GEN', pallets: 2, at: 'desk' });
   wh.addDesk('DESK1');
   wh.deskStart('DESK1');
   const s1 = GS1.makeSscc(3, '8712345', 1);
   const s2 = GS1.makeSscc(3, '8712345', 2);
   for (const s of [s1, s2]) wh.scan('DESK1', `(00)${s}(02)${GS1.gtin14(wh.items.Y1.gtin)}(15)261101(10)LOT7(37)96`);
   wh.transferPallet(s1, 'OUT-01');
-  wh.addOrder({ id: 'O1', customer: 'Corner Shop', lane: 'OUT-01', lines: [] });
+  wh.addOrder({ id: 'O1', customer: 'Corner Builders', lane: 'OUT-01', lines: [] });
   const o = wh.orders.O1;
   o.lines.push({ itemNo: 'Y1', pallets: 1, allocated: [s1], short: 0 });
   wh.pallets[s1].orderId = 'O1';
@@ -132,7 +132,7 @@ test('trace a batch: received from, in stock, shipped to whom', () => {
   wh.shipOrder('O1');
   const tr = wh.trace('lot7');
   assert.deepEqual(tr.received.map((d) => d.id), ['D1']);
-  assert.deepEqual(tr.customers, ['Corner Shop']);
+  assert.deepEqual(tr.customers, ['Corner Builders']);
   assert.equal(tr.inStock.length, 1);
 });
 
@@ -150,5 +150,5 @@ test('categories can be set for the site', () => {
   const wh = new Warehouse({ aisles: 1, bays: 2, levels: 1, categories: { FRZ: 'Frozen' }, clock: () => T0 });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
   wh.addItem({ itemNo: 'F1', name: 'Ice', category: 'FRZ', palletQty: 10 });
-  assert.throws(() => wh.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10 }), /Unknown category/);
+  assert.throws(() => wh.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 10 }), /Unknown category/);
 });

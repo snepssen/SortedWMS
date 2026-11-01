@@ -10,8 +10,8 @@ const { createAuth } = require('../server/auth');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 10, 2, 9) });
-  w.addItem({ itemNo: 'DRILL', name: 'Cordless drill', category: 'YOG', palletQty: 40, uom: 'piece' });
-  w.addItem({ itemNo: 'BIT', name: 'Drill bit', category: 'YOG', palletQty: 500, uom: 'piece' });
+  w.addItem({ itemNo: 'DRILL', name: 'Cordless drill', category: 'GEN', palletQty: 40, uom: 'piece' });
+  w.addItem({ itemNo: 'BIT', name: 'Drill bit', category: 'GEN', palletQty: 500, uom: 'piece' });
   w.setItemSerials('DRILL', true);
   w.generateGuided({ sections: { count: 1, name: 'Tools' }, layouts: [{ type: 'shelf', positions: { count: 3, name: 'Bin 1' } }] });
   return w;

@@ -31,7 +31,7 @@ test('the three numbering examples and a skipped-level home plan', () => {
   assert.throws(() => expand({ separator: '-', levels: [] }), /at least one level/);
 });
 
-test('presets turn category features on or off without being dairy-only', () => {
+test('presets turn category features on or off without being paints-only', () => {
   const ids = PRESETS.map((p) => p.id);
   assert.deepEqual(ids, ['chilled-dc', 'high-value', 'home-garage', 'small-maker']);
   const home = PRESETS.find((p) => p.id === 'home-garage');
@@ -48,7 +48,7 @@ test('presets turn category features on or off without being dairy-only', () => 
 
 test('feature flags gate expiry, FEFO and high-value plates', () => {
   const wh = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], clock: () => Date.UTC(2026, 9, 8) });
-  wh.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10, minShipDays: 10 });
+  wh.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 10, minShipDays: 10 });
   const old = wh.stockPallet('DOCK-IN', { itemNo: 'Y1', batch: 'A', expiry: '2020-01-01', receivedAt: 1 });
   const fresh = wh.stockPallet('01-01-0-10', { itemNo: 'Y1', batch: 'B', expiry: '2027-06-01', receivedAt: 2 });
   assert.equal(wh.feature('lotExpiry'), false);
@@ -66,7 +66,7 @@ test('feature flags gate expiry, FEFO and high-value plates', () => {
 });
 
 test('the setup wizard is admin-only and can be run again', async () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureDemoUsers();
@@ -170,7 +170,7 @@ test('guided sections can mix racks and shelves, and a later section copies the 
 });
 
 test('guided locations are created through the API as rack slots and shelf bins', async () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureDemoUsers();

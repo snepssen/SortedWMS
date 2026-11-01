@@ -1,87 +1,89 @@
 #!/usr/bin/env node
 /*
- * Build the demo as a standalone site for GitHub Pages.
- *
- * index.html is written as a page fragment (title, styles, body content)
- * because the artifact viewer adds the document wrapper. Pages serves files
- * as they are, so this adds the doctype, charset and mobile viewport, and
- * copies the scripts next to it.
- *
- * The WMS screens (handheld, office) go along too, with the WMS running in
- * the browser (server/local.js) since Pages has no server: wms.html shows
- * both side by side. Output: _site/
+ * Build the GitHub Pages site: a short project page, and the real WMS screens
+ * with the WMS running in the browser (server/local.js), since Pages has no
+ * server. The in-browser warehouse starts as an empty building: run the setup
+ * wizard, then add items one by one. Changes stay in that browser.
+ * Output: _site/
  */
 const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
 const out = path.join(root, '_site');
-const page = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const REPO = 'https://github.com/snepssen/SortedWMS';
 
-// Head = everything up to the end of the first <style> block; the rest is the body.
-const cut = page.indexOf('</style>');
-if (cut === -1) throw new Error('index.html: expected a <style> block');
-// The page carries its own charset and viewport tags so it also works served raw;
-// the wrapper adds them below, so drop the page's copies.
-const head = page.slice(0, cut + '</style>'.length).replace(/<meta (charset|name="viewport")[^>]*>\s*/g, '');
-// A way from the simulated shift to the real screens and the SOP, which only exist on Pages.
-const cards = [
-  '<a class="start-card" href="wms.html"><b>Handheld + office →</b><span>Try the real screens: handheld and office side by side. A button scans whatever the handheld asks for.</span></a>',
-  '<a class="start-card" href="sop.html"><b>How the floor works →</b><span>Demonstration procedures by role: driver, coordinator, station, desk and loader.</span></a>',
-  '<a class="start-card" href="demo.html"><b>Presenter guide →</b><span>A short coordinator demonstration, optional scenarios, and the scope of this prototype.</span></a>',
-].join('\n    ');
-const marker = /<!-- pages-cards:[^>]*-->/;
-if (!marker.test(page)) throw new Error('index.html: expected the pages-cards marker');
-const body = page.slice(cut + '</style>'.length).replace(marker, cards);
-
-const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="SortedWMS demo: a simulated reach-truck shift with Auto dispatch, FEFO picking, receiving, check & label and Auto-Shift.">
-<style>
-:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-body { margin: 0; }
-img { max-width: 100%; }
-</style>
-${head.trim()}
-</head>
-<body>
-${body.trim()}
-</body>
-</html>
-`;
+const SRC = ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'workload.js', 'drivers.js'];
+// The WMS screens with the in-browser backend loaded before their own script.
+const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/api.js', 'server/local.js'];
+const SCREENS = ['app.html', 'setup.html', 'bins.html', 'handheld.html', 'admin.html', 'loading.html', 'station.html', 'desk.html'];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
-fs.writeFileSync(path.join(out, 'index.html'), html);
-for (const f of ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'walkthrough.js', 'workload.js', 'drivers.js']) {
-  fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
-}
-fs.copyFileSync(path.join(root, 'walkthrough.html'), path.join(out, 'walkthrough.html'));
+fs.mkdirSync(path.join(out, 'server'), { recursive: true });
+for (const f of SRC) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
+for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.blank.json')) fs.copyFileSync(path.join(root, f), path.join(out, f));
 fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out, 'card.html')); // needs only src/
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'camera.js')); // scanning with the camera
 
-// The WMS screens with the in-browser backend loaded before their own script.
-const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
-fs.mkdirSync(path.join(out, 'server'), { recursive: true });
-for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.example.json')) {
-  fs.copyFileSync(path.join(root, f), path.join(out, f));
-}
 const tags = LOCAL.map((f) => `<script src="${f}"></script>`).join('\n');
-for (const [from, to] of [['handheld.html', 'handheld.html'], ['bins.html', 'bins.html'], ['admin.html', 'admin.html'], ['loading.html', 'loading.html'], ['try.html', 'wms.html'], ['kit.html', 'kit.html'], ['station.html', 'station.html'], ['desk.html', 'desk.html'], ['app.html', 'app.html'], ['login.html', 'login.html']]) {
-  const src = fs.readFileSync(path.join(root, 'server', 'public', from), 'utf8');
+for (const name of SCREENS) {
+  const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="src/');
   const i = src.indexOf('<script>');
-  if (i === -1) throw new Error(`${from}: expected a <script> block`);
-  const boot = to === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${tags}\n` : `${tags}\n`;
-  fs.writeFileSync(path.join(out, to), `${src.slice(0, i)}${boot}${src.slice(i)}`);
+  if (i === -1) throw new Error(`${name}: expected a <script> block`);
+  const boot = name === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${tags}\n` : `${tags}\n`;
+  fs.writeFileSync(path.join(out, name), `${src.slice(0, i)}${boot}${src.slice(i)}`);
 }
 
-// The SOP manual, rendered from docs/SOP.md and docs/WORKFLOW-REVIEW.md.
-fs.writeFileSync(path.join(out, 'sop.html'), require('./sop-page').build(root));
-fs.writeFileSync(path.join(out, 'demo.html'), require('./sop-page').buildDemo(root));
+fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="SortedWMS: an open-source warehouse management system for any warehouse, from a wall of bins to a reach-truck distribution centre.">
+<title>SortedWMS</title>
+<style>
+  :root { --bg: #f6f7f9; --ink: #17202a; --dim: #5d6b76; --card: #fff; --line: #dde3e8; --accent: #2f5fb3; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #11161c; --ink: #e8edf2; --dim: #9aa8b4; --card: #19212a; --line: #2a3540; --accent: #7aa7f0; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 19px; margin: 28px 0 8px; }
+  p, li { color: var(--ink); } .dim { color: var(--dim); }
+  a { color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; text-decoration: none; color: var(--ink); }
+  .card b { display: block; color: var(--accent); margin-bottom: 4px; }
+  code, pre { font-family: ui-monospace, monospace; font-size: 14px; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SortedWMS</h1>
+  <p class="dim">An open-source warehouse management system for any warehouse: a wall of bins at home, a small maker, a 3PL with clients and invoices, or a reach-truck distribution centre.</p>
+
+  <div class="cards">
+    <a class="card" href="app.html"><b>Try it in your browser →</b>The real screens, running in this browser. It starts as an empty building: open the setup wizard, then add your items one by one. Nothing leaves your browser.</a>
+    <a class="card" href="${REPO}"><b>Source on GitHub →</b>MIT licensed. Node 22 and nothing else: no packages, no Docker.</a>
+  </div>
+
+  <h2>Run it yourself</h2>
+<pre>git clone ${REPO}.git
+cd SortedWMS
+./start.sh                 # your own warehouse
+./start.sh sample home     # or a sample: home, maker, 3pl</pre>
+  <p>Then open <code>http://localhost:8080/login</code>. Everything is in the <a href="${REPO}#readme">README</a>.</p>
+
+  <h2>Tools</h2>
+  <ul>
+    <li><a href="keys.html">Scanner key test</a>: what a new scanner sends for each key and each scan.</li>
+    <li><a href="card.html">Command card</a>: barcodes for every handheld button, to print and laminate.</li>
+  </ul>
+</main>
+</body>
+</html>
+`);
 
 fs.writeFileSync(path.join(out, '.nojekyll'), ''); // serve files as-is
 console.log(`Built ${path.relative(root, out)}/ (${fs.readdirSync(out).length} entries)`);

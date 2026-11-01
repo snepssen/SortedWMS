@@ -9,11 +9,11 @@ const { createServer } = require('../server/index');
 const { Printers } = require('../server/print');
 const { permissionFor, DEFAULTS } = require('../server/permissions');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], outLanes: 1 });
-  w.addItem({ itemNo: 'SKU1', name: 'Box', category: 'YOG', palletQty: 1, weightKg: 5, lengthMm: 400, widthMm: 300, heightMm: 200 });
+  w.addItem({ itemNo: 'SKU1', name: 'Box', category: 'GEN', palletQty: 1, weightKg: 5, lengthMm: 400, widthMm: 300, heightMm: 200 });
   return w;
 }
 
@@ -38,12 +38,12 @@ test('a profile bulk-creates a range and put-away refuses or warns when capacity
   assert.match(w.events[0].text, /Warning: SH-03-01-A holds 1/);
 
   w.bulkLocations({ profileId: 'frozen', aisleFrom: '09', aisleTo: '09', bayFrom: '01', bayTo: '01', heightFrom: 'A', heightTo: 'A' });
-  const heavy = w.addItem({ itemNo: 'HEAVY', name: 'Heavy', category: 'YOG', palletQty: 1, weightKg: 5000, lengthMm: 400, widthMm: 300, heightMm: 200 });
+  const heavy = w.addItem({ itemNo: 'HEAVY', name: 'Heavy', category: 'GEN', palletQty: 1, weightKg: 5000, lengthMm: 400, widthMm: 300, heightMm: 200 });
   assert.throws(() => w.stockPallet('09-01-A-01', { itemNo: heavy.itemNo, batch: 'H', expiry: '2027-01-01', qty: 1 }), /does not fit/);
   w.saveLocationProfile({ name: 'Lane', storageType: 'block', stackHeight: 2, footprintLengthMm: 1200, footprintWidthMm: 800, capacityMode: 'refuse' });
   w.bulkLocations({ profileId: 'lane', aisleFrom: '04', aisleTo: '04', bayFrom: '01', bayTo: '01', heightFrom: 'A', heightTo: 'A' });
   assert.equal(w.locations['BLK-04-01-A'].capacity.stackHeight, 2);
-  w.addItem({ itemNo: 'WIDE', name: 'Wide', category: 'YOG', palletQty: 1, lengthMm: 2000, widthMm: 2000, heightMm: 100, weightKg: 1 });
+  w.addItem({ itemNo: 'WIDE', name: 'Wide', category: 'GEN', palletQty: 1, lengthMm: 2000, widthMm: 2000, heightMm: 100, weightKg: 1 });
   assert.throws(() => w.stockPallet('BLK-04-01-A', { itemNo: 'WIDE', batch: 'W', expiry: '2027-01-01', qty: 1 }), /footprint/);
 });
 

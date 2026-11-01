@@ -102,6 +102,16 @@ async function main() {
     }
   }, { count: orderCount });
 
+  const importCount = n(1000);
+  time(`${importCount} more piece orders as one CSV import`, () => {
+    const rows = [];
+    for (let i = 1; i <= importCount; i++) {
+      for (const itemNo of new Set(Array.from({ length: 1 + Math.floor(rand() * 3) }, () => pick(items)))) rows.push({ orderId: `IM${i}`, customer: `Shop ${i % 90}`, lane: 'OUT-01', itemNo, units: pick([1, 2, 6, 12]) });
+    }
+    const out = x('importOrders', { rows, planOnce: true });
+    if (out.errors.length) throw new Error(out.errors[0]);
+  }, { count: importCount });
+
   // What people wait on, read straight from the engine.
   time('queue: plan every order (waveQueue)', () => w().waveQueue());
   time('availability: every item', () => w().availability());

@@ -11,7 +11,7 @@ function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
   w.setFeatures({ lotExpiry: true, fefo: true });
   w.addClient({ id: 'CL-1', name: 'North Shop' });
-  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1', lengthMm: 1000, widthMm: 800, heightMm: 500 });
+  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'GEN', palletQty: 10, clientId: 'CL-1', lengthMm: 1000, widthMm: 800, heightMm: 500 });
   w.createLocation({ code: 'MEZZ-A1', kind: 'mezzanine', name: 'Mezzanine' });
   return w;
 }
@@ -124,7 +124,7 @@ test('every mutating API route names a permission, and a backup restores the jou
   assert.equal(permissionFor('POST', '/api/orders/MIX/shipment/scan').permission, 'outbound.write');
   assert.equal(permissionFor('GET', '/api/orders/MIX/delivery-note').permission, 'orders.read');
 
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureAdmin({ username: 'admin', password: 'sorted-admin', displayName: 'Administrator' });

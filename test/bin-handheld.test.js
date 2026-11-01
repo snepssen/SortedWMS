@@ -11,8 +11,8 @@ const { loadSample } = require('../server/samples');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 1, uom: 'piece' });
-  w.addItem({ itemNo: 'AA', name: 'AA battery', category: 'YOG', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'AA', name: 'AA battery', category: 'GEN', palletQty: 1, uom: 'piece' });
   w.setItemUnits('M3', { packs: [{ unit: 'box', per: 100 }], unitWeightKg: 0.01 });
   w.generateGuided({ sections: { count: 1, name: 'Wall' }, layouts: [{ type: 'shelf', positions: { count: 4, name: 'Bin 1' } }] });
   return w;

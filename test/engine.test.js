@@ -6,19 +6,19 @@ const { Warehouse } = require('../src/engine');
 const MIN = 60000;
 const T0 = Date.UTC(2026, 9, 7, 6, 0); // 7 Oct 2026
 
-// 4 aisles × 6 bays × 3 levels × 3 positions. Aisles 01–02 yoghurt, 03–04 cheese.
+// 4 aisles × 6 bays × 3 levels × 3 positions. Aisles 01–02 paint, 03–04 garden stock.
 function setup(config = {}) {
   let t = T0;
   const wh = new Warehouse({ aisles: 4, bays: 6, levels: 3, positions: 3, outLanes: 2, clock: () => t, config: { groundNextPerItem: 0, ...config } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Greek yoghurt', category: 'YOG', palletQty: 96, minShipDays: 10 });
-  wh.addItem({ itemNo: 'Y2', gtin: GS1.makeGtin13('20000', 2), name: 'Vanilla quark', category: 'YOG', palletQty: 120, minShipDays: 10 });
-  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Young gouda', category: 'CHE', palletQty: 80, minShipDays: 30 });
-  wh.addItem({ itemNo: 'P1', gtin: GS1.makeGtin13('20000', 4), name: 'Protein shake', category: 'PRO', palletQty: 60, minShipDays: 60 });
-  wh.setLocationCategory({ aisle: 1 }, 'YOG');
-  wh.setLocationCategory({ aisle: 2 }, 'YOG');
-  wh.setLocationCategory({ aisle: 3 }, 'CHE');
-  wh.setLocationCategory({ aisle: 4 }, 'CHE');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Wall paint', category: 'GEN', palletQty: 96, minShipDays: 10 });
+  wh.addItem({ itemNo: 'Y2', gtin: GS1.makeGtin13('20000', 2), name: 'Primer', category: 'GEN', palletQty: 120, minShipDays: 10 });
+  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Potting soil', category: 'BULK', palletQty: 80, minShipDays: 30 });
+  wh.addItem({ itemNo: 'P1', gtin: GS1.makeGtin13('20000', 4), name: 'Wood glue', category: 'FAST', palletQty: 60, minShipDays: 60 });
+  wh.setLocationCategory({ aisle: 1 }, 'GEN');
+  wh.setLocationCategory({ aisle: 2 }, 'GEN');
+  wh.setLocationCategory({ aisle: 3 }, 'BULK');
+  wh.setLocationCategory({ aisle: 4 }, 'BULK');
   const advance = (mins) => { t += mins * MIN; wh.dispatch(); };
   return { wh, advance };
 }
@@ -39,27 +39,27 @@ test('operators only get jobs in their own categories', () => {
   const { wh } = setup();
   stock(wh, '03-01-1-10', 'C1', 'B1', '2027-01-10');
   wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'C1', pallets: 1 }] });
-  wh.addTruck('YOG-1', { categories: ['YOG'] });
-  assert.equal(wh.trucks['YOG-1'].taskId, null);
-  wh.addTruck('CHE-1', { categories: ['CHE'] });
-  assert.equal(wh.tasks[wh.trucks['CHE-1'].taskId].type, 'PICK');
+  wh.addTruck('GEN-1', { categories: ['GEN'] });
+  assert.equal(wh.trucks['GEN-1'].taskId, null);
+  wh.addTruck('BULK-1', { categories: ['BULK'] });
+  assert.equal(wh.tasks[wh.trucks['BULK-1'].taskId].type, 'PICK');
 });
 
 test('categories never mix: put-away only goes to a matching location', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'CHE', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'BULK', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = wh.nextSscc();
   wh.scan('RT1', `(00)${sscc}(02)${GS1.gtin14(wh.items.C1.gtin)}(15)270301(10)B7(37)80`);
   const put = wh.tasks[wh.trucks.RT1.taskId];
   assert.equal(put.type, 'PUTAWAY');
   complete(wh, 'RT1');
-  assert.equal(wh.locations[wh.pallets[sscc].loc].category, 'CHE');
+  assert.equal(wh.locations[wh.pallets[sscc].loc].category, 'BULK');
 });
 
 test('receiving asks for batch, expiry, item, SSCC, then quantity — no Enter, one tap', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 2 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 2 });
   wh.addTruck('RT1');
   assert.equal(wh.instruction('RT1').field, 'batch');
   assert.ok(wh.scan('RT1', 'L2614').ok);
@@ -82,7 +82,7 @@ test('receiving asks for batch, expiry, item, SSCC, then quantity — no Enter, 
 
 test('a GS1 pallet label with a count registers the whole pallet in one scan', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = wh.nextSscc();
   const r = wh.scan('RT1', `]C100${sscc}02${GS1.gtin14(wh.items.Y2.gtin)}15261101${'10'}Q88${GS1.GS}37120`);
@@ -95,7 +95,7 @@ test('a GS1 pallet label with a count registers the whole pallet in one scan', (
 
 test('stock under the minimum days to ship is flagged at receiving and put away high', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = wh.nextSscc();
   const r = wh.scan('RT1', `(00)${sscc}(02)${GS1.gtin14(wh.items.Y1.gtin)}(15)261012(10)OLD1(37)96`);
@@ -168,7 +168,7 @@ test('missing pallet at pick-up: next pallet by FEFO is allocated straight away'
 test('check & label: scan the pallet, label prints, scan the label, order ready', () => {
   const { wh } = setup();
   const p = stock(wh, '01-01-0-10', 'Y1', 'B1', '2026-10-25');
-  wh.addOrder({ id: 'O1', customer: 'Corner Shop', lane: 'OUT-02', lines: [{ itemNo: 'Y1', pallets: 1 }] });
+  wh.addOrder({ id: 'O1', customer: 'Corner Builders', lane: 'OUT-02', lines: [{ itemNo: 'Y1', pallets: 1 }] });
   wh.addTruck('RT1');
   complete(wh, 'RT1');
   const check = wh.tasks[wh.trucks.RT1.taskId];
@@ -177,7 +177,7 @@ test('check & label: scan the pallet, label prints, scan the label, order ready'
   assert.ok(wh.scan('RT1', p.sscc).ok);
   const job = wh.printQueue[0];
   assert.equal(job.printer, 'LP-OUT-02');
-  assert.match(job.zpl, /^\^XA[\s\S]*Corner Shop[\s\S]*>;>800\d{18}[\s\S]*\^XZ$/);
+  assert.match(job.zpl, /^\^XA[\s\S]*Corner Builders[\s\S]*>;>800\d{18}[\s\S]*\^XZ$/);
   assert.match(wh.scan('RT1', p.sscc).text, /printing again/, 'the pallet again reprints the label; it does not finish the check');
   assert.equal(wh.orders.O1.status === 'ready', false);
   assert.ok(wh.scan('RT1', check.labelCode).ok);
@@ -203,14 +203,14 @@ test('every pallet job is two scans, and the next job arrives without any input'
 test('template change: pallets now in the wrong category get relocation jobs', () => {
   const { wh } = setup();
   const y = stock(wh, '02-05-1-10', 'Y1', 'B1', '2026-11-01');
-  const { moves } = wh.setLocationCategory({ aisle: 2, bayFrom: 5, bayTo: 6 }, 'PRO');
+  const { moves } = wh.setLocationCategory({ aisle: 2, bayFrom: 5, bayTo: 6 }, 'FAST');
   assert.equal(moves, 1);
   wh.addTruck('RT1');
   const task = wh.tasks[wh.trucks.RT1.taskId];
   assert.equal(task.reason, 'template');
   complete(wh, 'RT1');
   const loc = wh.locations[y.loc];
-  assert.equal(loc.category, 'YOG');
+  assert.equal(loc.category, 'GEN');
 });
 
 test('the next pallet to ship is brought down to ground level', () => {
@@ -229,7 +229,7 @@ test('the next pallet to ship is brought down to ground level', () => {
 test('put-away places a pallet next to the same item, batch and expiry', () => {
   const { wh } = setup();
   stock(wh, '02-04-1-10', 'Y1', 'B9', '2026-11-05');
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = wh.nextSscc();
   wh.scan('RT1', `(00)${sscc}(02)${GS1.gtin14(wh.items.Y1.gtin)}(15)261105(10)B9(37)96`);
@@ -275,16 +275,16 @@ test('Auto-Shift jobs never jump ahead of picks just by waiting', () => {
 
 test('a driver can start an Auto-Shift, but only in their own categories', () => {
   const { wh } = setup();
-  const cheese = stock(wh, '03-02-1-10', 'C1', 'K1', '2027-01-01');
-  const yog = stock(wh, '01-02-1-10', 'Y1', 'B1', '2026-11-01');
-  wh.addTruck('RT1', { categories: ['YOG'] });
-  wh.scan('RT1', cheese.sscc); // held: a yoghurt driver may still correct where it stands
-  assert.match(wh.scan('RT1', cheese.sscc).text, /not one of your categories/);
-  wh.scan('RT1', yog.sscc); // first scan holds it; the same pallet again moves it
-  const r = wh.scan('RT1', yog.sscc);
+  const garden = stock(wh, '03-02-1-10', 'C1', 'K1', '2027-01-01');
+  const paint = stock(wh, '01-02-1-10', 'Y1', 'B1', '2026-11-01');
+  wh.addTruck('RT1', { categories: ['GEN'] });
+  wh.scan('RT1', garden.sscc); // held: a paint driver may still correct where it stands
+  assert.match(wh.scan('RT1', garden.sscc).text, /not one of your categories/);
+  wh.scan('RT1', paint.sscc); // first scan holds it; the same pallet again moves it
+  const r = wh.scan('RT1', paint.sscc);
   assert.ok(r.ok, r.text);
   const task = wh.tasks[wh.trucks.RT1.taskId];
-  assert.equal(wh.locations[task.to].category, 'YOG');
+  assert.equal(wh.locations[task.to].category, 'GEN');
 });
 
 test('real location codes: aisle 38, odd bays one side, even the other, positions 10/40/70', () => {
@@ -312,9 +312,9 @@ test('one-way aisles change which job is nearest, and the handheld says where to
   let t = T0;
   const wh = new Warehouse({ aisles: [31, 32], bays: 20, levels: 5, clock: () => t, config: { oneWay: true, groundNextPerItem: 0, checkAfterPick: false } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 96 });
-  wh.setLocationCategory({ aisle: 31 }, 'YOG');
-  wh.setLocationCategory({ aisle: 32 }, 'YOG');
+  wh.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 96 });
+  wh.setLocationCategory({ aisle: 31 }, 'GEN');
+  wh.setLocationCategory({ aisle: 32 }, 'GEN');
   const behind = wh.stockPallet('31-03-0-10', { itemNo: 'Y1', batch: 'A', expiry: '2026-11-01' });
   const ahead = wh.stockPallet('31-17-0-10', { itemNo: 'Y1', batch: 'B', expiry: '2026-11-01' });
   wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 2 }] });
@@ -340,7 +340,7 @@ test('manager minimum days to ship: short pallets are skipped, and raising it sw
 
 test('3-barcode supplier label: scan all three in any order, no typing', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = GS1.makeSscc(3, '8712345', 991);
   assert.ok(wh.scan('RT1', `15261031${'10'}L77`).ok, 'middle: best-before + batch');
@@ -355,7 +355,7 @@ test('with a delivery list, the bottom barcode (SSCC) alone registers the pallet
   const { wh } = setup();
   const s1 = GS1.makeSscc(3, '8712345', 1);
   const s2 = GS1.makeSscc(3, '8712345', 2);
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', list: [
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', list: [
     { sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 },
     { sscc: s2, itemNo: 'Y2', batch: 'Q1', expiry: '2026-11-03', qty: 120 },
   ] });
@@ -368,7 +368,7 @@ test('with a delivery list, the bottom barcode (SSCC) alone registers the pallet
 test('label and delivery list disagreeing is caught', () => {
   const { wh } = setup();
   const s1 = GS1.makeSscc(3, '8712345', 5);
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
   wh.addTruck('RT1');
   wh.scan('RT1', `15261101${'10'}WRONG`);
   const r = wh.scan('RT1', `00${s1}`);
@@ -423,8 +423,8 @@ test('either label scans: racks can be relabelled one aisle at a time', () => {
 
 test('template by side and bays along the row', () => {
   const { wh } = setup();
-  const { changed } = wh.setLocationCategory({ aisle: 2, side: 'even', rowFrom: 2, rowTo: 3 }, 'PRO');
+  const { changed } = wh.setLocationCategory({ aisle: 2, side: 'even', rowFrom: 2, rowTo: 3 }, 'FAST');
   assert.equal(changed, 2 * 3 * 3, '2 bays × 3 levels × 3 positions');
-  assert.equal(wh.locations['02-04-0-10'].category, 'PRO');
-  assert.equal(wh.locations['02-03-0-10'].category, 'YOG', 'odd side untouched');
+  assert.equal(wh.locations['02-04-0-10'].category, 'FAST');
+  assert.equal(wh.locations['02-03-0-10'].category, 'GEN', 'odd side untouched');
 });

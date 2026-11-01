@@ -7,9 +7,9 @@ const GS1 = require('../src/gs1');
 const { Store } = require('../server/store');
 const { Printers } = require('../server/print');
 const { createApi } = require('../server/api');
-const { seedDemo } = require('../server/seed');
+const { seedDemo } = require('./fixtures/seed');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function setup() {
   let t = Date.UTC(2026, 9, 8, 6);
@@ -27,15 +27,15 @@ function setup() {
 test('orders import from a spreadsheet: rows with one order number make one order with several lines', async () => {
   const { store, call } = setup();
   const r = await call('POST', '/api/import/orders', { rows: [
-    { orderId: 4601, customer: 'Fresh Market', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
-    { orderId: 4601, customer: 'Fresh Market', lane: 'OUT-03', itemNo: 'Y1002', pallets: 1, verifyLoading: '1' },
-    { orderId: 4602, customer: 'City Deli', lane: 'OUT-04', itemNo: 'C2001', pallets: 1, process: 'CHANGE' },
-    { orderId: 4603, customer: 'Nobody', lane: 'NOT-A-LANE', itemNo: 'Y1001', pallets: 1 },
+    { orderId: 4601, customer: 'Harbour Hardware', lane: 'OUT-03', itemNo: 'W1001', pallets: 1 },
+    { orderId: 4601, customer: 'Harbour Hardware', lane: 'OUT-03', itemNo: 'W1002', pallets: 1, verifyLoading: '1' },
+    { orderId: 4602, customer: 'Main Street DIY', lane: 'OUT-04', itemNo: 'G2001', pallets: 1, process: 'CHANGE' },
+    { orderId: 4603, customer: 'Nobody', lane: 'NOT-A-LANE', itemNo: 'W1001', pallets: 1 },
   ] });
   assert.equal(r.added, 2);
   assert.equal(r.errors.length, 1);
   assert.match(r.errors[0], /^4603:/);
-  assert.deepEqual(store.wh.orders['4601'].lines.map((l) => l.itemNo), ['Y1001', 'Y1002']);
+  assert.deepEqual(store.wh.orders['4601'].lines.map((l) => l.itemNo), ['W1001', 'W1002']);
   assert.equal(store.wh.orders['4601'].verifyLoading, true, 'verification on any line applies to the whole order');
   assert.equal(store.wh.orders['4602'].lines[0].process, 'CHANGE');
 });
@@ -45,7 +45,7 @@ test('a rejected imported order leaves no partial order, pick or allocation', as
   try {
     const before = JSON.stringify(store.wh);
     const r = await call('POST', '/api/import/orders', { rows: [
-      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
+      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'W1001', pallets: 1 },
       { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'NOPE', pallets: 1 },
     ] });
     assert.equal(r.added, 0);
@@ -54,15 +54,15 @@ test('a rejected imported order leaves no partial order, pick or allocation', as
     store.load();
     assert.equal(JSON.stringify(store.wh), before);
     for (const pallets of ['0', '-1', '1.5', 'nope', Infinity]) {
-      const out = await call('POST', '/api/import/orders', { rows: [{ orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets }] });
+      const out = await call('POST', '/api/import/orders', { rows: [{ orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'W1001', pallets }] });
       assert.equal(out.added, 0);
       assert.match(out.errors[0], /whole number above 0/);
       assert.equal(JSON.stringify(store.wh), before);
     }
     const conflict = await call('POST', '/api/import/orders', { rows: [
-      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
-      { orderId: 'BAD', customer: 'Other shop', lane: 'OUT-04', itemNo: 'Y1002', pallets: 1 },
-      { orderId: 'GOOD', customer: 'Shop', lane: 'OUT-03', itemNo: 'Y1001', pallets: 1 },
+      { orderId: 'BAD', customer: 'Shop', lane: 'OUT-03', itemNo: 'W1001', pallets: 1 },
+      { orderId: 'BAD', customer: 'Other shop', lane: 'OUT-04', itemNo: 'W1002', pallets: 1 },
+      { orderId: 'GOOD', customer: 'Shop', lane: 'OUT-03', itemNo: 'W1001', pallets: 1 },
     ] });
     assert.equal(conflict.added, 1);
     assert.match(conflict.errors[0], /Rows disagree/);
@@ -74,10 +74,10 @@ test('a rejected imported order leaves no partial order, pick or allocation', as
 test('a delivery announced with its list is received with one scan per pallet', async () => {
   const { store, call } = setup();
   const s = GS1.makeSscc(3, '8711111', 77);
-  await call('POST', '/api/deliveries', { id: 'D-3001', supplier: 'A-ware', category: 'YOG', pallets: 1, list: [{ sscc: s, itemNo: '05459', batch: '810040274', expiry: '2026-11-09', qty: 80 }] });
+  await call('POST', '/api/deliveries', { id: 'D-3001', supplier: 'Northbank', category: 'GEN', pallets: 1, list: [{ sscc: s, itemNo: 'S0545', batch: '810040274', expiry: '2026-11-09', qty: 80 }] });
   await call('POST', '/api/config', { priority: ['RECEIVE', 'PICK', 'MOVE', 'CHECK', 'PUTAWAY', 'SHIFT'] });
-  await call('POST', '/api/devices', { id: 'HH09', categories: ['YOG'] });
-  // HH09 is idle and gets a receiving job; the yoghurt deliveries are D-2042 and D-3001.
+  await call('POST', '/api/devices', { id: 'HH09', categories: ['GEN'] });
+  // HH09 is idle and gets a receiving job; the paint deliveries are D-2042 and D-3001.
   let dev = await call('GET', '/api/devices/HH09');
   while (dev.instruction.kind === 'receive' && dev.instruction.delivery.id !== 'D-3001') {
     await call('POST', '/api/devices/HH09/scan', { code: 'CMD-DONE' });
@@ -87,13 +87,13 @@ test('a delivery announced with its list is received with one scan per pallet', 
   assert.equal(dev.instruction.delivery.id, 'D-3001');
   await call('POST', '/api/devices/HH09/scan', { code: `00${s}` });
   const p = store.wh.pallets[s];
-  assert.deepEqual([p.itemNo, p.batch, p.expiry, p.qty], ['05459', '810040274', '2026-11-09', 80]);
+  assert.deepEqual([p.itemNo, p.batch, p.expiry, p.qty], ['S0545', '810040274', '2026-11-09', 80]);
 });
 
 test('a new operator changes the handheld\'s categories', async () => {
   const { store, call } = setup();
-  await call('POST', '/api/devices/HH01/categories', { categories: ['CHE'] });
-  assert.deepEqual(store.wh.trucks.HH01.categories, ['CHE']);
+  await call('POST', '/api/devices/HH01/categories', { categories: ['BULK'] });
+  assert.deepEqual(store.wh.trucks.HH01.categories, ['BULK']);
   await call('POST', '/api/devices/HH01/categories', { categories: null });
   assert.equal(store.wh.trucks.HH01.categories, null);
 });
@@ -102,9 +102,9 @@ test('station screen: list, process started from the office, start and finish by
   const { store, call } = setup();
   const stations = await call('GET', '/api/stations');
   assert.deepEqual(stations.map((s) => s.id), ['PRESS', 'FOIL', 'PLATE', 'WARM']);
-  assert.deepEqual((await call('GET', '/api/routes')).map((r) => r.id), ['CHANGE', 'FOIL', 'HOLES']);
+  assert.deepEqual((await call('GET', '/api/routes')).map((r) => r.id), ['CHANGE', 'FOIL', 'CURE']);
   const wh = store.wh;
-  const p = Object.values(wh.pallets).find((x) => x.itemNo === 'C2001' && wh.locations[x.loc].kind === 'rack' && !Object.values(wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
+  const p = Object.values(wh.pallets).find((x) => x.itemNo === 'G2001' && wh.locations[x.loc].kind === 'rack' && !Object.values(wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
   await call('POST', `/api/pallets/${p.sscc}/process`, { route: 'CHANGE' });
   // Pretend a truck brought it to the press.
   wh.transferPallet(p.sscc, 'ST-PRESS', { by: 'test' });
@@ -114,7 +114,7 @@ test('station screen: list, process started from the office, start and finish by
 
 test('receiving desk: start a desk delivery, scans and typed values, the pallet registers', async () => {
   const { store, call } = setup();
-  await call('POST', '/api/deliveries', { id: 'D-3002', supplier: 'A-ware', category: 'YOG', pallets: 1, at: 'desk' });
+  await call('POST', '/api/deliveries', { id: 'D-3002', supplier: 'Northbank', category: 'GEN', pallets: 1, at: 'desk' });
   const desk = (await call('GET', '/api/devices')).find((d) => d.kind === 'desk');
   await call('POST', `/api/desks/${desk.id}/start`, { deliveryId: 'D-3002' });
   let v = await call('GET', `/api/devices/${desk.id}`);
@@ -123,12 +123,12 @@ test('receiving desk: start a desk delivery, scans and typed values, the pallet 
   await call('POST', `/api/devices/${desk.id}/scan`, { code: '810040274' });
   await call('POST', `/api/devices/${desk.id}/scan`, { code: `00${s}` });
   await call('POST', `/api/desks/${desk.id}/enter`, { field: 'expiry', value: '09112026' });
-  await call('POST', `/api/devices/${desk.id}/scan`, { code: '9140012009' });
+  await call('POST', `/api/devices/${desk.id}/scan`, { code: '9170012009' });
   v = await call('GET', `/api/devices/${desk.id}`);
   assert.equal(v.instruction.field, 'qty');
   await call('POST', `/api/desks/${desk.id}/enter`, { field: 'qty', value: '80' });
   const p = store.wh.pallets[s];
-  assert.deepEqual([p.itemNo, p.batch, p.expiry, p.qty], ['05459', '810040274', '2026-11-09', 80]);
+  assert.deepEqual([p.itemNo, p.batch, p.expiry, p.qty], ['S0545', '810040274', '2026-11-09', 80]);
   // A scan with no delivery open says so instead of failing.
   const r = await call('POST', `/api/devices/${desk.id}/scan`, { code: 'X' });
   assert.match(r.text, /No delivery open/);
@@ -137,7 +137,7 @@ test('receiving desk: start a desk delivery, scans and typed values, the pallet 
 test('a pallet set down at its station without the drop scan: a transfer records the arrival', async () => {
   const { store, call } = setup();
   const wh = store.wh;
-  const p = Object.values(wh.pallets).find((x) => x.itemNo === 'C2001' && wh.locations[x.loc].kind === 'rack' && !Object.values(wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
+  const p = Object.values(wh.pallets).find((x) => x.itemNo === 'G2001' && wh.locations[x.loc].kind === 'rack' && !Object.values(wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
   await call('POST', `/api/pallets/${p.sscc}/process`, { route: 'CHANGE' });
   const move = Object.values(wh.tasks).find((t) => t.sscc === p.sscc && t.type === 'MOVE' && ['open', 'active'].includes(t.status));
   assert.ok(move, 'a truck job to the press');

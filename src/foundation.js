@@ -1313,6 +1313,17 @@
       return globalThis.SortedOperations;
     }
 
+    /** A category of your own: a short code (CHILL, TOOLS, A) and the name screens show. Renaming keeps its stock. */
+    proto.addCategory = function ({ code, name } = {}) {
+      const id = String(code || '').trim().toUpperCase();
+      if (!/^[A-Z0-9][A-Z0-9_-]{0,11}$/.test(id)) throw new Error('A category code is 1 to 12 letters or digits, such as TOOLS');
+      const label = String(name || '').trim() || id;
+      const had = this.categories[id];
+      this.categories[id] = label;
+      this.log(had ? `Category ${id} renamed to ${label}` : `Category ${id} (${label}) added`);
+      return { code: id, name: label, added: !had };
+    };
+
     proto.applyPreset = function (id) {
       const { PRESETS } = loadPresets();
       const preset = PRESETS.find((p) => p.id === id);

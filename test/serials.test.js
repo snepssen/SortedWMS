@@ -11,8 +11,8 @@ const { loadSample } = require('../server/samples');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 10, 1, 8) });
-  w.addItem({ itemNo: 'DRILL', name: 'Cordless drill', category: 'YOG', palletQty: 40, uom: 'piece' });
-  w.addItem({ itemNo: 'BIT', name: 'Drill bit', category: 'YOG', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'DRILL', name: 'Cordless drill', category: 'GEN', palletQty: 40, uom: 'piece' });
+  w.addItem({ itemNo: 'BIT', name: 'Drill bit', category: 'GEN', palletQty: 1, uom: 'piece' });
   w.setItemUnits('DRILL', { packs: [{ unit: 'case', per: 4 }] });
   w.setItemSerials('DRILL', true);
   w.generateGuided({ sections: { count: 1, name: 'Tools' }, layouts: [{ type: 'shelf', positions: { count: 3, name: 'Bin 1' } }] });
@@ -79,7 +79,7 @@ test('moving a traced item carries its serials; a count by serials finds what mo
 
 test('a box pick from a pallet of a traced item records its serials; a correction and a rename keep the register right', () => {
   const w = wh();
-  for (const l of w._racks()) l.category = 'YOG';
+  for (const l of w._racks()) l.category = 'GEN';
   w.stockPallet('01-01-1-10', { itemNo: 'DRILL', qty: 40, receivedAt: 1 });
   w.addOrder({ id: 'SO2', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'DRILL', units: 4 }] });
   const wave = w.planWave({ orders: ['SO2'] });

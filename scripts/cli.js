@@ -3,7 +3,6 @@
  * The SortedWMS command line, behind ./start.sh:
  *
  *   ./start.sh                 start the server (data/sorted.db)
- *   ./start.sh demo            start with the demo warehouse when it is empty
  *   ./start.sh sample <kind>   start with sample data: home, maker or 3pl
  *   ./start.sh backup          copy the database into data/backups now
  *   ./start.sh backups         list the backups
@@ -11,8 +10,8 @@
  *   ./start.sh setup           check what SortedWMS needs, offer to install it
  *
  * PORT, SORTED_DB, SORTED_SITE and SORTED_BACKUP_DIR work as for the server.
- * The demo and each sample keep their own database file (data/demo.db,
- * data/sample-home.db, ...), so trying them never touches your own data.
+ * Each sample keeps its own database file (data/sample-home.db, ...), so
+ * trying one never touches your own data.
  * A new database starts from an empty building (server/site.blank.json);
  * the setup wizard does the rest.
  */
@@ -25,7 +24,7 @@ const readline = require('node:readline');
 
 const ROOT = path.join(__dirname, '..');
 const [CMD = 'start', ...REST] = process.argv.slice(2);
-const own = CMD === 'demo' ? 'demo.db' : CMD === 'sample' && REST[0] ? `sample-${REST[0]}.db` : 'sorted.db';
+const own = CMD === 'sample' && REST[0] ? `sample-${REST[0]}.db` : 'sorted.db';
 const dbFile = process.env.SORTED_DB || path.join(ROOT, 'data', own);
 const backupDir = process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups');
 const port = Number(process.env.PORT || 8080);
@@ -81,17 +80,17 @@ async function main() {
     return;
   }
   const args = [];
-  if (cmd === 'demo') args.push('--seed-demo');
-  else if (cmd === 'sample') {
+  if (cmd === 'demo') throw new Error('There is no demo command any more. Try a sample: ./start.sh sample home, maker or 3pl');
+  if (cmd === 'sample') {
     const kind = rest[0];
     const { SAMPLES } = require('../server/samples');
     if (!SAMPLES[kind]) throw new Error(`Sample is one of ${Object.keys(SAMPLES).join(', ')}`);
     args.push(`--sample=${kind}`);
-  } else if (cmd !== 'start') throw new Error(`Unknown command ${cmd}. Use start, demo, sample, backup, backups, restore or setup`);
+  } else if (cmd !== 'start') throw new Error(`Unknown command ${cmd}. Use start, sample, backup, backups, restore or setup`);
   process.env.SORTED_DB = dbFile;
-  // A real warehouse gets no demo logins with known passwords; the demo and the samples do.
+  // A real warehouse gets no demo logins with known passwords; the samples do.
   if (cmd === 'start' && process.env.SORTED_DEMO_USERS === undefined) process.env.SORTED_DEMO_USERS = '0';
-  if (!process.env.SORTED_SITE) process.env.SORTED_SITE = path.join(ROOT, 'server', cmd === 'demo' ? 'site.example.json' : 'site.blank.json');
+  if (!process.env.SORTED_SITE) process.env.SORTED_SITE = path.join(ROOT, 'server', 'site.blank.json');
   if (cmd === 'start' && !fs.existsSync(dbFile)) console.log(`A new warehouse in ${dbFile}. Sign in as admin and open /setup to shape it.`);
   process.argv.push(...args);
   require('../server/index').main();

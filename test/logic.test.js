@@ -7,7 +7,7 @@ const GS1 = require('../src/gs1');
 const { Warehouse } = require('../src/engine');
 const Site = require('../server/site');
 const { COMMANDS } = require('../server/commands');
-const { seedDemo } = require('../server/seed');
+const { seedDemo } = require('./fixtures/seed');
 const Drivers = require('../src/drivers');
 
 const T0 = Date.UTC(2026, 9, 9, 6, 0);
@@ -15,8 +15,8 @@ const T0 = Date.UTC(2026, 9, 9, 6, 0);
 function setup(config = {}) {
   const wh = new Warehouse({ aisles: [31, 32], bays: 6, levels: 3, clock: () => T0, config: { groundNextPerItem: 0, checkAfterPick: true, ...config } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96, minShipDays: 5 });
-  wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96, minShipDays: 5 });
+  wh.applyTemplate(wh.selectLocations('31', '32'), 'GEN');
   return wh;
 }
 
@@ -31,7 +31,7 @@ test('count mode never sends a third truck into an aisle', () => {
 test('receiving: a location label is not a batch number, and CANCEL starts the pallet again', () => {
   const wh = setup();
   const s1 = GS1.makeSscc(3, '8712345', 5);
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'YOG', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'GEN', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
   wh.addTruck('RT1');
   const r = wh.scan('RT1', 'DOCK-IN');
   assert.equal(r.ok, false);
@@ -76,7 +76,7 @@ test('a held move for a pallet nobody can find stays held until it is found', ()
   const wh = setup();
   const p = wh.stockPallet('31-02-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-12-01' });
   wh.addTruck('RT1', { mode: 'shift' });
-  const task = wh._newTask({ type: 'SHIFT', reason: 'driver', category: 'YOG', sscc: p.sscc, from: '31-02-0-10', to: null });
+  const task = wh._newTask({ type: 'SHIFT', reason: 'driver', category: 'GEN', sscc: p.sscc, from: '31-02-0-10', to: null });
   wh.dispatch();
   wh.scan('RT1', 'CMD-MISSING'); wh.scan('RT1', 'CMD-MISSING');
   assert.equal(task.status, 'held');
@@ -89,7 +89,7 @@ test('a held move for a pallet nobody can find stays held until it is found', ()
 
 // The fuzz itself, small: every step must leave the warehouse consistent.
 test('fuzz: hundreds of right and wrong scans and office actions keep the warehouse consistent', () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   for (const seed of [3, 7]) {
     let a = seed;
     const rnd = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
@@ -106,7 +106,7 @@ test('fuzz: hundreds of right and wrong scans and office actions keep the wareho
       const r = rnd();
       try {
         if (r < 0.75) { const act = Drivers.next(wh, id, rnd); if (act) (act.qty ? exec('confirmQty', { id, qty: null }, id) : exec('scan', { id, code: act.code }, id)); }
-        else if (r < 0.82) exec('scan', { id, code: pick([pick(Object.keys(wh.pallets)), pick(wh._racks()).code, 'DOCK-IN', 'OUT-01', '12', 'Y1001']) }, id);
+        else if (r < 0.82) exec('scan', { id, code: pick([pick(Object.keys(wh.pallets)), pick(wh._racks()).code, 'DOCK-IN', 'OUT-01', '12', 'W1001']) }, id);
         else if (r < 0.85) { const c = pick(['CMD-MISSING', 'CMD-DAMAGED', 'CMD-BLOCKED']); exec('scan', { id, code: c }, id); exec('scan', { id, code: c }, id); }
         else if (r < 0.88) exec('scan', { id, code: pick(['CMD-AUTO', 'CMD-TRANSFER', 'CMD-PUTAWAY', 'CMD-COUNT', 'CMD-CANCEL', 'CMD-AUTO']) }, id);
         else if (r < 0.90) { const tk = pick(Object.values(wh.tasks).filter((x) => x.status === 'held' || x.status === 'open')); if (tk) exec(pick(['releaseTask', 'cancelTask']), { taskId: tk.id }); }
@@ -136,7 +136,7 @@ const TRUCK_STARTED = new Set(['driver']);
 
 // From the simulated shift: two picks from block lane BL01-02 waited six hours while everything else went ahead.
 function blockLane() {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const t = Date.UTC(2026, 9, 9, 6);
   const wh = Site.buildWarehouse(site, () => t);
   const lane = wh.layout.blocks[0];

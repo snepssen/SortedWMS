@@ -10,9 +10,9 @@ const { createAuth } = require('../server/auth');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 1, uom: 'piece' });
-  w.addItem({ itemNo: 'M4', name: 'M4 screw', category: 'YOG', palletQty: 1, uom: 'piece' });
-  w.addItem({ itemNo: 'LED', name: 'Red LED', category: 'YOG', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'M4', name: 'M4 screw', category: 'GEN', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'LED', name: 'Red LED', category: 'GEN', palletQty: 1, uom: 'piece' });
   w.setItemUnits('M3', { packs: [{ unit: 'box', per: 100, barcode: '871000000003' }, { unit: 'case', per: 1000 }], unitWeightKg: 0.001 });
   w.generateGuided({ sections: { count: 1 }, layouts: [{ type: 'shelf', bays: { count: 2, name: 'Shelf 1' }, positions: { count: 3, name: 'Bin 1' } }] });
   return w;
@@ -118,7 +118,7 @@ test('loose stock counts in availability, low stock, pick faces and delete guard
 });
 
 test('bin stock goes through the API, the journal and a restart', async () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureDemoUsers();

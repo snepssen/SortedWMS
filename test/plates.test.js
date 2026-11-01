@@ -7,10 +7,10 @@ function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
   w.setFeatures({ highValueSecurity: true });
   w._actor = 'mina';
-  w.addClient({ id: 'CL-DAIRY', name: 'Dairy Co' });
-  w.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 10, clientId: 'CL-DAIRY' });
-  w.addItem({ itemNo: 'NB-14', name: 'Laptop 14 inch', category: 'YOG', palletQty: 1, clientId: 'CL-DAIRY' });
-  w.addItem({ itemNo: 'PLUG-EU', name: 'EU power plug', category: 'YOG', palletQty: 1, clientId: 'CL-DAIRY' });
+  w.addClient({ id: 'CL-PAINT', name: 'Brightwall Paints' });
+  w.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 10, clientId: 'CL-PAINT' });
+  w.addItem({ itemNo: 'NB-14', name: 'Laptop 14 inch', category: 'GEN', palletQty: 1, clientId: 'CL-PAINT' });
+  w.addItem({ itemNo: 'PLUG-EU', name: 'EU power plug', category: 'GEN', palletQty: 1, clientId: 'CL-PAINT' });
   return w;
 }
 
@@ -128,7 +128,7 @@ test('kitting scans a base product and then its components', () => {
 
 test('technical settings cover auto-sort and location defaults, and a manager can read movement history', () => {
   const w = wh();
-  w.setTechnical({ autoSort: { strategy: 'fifo', rules: [{ category: 'YOG', putaway: 'rack' }] }, locationDefaults: { mezzanine: { heightMm: 1500, widthMm: 800, depthMm: 1200, maxWeightKg: 350 } } });
+  w.setTechnical({ autoSort: { strategy: 'fifo', rules: [{ category: 'GEN', putaway: 'rack' }] }, locationDefaults: { mezzanine: { heightMm: 1500, widthMm: 800, depthMm: 1200, maxWeightKg: 350 } } });
   assert.equal(w.technical.autoSort.strategy, 'fifo');
   assert.equal(w.technical.autoSort.rules[0].putaway, 'rack');
   assert.equal(w.technical.locationDefaults.mezzanine.heightMm, 1500);

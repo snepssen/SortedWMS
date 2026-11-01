@@ -6,26 +6,26 @@ const { Warehouse } = require('../src/engine');
 const MIN = 60000;
 const T0 = Date.UTC(2026, 9, 7, 6, 0);
 
-// Racking aisles 01–02 (cheese), two block lanes of 3 stacks × 6 high, and the process stations.
+// Racking aisles 01–02 (garden stock), two block lanes of 3 stacks × 6 high, and the process stations.
 function setup(config = {}) {
   let t = T0;
   const wh = new Warehouse({
     aisles: 2, bays: 6, levels: 3, clock: () => t,
     config: { groundNextPerItem: 0, ...config },
-    blocks: [{ id: 'BL01', stacks: 3, height: 6, category: 'CHE' }, { id: 'BL02', stacks: 3, height: 6, category: 'CHE' }],
+    blocks: [{ id: 'BL01', stacks: 3, height: 6, category: 'BULK' }, { id: 'BL02', stacks: 3, height: 6, category: 'BULK' }],
     stations: [
       { id: 'PRESS', name: 'Pallet change', machine: 'Flip press', minutes: 5, sop: ['Flip', 'Swap pallet', 'Flip back', 'Seal'] },
       { id: 'PLATE', name: 'Plate press', machine: 'Plate press', minutes: 3 },
-      { id: 'WARM', name: 'Warm room', dwell: true, capacity: 10 },
+      { id: 'WARM', name: 'Curing room', dwell: true, capacity: 10 },
     ],
   });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda slices', category: 'CHE', palletQty: 80 });
-  wh.addItem({ itemNo: 'W1', gtin: GS1.makeGtin13('20000', 5), name: 'Gouda wheels (crates)', category: 'CHE', palletQty: 24, storage: 'block' });
-  wh.setLocationCategory({ aisle: 1 }, 'CHE');
-  wh.setLocationCategory({ aisle: 2 }, 'CHE');
+  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Potting soil', category: 'BULK', palletQty: 80 });
+  wh.addItem({ itemNo: 'W1', gtin: GS1.makeGtin13('20000', 5), name: 'Paving slabs (crates)', category: 'BULK', palletQty: 24, storage: 'block' });
+  wh.setLocationCategory({ aisle: 1 }, 'BULK');
+  wh.setLocationCategory({ aisle: 2 }, 'BULK');
   wh.addRoute({ id: 'CHANGE', name: 'Pallet change', steps: [{ station: 'PRESS', op: 'Change pallet', reprint: true }] });
-  wh.addRoute({ id: 'HOLES', name: 'Hole forming', steps: [
+  wh.addRoute({ id: 'CURE', name: 'Plate and cure', steps: [
     { station: 'PLATE', op: 'Apply plate' },
     { station: 'WARM', dwellMin: 120 },
     { station: 'PLATE', op: 'Remove plate' },
@@ -63,7 +63,7 @@ test('crate pallets are put away in a block lane of the same batch, never in the
   const { wh } = setup({ blockLaneBatches: 1 });
   stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
   stockBlock(wh, 'BL02', 1, 'K2', '2027-02-01');
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'CHE', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'BULK', pallets: 1 });
   wh.addTruck('RT1');
   const sscc = wh.nextSscc();
   wh.scan('RT1', `(00)${sscc}(02)${GS1.gtin14(wh.items.W1.gtin)}(15)270101(10)K1(37)24`);
@@ -107,16 +107,16 @@ test('pallet change on an order: pick to the press, scan to start and finish, th
   assert.equal(wh.processLog[0].standard, 5);
 });
 
-test('warm room: the system times it and calls the move out, flagged urgent', () => {
+test('curing room: the system times it and calls the move out, flagged urgent', () => {
   const { advance, wh } = setup();
   const [p] = stockBlock(wh, 'BL01', 1, 'E1', '2027-03-01');
-  wh.startProcess(p.sscc, 'HOLES');
+  wh.startProcess(p.sscc, 'CURE');
   wh.addTruck('RT1');
   move(wh, 'RT1'); // to the plate press
   wh.stationScan('PLATE', p.sscc);
   advance(3);
   wh.stationScan('PLATE', p.sscc);
-  move(wh, 'RT1'); // into the warm room
+  move(wh, 'RT1'); // into the curing room
   assert.equal(p.proc.state, 'dwelling');
   assert.match(wh.stationScan('WARM', p.sscc).text, /2 h to go/);
   advance(119);
@@ -124,7 +124,7 @@ test('warm room: the system times it and calls the move out, flagged urgent', ()
   advance(1);
   const out = wh.tasks[wh.trucks.RT1.taskId];
   assert.equal(out.urgent, true);
-  assert.equal(out.alert, 'Time up in Warm room');
+  assert.equal(out.alert, 'Time up in Curing room');
   move(wh, 'RT1'); // back to the plate press
   wh.stationScan('PLATE', p.sscc);
   advance(2);
@@ -138,7 +138,7 @@ test('warm room: the system times it and calls the move out, flagged urgent', ()
 test('receiving desk: the screen calls out BATCH, PALLET, GS1; the keyboard fills the rest', () => {
   const { wh } = setup();
   wh.addDesk('DESK1', { name: 'Receiving desk' });
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'CHE', pallets: 1, at: 'desk' });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'BULK', pallets: 1, at: 'desk' });
   wh.addTruck('RT1');
   assert.equal(wh.trucks.RT1.taskId, null, 'desk deliveries are not sent to truck handhelds');
   wh.deskStart('DESK1');
@@ -158,7 +158,7 @@ test('receiving desk: the screen calls out BATCH, PALLET, GS1; the keyboard fill
 test('desk keyboard entry checks what is typed', () => {
   const { wh } = setup();
   wh.addDesk('DESK1');
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'CHE', pallets: 1, at: 'desk' });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'BULK', pallets: 1, at: 'desk' });
   wh.deskStart('DESK1');
   assert.equal(wh.deskEnter('DESK1', 'expiry', '31-02-2027').ok, false);
   assert.equal(wh.deskEnter('DESK1', 'sscc', '123').ok, false);
@@ -194,7 +194,7 @@ test('put-away prefers sharing a lane FEFO-safely, then an empty lane, and burie
   // Both lanes would bury older stock. BL02 is down to one pallet: that one goes to the racks first,
   // and the new batch waits for the lane instead of burying it.
   assert.equal(wh._findSlot(late, 'DOCK-IN'), null);
-  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: late.sscc, from: 'DOCK-IN', to: null });
+  wh._newTask({ type: 'PUTAWAY', category: 'BULK', sscc: late.sscc, from: 'DOCK-IN', to: null });
   assert.ok(wh.planRemnants() >= 1);
   const remnant = Object.values(wh.tasks).find((t) => t.reason === 'remnant');
   assert.ok(remnant.rackOnly);
@@ -215,8 +215,8 @@ test('pallets of one batch follow each other into the same lane instead of openi
   const { wh } = setup({ checkAfterPick: false });
   const a = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'N1', expiry: '2027-06-01' });
   const b = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'N1', expiry: '2027-06-01' });
-  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: a.sscc, from: 'DOCK-IN', to: null });
-  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: b.sscc, from: 'DOCK-IN', to: null });
+  wh._newTask({ type: 'PUTAWAY', category: 'BULK', sscc: a.sscc, from: 'DOCK-IN', to: null });
+  wh._newTask({ type: 'PUTAWAY', category: 'BULK', sscc: b.sscc, from: 'DOCK-IN', to: null });
   wh.addTruck('RT1');
   wh.addTruck('RT2');
   assert.equal(wh.trucks.RT2.taskId, null, 'second pallet waits for the lane');
@@ -276,7 +276,7 @@ test('a block lane down to a few pallets is cleared to the racks rather than bur
   stockBlock(wh, 'BL01', 2, 'K1', '2027-01-01');
   stockBlock(wh, 'BL02', 4, 'K2', '2027-01-05'); // too many to clear
   const late = wh.stockPallet('DOCK-IN', { itemNo: 'W1', batch: 'K9', expiry: '2027-05-01' });
-  wh._newTask({ type: 'PUTAWAY', category: 'CHE', sscc: late.sscc, from: 'DOCK-IN', to: null });
+  wh._newTask({ type: 'PUTAWAY', category: 'BULK', sscc: late.sscc, from: 'DOCK-IN', to: null });
   wh.addTruck('RT1');
   // The truck clears BL01's last two pallets to the racks...
   for (let i = 0; i < 2; i++) {

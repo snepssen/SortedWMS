@@ -7,9 +7,9 @@ const net = require('node:net');
 const { Store } = require('../server/store');
 const { Printers } = require('../server/print');
 const { createServer } = require('../server/index');
-const { seedDemo } = require('../server/seed');
+const { seedDemo } = require('./fixtures/seed');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 const tmpDb = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sorted-')), 'wms.db');
 // A clock that moves 7 seconds per reading, so replay has to use the journaled times to match.
 const stepClock = (start = Date.UTC(2026, 9, 8, 6, 0)) => { let t = start; return () => (t += 7000); };
@@ -28,9 +28,9 @@ test('replaying the journal rebuilds exactly the same warehouse', () => {
   const a = new Store({ file, site, now: stepClock() });
   seedDemo(a);
   for (let i = 0; i < 6; i++) { work(a, 'HH01'); work(a, 'HH03'); a.tick(); }
-  a.exec('applyTemplate', { from: 'AA01A1', to: 'AA10E3', category: 'CHE' }, 'boss');
+  a.exec('applyTemplate', { from: 'AA01A1', to: 'AA10E3', category: 'BULK' }, 'boss');
   a.exec('setTruckMode', { id: 'HH02', mode: 'transfer' }, 'HH02');
-  const p = Object.values(a.wh.pallets).find((x) => x.loc && a.wh.locations[x.loc].kind === 'rack' && x.itemNo.startsWith('Y') && !Object.values(a.wh.tasks).some((t) => t.sscc === x.sscc && t.status !== 'done' && t.status !== 'cancelled'));
+  const p = Object.values(a.wh.pallets).find((x) => x.loc && a.wh.locations[x.loc].kind === 'rack' && x.itemNo.startsWith('W') && !Object.values(a.wh.tasks).some((t) => t.sscc === x.sscc && t.status !== 'done' && t.status !== 'cancelled'));
   a.exec('scan', { id: 'HH02', code: p.sscc }, 'HH02');
   a.exec('scan', { id: 'HH02', code: 'AB05A1' }, 'HH02');
   a.tick();
@@ -117,20 +117,20 @@ test('HTTP API: template range, handheld transfer, lost pallets, audit', async (
   try {
     assert.strictEqual((await call('GET', '/api/summary', null, { 'x-token': 'wrong' })).status, 401);
 
-    // The yoghurt racks AA..AH in one go: preview first, then apply.
-    const prev = await call('GET', '/api/template/preview?from=AA01A1&to=AB10E3&category=PRO');
+    // The paint racks AA..AH in one go: preview first, then apply.
+    const prev = await call('GET', '/api/template/preview?from=AA01A1&to=AB10E3&category=FAST');
     assert.strictEqual(prev.body.locations, 300);
     assert.strictEqual(prev.body.changed, 300);
     assert.deepStrictEqual(prev.body.first, ['AA01A1', 'AA01A2', 'AA01A3']);
-    const applied = await call('POST', '/api/template/apply', { from: 'AA01A1', to: 'AB10E3', category: 'PRO' }, { 'x-operator': 'boss' });
+    const applied = await call('POST', '/api/template/apply', { from: 'AA01A1', to: 'AB10E3', category: 'FAST' }, { 'x-operator': 'boss' });
     assert.strictEqual(applied.status, 200);
     assert.strictEqual(applied.body.changed, 300);
-    assert.strictEqual(store.wh.locations[store.wh.resolve('AB10E3')].category, 'PRO');
-    assert.strictEqual(store.wh.locations[store.wh.resolve('AC01A1')].category, 'YOG');
+    assert.strictEqual(store.wh.locations[store.wh.resolve('AB10E3')].category, 'FAST');
+    assert.strictEqual(store.wh.locations[store.wh.resolve('AC01A1')].category, 'GEN');
 
     // A driver's correction transfer: scan the pallet, then where it really stands.
-    const p = Object.values(store.wh.pallets).find((x) => x.loc && x.itemNo.startsWith('C') && store.wh.locations[x.loc].kind === 'rack' && !Object.values(store.wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
-    const occupied = Object.values(store.wh.locations).find((l) => l.kind === 'rack' && l.category === 'CHE' && l.sscc && l.sscc !== p.sscc && !Object.values(store.wh.tasks).some((t) => t.sscc === l.sscc && ['open', 'active', 'held'].includes(t.status)));
+    const p = Object.values(store.wh.pallets).find((x) => x.loc && x.itemNo.startsWith('G') && store.wh.locations[x.loc].kind === 'rack' && !Object.values(store.wh.tasks).some((t) => t.sscc === x.sscc && ['open', 'active', 'held'].includes(t.status)));
+    const occupied = Object.values(store.wh.locations).find((l) => l.kind === 'rack' && l.category === 'BULK' && l.sscc && l.sscc !== p.sscc && !Object.values(store.wh.tasks).some((t) => t.sscc === l.sscc && ['open', 'active', 'held'].includes(t.status)));
     const displaced = occupied.sscc;
     assert.strictEqual((await call('POST', '/api/devices/HH03/mode', { mode: 'transfer' })).status, 200);
     await call('POST', '/api/devices/HH03/scan', { code: `00${p.sscc}` });

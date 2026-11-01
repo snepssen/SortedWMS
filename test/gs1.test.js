@@ -26,7 +26,7 @@ test('reads the raw scanner form with FNC1 separators and a symbology prefix', (
 });
 
 test('plain batch numbers, dates and item numbers are not mistaken for GS1', () => {
-  for (const s of ['10023', 'L2614', '261031', 'Y1001', '2000001001007', '96']) assert.equal(GS1.parse(s), null, s);
+  for (const s of ['10023', 'L2614', '261031', 'W1001', '2000001001007', '96']) assert.equal(GS1.parse(s), null, s);
 });
 
 test('day 00 means the last day of the month', () => {

@@ -7,14 +7,13 @@ const { Warehouse } = require('../src/engine');
 const { Store } = require('../server/store');
 const { createApi } = require('../server/api');
 const { createServer } = require('../server/index');
-const { Walkthrough } = require('../src/walkthrough');
-const site = require('../server/site.example.json');
+const site = require('./fixtures/site.json');
 const now = () => Date.UTC(2026, 9, 8, 6);
 
 function stage(wh, id = '5001', count = 2, verifyLoading = true) {
-  const pallets = Array.from({ length: count }, (_, i) => wh.stockPallet(wh.resolve(`AA0${i + 1}A1`), { itemNo: 'Y1001', batch: `LOAD-${id}-${i}`, expiry: '2026-11-20' }));
-  const order = wh.addOrder({ id, customer: 'Demo customer', lane: 'OUT-01', verifyLoading, lines: [{ itemNo: 'Y1001', pallets: count }] });
-  if (!wh.trucks.RT1) wh.addTruck('RT1', { categories: ['YOG'] });
+  const pallets = Array.from({ length: count }, (_, i) => wh.stockPallet(wh.resolve(`AA0${i + 1}A1`), { itemNo: 'W1001', batch: `LOAD-${id}-${i}`, expiry: '2026-11-20' }));
+  const order = wh.addOrder({ id, customer: 'Demo customer', lane: 'OUT-01', verifyLoading, lines: [{ itemNo: 'W1001', pallets: count }] });
+  if (!wh.trucks.RT1) wh.addTruck('RT1', { categories: ['GEN'] });
   for (let i = 0; i < count * 2; i++) {
     const ins = wh.instruction('RT1');
     assert.ok(wh.scan('RT1', ins.kind === 'pickup' ? ins.pallet.sscc : ins.target).ok);
@@ -135,7 +134,7 @@ test('verified loading requires a ready, fully allocated manifest and a unique t
 test('pallet plus trailer scans move stock once; wrong and duplicate scans leave it unchanged', () => {
   const { wh, pallets: [first, second] } = setup();
   wh.startLoading('5001', 'DEMO-07');
-  const extra = wh.stockPallet(wh.resolve('AB01A1'), { itemNo: 'Y1001', batch: 'OTHER', expiry: '2026-12-20' });
+  const extra = wh.stockPallet(wh.resolve('AB01A1'), { itemNo: 'W1001', batch: 'OTHER', expiry: '2026-12-20' });
   unchanged(wh, () => wh.scanLoading('5001', 'LOAD-01', extra.sscc), /not allocated/);
   unchanged(wh, () => wh.scanLoading('5001', 'LOAD-01', 'TRAILER-DEMO-07'), /not allocated/);
   wh.scanLoading('5001', 'LOAD-01', `]C100${first.sscc}`);
@@ -180,7 +179,7 @@ test('a loaded quality-held or recalled pallet can unload but the whole shipment
   const { wh, order, pallets: [first, second] } = setup();
   wh.startLoading('5001', 'DEMO-07');
   load(wh, first); load(wh, second);
-  wh.placeBatchHold('Y1001', first.batch, 'Supplier concern');
+  wh.placeBatchHold('W1001', first.batch, 'Supplier concern');
   unchanged(wh, () => wh.shipOrder('5001', { seal: 'S1' }), /Batch recall/);
   assert.equal(second.status, 'available');
   assert.equal(second.loc, 'TRAILER-DEMO-07');
@@ -217,7 +216,7 @@ test('verified dispatch requires a seal, checks every pallet atomically and pres
   assert.equal(order.loading.history.at(-1).by, 'dispatch-1');
   assert.equal(wh.shipments[0].loadingHistory.filter((e) => e.kind === 'loaded').length, 2);
   assert.equal(wh.trace(pallets[0].batch).shipped[0].trailer, 'DEMO-07');
-  assert.equal(wh.batchRecall('Y1001', pallets[0].batch).shipped[0].seal, 'SEAL-7');
+  assert.equal(wh.batchRecall('W1001', pallets[0].batch).shipped[0].seal, 'SEAL-7');
   unchanged(wh, () => wh.scanLoading('5001', 'LOAD-01', pallets[0].sscc, true), /No open/);
   const next = stage(wh, '5002', 1);
   wh.startLoading(next.order.id, 'DEMO-07');
@@ -228,7 +227,7 @@ test('ordinary stock corrections and imports cannot bypass trailer verification'
   const { wh, pallets: [p] } = setup(1);
   wh.startLoading('5001', 'DEMO-07');
   assert.equal(wh.transferPallet(p.sscc, 'TRAILER-DEMO-07').ok, false);
-  unchanged(wh, () => wh.stockPallet('TRAILER-DEMO-07', { itemNo: 'Y1001', batch: 'IMPORT', expiry: '2026-11-20' }), /loading scans/);
+  unchanged(wh, () => wh.stockPallet('TRAILER-DEMO-07', { itemNo: 'W1001', batch: 'IMPORT', expiry: '2026-11-20' }), /loading scans/);
   load(wh, p);
   assert.equal(wh.transferPallet(p.sscc, wh.resolve('AB01A1')).ok, false);
   unchanged(wh, () => wh.startProcess(p.sscc, 'CHANGE'), /not in storage/);
@@ -250,10 +249,10 @@ test('loading API, pending scans, actors and trailer inventory survive journal a
   const store = new Store({ site, now });
   try {
     store.exec('setConfig', { patch: { checkAfterPick: false, groundNextPerItem: 0 } });
-    store.exec('importStock', { rows: [{ code: 'AA01A1', sscc: '387999990000091016', itemNo: 'Y1001', batch: 'LOAD', expiry: '2026-11-20' }] });
+    store.exec('importStock', { rows: [{ code: 'AA01A1', sscc: '387999990000091016', itemNo: 'W1001', batch: 'LOAD', expiry: '2026-11-20' }] });
     const id = 'PO / 5001', route = encodeURIComponent(id);
-    store.exec('addOrder', { id, customer: 'Demo', lane: 'OUT-01', verifyLoading: true, lines: [{ itemNo: 'Y1001', pallets: 1 }] });
-    store.exec('addTruck', { id: 'RT1', categories: ['YOG'] });
+    store.exec('addOrder', { id, customer: 'Demo', lane: 'OUT-01', verifyLoading: true, lines: [{ itemNo: 'W1001', pallets: 1 }] });
+    store.exec('addTruck', { id: 'RT1', categories: ['GEN'] });
     store.exec('scan', { id: 'RT1', code: '387999990000091016' });
     store.exec('scan', { id: 'RT1', code: 'OUT-01' });
     const api = createApi({ store, printers: { flush() {}, results: [] } });
@@ -304,41 +303,8 @@ test('scanner identities cannot affect prototypes and blocked destinations canno
   assert.equal(p.loc, 'OUT-01');
 });
 
-test('guided loading rejects unsafe departure, unloads held stock, reloads and traces the sealed shipment', () => {
-  const d = new Walkthrough(site, 'loading');
-  for (let i = 0; d.step; i++) {
-    d.next();
-    if (i === 13) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
-    if (i === 15) assert.equal(d.wh.orders['5001'].status, 'ready');
-    if (i === 19) assert.ok(d.wh.pallets[d.first].qualityHold);
-    if (i === 21) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
-  }
-  assert.equal(d.wh.orders['5001'].status, 'shipped');
-  assert.equal(d.trace.shipped[0].seal, 'DEMO-SEAL-07');
-  assert.equal(d.wh.orders['5001'].loading.history.filter((e) => e.kind === 'unloaded').length, 1);
-});
-
-test('guided trailer readiness stops missing, expired and held loads and preserves departure evidence', () => {
-  const d = new Walkthrough(site, 'readiness');
-  assert.equal(d.steps.length, 26);
-  while (d.step) {
-    const i = d.index;
-    d.next();
-    if ([8, 13].includes(i)) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
-    if (i === 10) assert.equal(d.wh.trailerReadiness('5101').status, 'held');
-    if (i === 16) assert.deepEqual(d.wh.orders['5101'].loading.history.at(-1).loaded, [d.first]);
-    if (i === 19) assert.equal(d.wh.pallets[d.first].loc, 'OUT-01');
-  }
-  assert.equal(d.wh.orders['5101'].status, 'shipped');
-  assert.equal(d.trace.shipped[0].seal, 'COLD-SEAL-08');
-  assert.equal(d.wh.shipments[0].loadingHistory.filter((e) => e.kind === 'trailer-inspection').length, 5);
-  assert.equal(d.wh.shipments[0].loadingHistory.filter((e) => e.kind === 'trailer-release').length, 2);
-  d.time += 86400000;
-  assert.equal(d.wh.trailerReadiness('5101').status, 'ready');
-});
-
 test('loading screen and changed inline scripts parse and the server serves the scanner page', async () => {
-  for (const file of ['server/public/loading.html', 'server/public/admin.html', 'walkthrough.html']) {
+  for (const file of ['server/public/loading.html', 'server/public/admin.html']) {
     for (const [, script] of fs.readFileSync(file, 'utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(script), file);
   }
   const store = new Store({ site, now });

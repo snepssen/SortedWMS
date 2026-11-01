@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Site = require('../server/site');
 const { COMMANDS } = require('../server/commands');
-const { seedDemo } = require('../server/seed');
+const { seedDemo } = require('./fixtures/seed');
 const Workload = require('../src/workload');
 const Drivers = require('../src/drivers');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function floor() {
   let t = Date.UTC(2026, 9, 9, 6);
@@ -59,8 +59,8 @@ test('workload: one journaled command drops it all in, and replay gives the same
 
 test('drivers: a rush shift worked by simulated drivers ends with every order shipped and every delivery in', () => {
   const { wh, store, clock } = floor();
-  // HH07 works every category, so the seed's protein-drink delivery gets received too.
-  for (const [id, categories] of [['HH05', ['YOG']], ['HH06', ['CHE']], ['HH07', null]]) store.exec('addTruck', { id, categories }, 'office');
+  // HH07 works every category, so the seed's adhesives delivery gets received too.
+  for (const [id, categories] of [['HH05', ['GEN']], ['HH06', ['BULK']], ['HH07', null]]) store.exec('addTruck', { id, categories }, 'office');
   store.exec('dropWorkload', { seed: 5, picks: 40, inbound: 40 }, 'office');
   let a = 11;
   const rand = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
@@ -80,19 +80,19 @@ test('drivers: a rush shift worked by simulated drivers ends with every order sh
       delete eta[id];
     }
     for (const o of Object.values(wh.orders)) if (o.status === 'ready') store.exec('shipOrder', { id: o.id }, 'office');
-    const busy = Object.values(wh.tasks).some((t) => (t.status === 'open' || t.status === 'active') && !(t.type === 'PUTAWAY' && wh.items[wh.pallets[t.sscc].itemNo].category === 'PRO'));
+    const busy = Object.values(wh.tasks).some((t) => (t.status === 'open' || t.status === 'active') && !(t.type === 'PUTAWAY' && wh.items[wh.pallets[t.sscc].itemNo].category === 'FAST'));
     if (!busy) break;
   }
   assert.equal(refused, 0, 'every simulated scan is one the system asked for');
   assert.deepEqual([...new Set(Object.values(wh.orders).map((o) => o.status))], ['shipped']);
   assert.ok(Object.values(wh.deliveries).every((d) => d.status !== 'open'), 'every delivery received, including the one without a pallet list');
   const left = Object.values(wh.tasks).filter((t) => t.status === 'open' || t.status === 'active');
-  assert.ok(left.every((t) => t.type === 'PUTAWAY' && wh.items[wh.pallets[t.sscc].itemNo].category === 'PRO'), 'only protein drinks wait: that category has no rack space yet');
+  assert.ok(left.every((t) => t.type === 'PUTAWAY' && wh.items[wh.pallets[t.sscc].itemNo].category === 'FAST'), 'only adhesives wait: that category has no rack space yet');
 });
 
 test('drivers: a time for every step, nothing for an idle or paused truck', () => {
   const { wh, store } = floor();
-  store.exec('addTruck', { id: 'HH09', categories: ['CHE'] }, 'office');
+  store.exec('addTruck', { id: 'HH09', categories: ['BULK'] }, 'office');
   const act = Drivers.next(wh, 'HH09', () => 0.5);
   assert.ok(act && act.ms > 0 && act.code && act.what);
   store.exec('setTruckMode', { id: 'HH09', mode: 'paused' }, 'office');
