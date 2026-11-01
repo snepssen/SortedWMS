@@ -3231,6 +3231,13 @@
       const delivery = this.deliveries[task.deliveryId];
       delivery.received.push(pallet.sscc);
       pallet.deliveryId = delivery.id;
+      // The supplier's pallet list may carry the serial numbers on it.
+      const listed = delivery.list && delivery.list[pallet.sscc];
+      let serialNote = '';
+      if (listed && listed.serials && item.serialized && typeof this.palletSerials === 'function') {
+        try { serialNote = ` · ${this.palletSerials({ sscc: pallet.sscc, serials: listed.serials, by: truck.operator || truck.id }).serials.length} serials`; }
+        catch (e) { serialNote = ` · serials not booked: ${e.message}`; }
+      }
       truck.stats.received++;
       truck.stats.receiveInputs += d.inputs || 0;
       task.draft = {};
@@ -3242,9 +3249,9 @@
       const count = `${delivery.received.length} of ${delivery.expected}`;
       if (delivery.received.length >= delivery.expected) {
         this._closeDelivery(truck, task);
-        return this._say(truck, state === 'ok', `Pallet ${count} registered${note}. Delivery complete`);
+        return this._say(truck, state === 'ok', `Pallet ${count} registered${note}${serialNote}. Delivery complete`);
       }
-      return this._say(truck, state === 'ok', `Pallet ${count} registered${note}. Next pallet`);
+      return this._say(truck, state === 'ok', `Pallet ${count} registered${note}${serialNote}. Next pallet`);
     }
 
     _closeDelivery(truck, task) {

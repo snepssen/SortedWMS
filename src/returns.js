@@ -86,7 +86,7 @@
           const shipped = this._shippedQty(order, itemNo);
           const returned = this._returnedQty(order.id, itemNo);
           const item = this.items[itemNo] || {};
-          const serials = item.serialized ? Object.values(this.serials || {}).filter((r) => r.itemNo === itemNo && r.orderId === order.id && r.status === 'picked').map((r) => r.sn).sort() : [];
+          const serials = item.serialized ? this._serialRows().filter((r) => r.itemNo === itemNo && r.orderId === order.id && r.status === 'picked').map((r) => r.sn).sort() : [];
           return { itemNo, name: item.name || '', uom: item.uom || null, shipped, returned, left: Math.max(0, shipped - returned), serialized: Boolean(item.serialized), serials };
         }),
       };
@@ -160,7 +160,7 @@
         if (sns.length) throw new Error(`${item.itemNo} is not traced by serial number`);
         return [];
       }
-      const out = Object.values(this.serials || {}).filter((r) => r.itemNo === item.itemNo && r.orderId === order.id && (r.status === 'picked' || r.status === 'returned' || r.status === 'scrapped'));
+      const out = this._serialRows().filter((r) => r.itemNo === item.itemNo && r.orderId === order.id && (r.status === 'picked' || r.status === 'returned' || r.status === 'scrapped'));
       if (!out.length) return this._serialsIn(item, sns, qty) || [];
       if (sns.length !== qty) throw new Error(`${qty} ${item.itemNo} back: scan ${qty} serial number${qty === 1 ? '' : 's'}, not ${sns.length}`);
       const dupes = new Set();
@@ -218,7 +218,7 @@
         if (place.kind === 'rack') {
           const pallet = this.stockPallet(dest, { itemNo: item.itemNo, qty: amount, batch: batch || `RMA-${rma.id}`, expiry: expiry || null, receivedAt: this.now(), clientId: item.clientId || null });
           dest = pallet.loc;
-          this._serialsSet(sns, item.itemNo, { status: 'in', loc: dest, orderId: null, event: 'restocked', by: actor, note: `return ${rma.id}` });
+          this._serialsSet(sns, item.itemNo, { status: 'in', loc: dest, sscc: pallet.sscc, orderId: null, event: 'restocked', by: actor, note: `return ${rma.id}` });
           this.recordMovement({ sscc: pallet.sscc, from: fromLoc, to: dest, qty: amount, event: 'restocked', by: actor, note: `return ${rma.id}` });
         } else {
           this.binPut({ loc: dest, itemNo: item.itemNo, qty: amount, batch, expiry, serials: sns.length ? sns : null, by: actor, event: 'restocked', note: `${item.itemNo} from return ${rma.id}` });

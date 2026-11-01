@@ -302,6 +302,8 @@ const RULES = [
   ['POST', '/api/tasks/:taskId/urgent', 'tasks.assign'],
   ['POST', '/api/tasks/:taskId/cancel', 'tasks.assign'],
   ['POST', '/api/tasks/:taskId/release', 'approvals.write'],
+  ['GET', '/api/pallets/:sscc/serials', 'stock.read'],
+  ['POST', '/api/pallets/:sscc/serials', 'inbound.write'],
   ['POST', '/api/pallets/:sscc/status', 'approvals.write'],
   ['POST', '/api/pallets/:sscc/quality-release', 'approvals.write'],
   ['POST', '/api/pallets/:sscc/allow-short', 'approvals.write'],
