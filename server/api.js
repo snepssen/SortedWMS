@@ -449,7 +449,8 @@
     on('POST', '/api/orders/:id/pack', ({ id }, q, b, by) => run('recordPacking', { id: decodeURIComponent(id), note: b.note }, by));
     on('POST', '/api/orders/:id/carton', ({ id }, q, b, by) => run('openCarton', { orderId: decodeURIComponent(id) }, by));
     on('POST', '/api/orders/:id/dispatch-cartons', ({ id }, q, b, by) => run('dispatchCartons', { orderId: decodeURIComponent(id) }, by));
-    on('POST', '/api/cartons/:id/pack', ({ id }, q, b, by) => run('packIntoCarton', { carton: decodeURIComponent(id), code: b.code, qty: b.qty }, by));
+    on('POST', '/api/cartons/:id/pack', ({ id }, q, b, by) => run('packIntoCarton', { carton: decodeURIComponent(id), code: b.code, qty: b.qty, serials: b.serials || null }, by));
+    on('GET', '/api/cartons/:id/slip.html', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().packingSlipHtml(decodeURIComponent(id)) }));
     on('POST', '/api/cartons/:id/close', ({ id }, q, b, by) => run('closeCarton', { carton: decodeURIComponent(id), ...b }, by));
     on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
     on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));

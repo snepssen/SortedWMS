@@ -233,7 +233,8 @@
       const open = orders.filter((o) => o.status !== 'shipped');
       return `<section><h2>Packing bench</h2><p class="hint">Scan a pick into an OUT carton, record the size and weight, then send the closed cartons to dispatch.</p>
         <form class="form" data-act="open-carton"><label>Order<input name="orderId" required placeholder="4501"></label><button class="primary">Open carton</button></form>
-        <form class="form" data-act="pack-into"><label>Carton<input name="carton" placeholder="OUT0000001" required></label><label>Picked plate<input name="code" required></label><label>Qty<input name="qty" type="number" value="1"></label><button>Pack</button></form>
+        <form class="form" data-act="pack-into"><label>Carton<input name="carton" placeholder="OUT0000001" required></label><label>Picked plate, pallet or bin<input name="code" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>Serials<input name="serials" placeholder="if traced: which go in" size="18"></label><button>Pack</button></form>
+        <p class="hint">Traced items: the serials picked for the order go into the carton. When the order is split over cartons, scan which ones go into this one.</p>
         <form class="form" data-act="close-carton"><label>Carton<input name="carton" required></label><label>L mm<input name="lengthMm" type="number" value="400"></label><label>W mm<input name="widthMm" type="number" value="300"></label><label>H mm<input name="heightMm" type="number" value="200"></label><label>kg<input name="weightKg" type="number" value="2.5" step="0.1"></label><button>Close and print</button></form>
         <form class="form" data-act="dispatch-cartons"><label>Order<input name="orderId" required></label><button>Dispatch cartons</button></form>
         <h3>One shipment</h3><p class="hint">Pallets and cartons on the same order share one delivery note and one load manifest. Scan every holder, then dispatch.</p>
@@ -705,9 +706,16 @@
   };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
   $('#main').onclick = async (e) => {
-    const b = e.target.closest('[data-sheet], [data-act], #sim, #stationPick, #devicePick');
+    const b = e.target.closest('[data-slip], [data-sheet], [data-act], #sim, #stationPick, #devicePick');
     if (!b) return;
     try {
+      if (b.dataset.slip) {
+        e.preventDefault();
+        const tab = window.open('', '_blank');
+        const html = await api('GET', '/api/cartons/' + encodeURIComponent(b.dataset.slip) + '/slip.html');
+        if (tab) { tab.document.open(); tab.document.write(html); tab.document.close(); }
+        return;
+      }
       if (b.dataset.sheet) {
         e.preventDefault();
         const tab = window.open('', '_blank');
@@ -811,6 +819,12 @@
       const q = codes.length > 200 ? `prefix=${encodeURIComponent(data.to.trim())}` : `codes=${encodeURIComponent(codes.join(','))}`;
       const slot = document.getElementById('renameOut');
       if (slot) slot.innerHTML = `<p class="msg ok">Renamed ${r.renamed}. The old codes still scan. <a href="#" data-sheet="${esc(q)}">Print the new labels</a></p>`;
+      return;
+    }
+    if (form.dataset.act === 'close-carton') {
+      const r = await api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
+      await draw();
+      $('#main').insertAdjacentHTML('afterbegin', `<p class="msg ok">Closed ${esc(r.carton.id)}. <a href="#" data-slip="${esc(r.carton.id)}">Print the packing slip</a></p>`);
       return;
     }
     if (form.dataset.act === 'putaway-suggest') {
@@ -978,7 +992,7 @@
     if (name === 'work-order') return api('POST', '/api/work-orders', { id: data.id, kitId: data.kitId, qty: Number(data.qty || 1), orderId: data.orderId || null });
     if (name === 'mezz-pick') return api('POST', '/api/holders/' + encodeURIComponent(data.code) + '/pick', { orderId: data.orderId || null, qty: data.qty ? Number(data.qty) : null });
     if (name === 'open-carton') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/carton', {});
-    if (name === 'pack-into') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/pack', { code: data.code, qty: Number(data.qty || 1) });
+    if (name === 'pack-into') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/pack', { code: data.code, qty: Number(data.qty || 1), serials: data.serials ? data.serials.split(/[\s,;]+/).filter(Boolean) : null });
     if (name === 'close-carton') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
     if (name === 'dispatch-cartons') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/dispatch-cartons', {});
     if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});

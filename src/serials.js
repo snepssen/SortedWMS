@@ -94,6 +94,7 @@
         const row = this.serials[sn] || (this.serials[sn] = { sn, itemNo, status: null, loc: null, orderId: null, history: [] });
         row.status = status;
         row.loc = loc;
+        if (status === 'in') row.carton = null;
         if (orderId !== undefined) row.orderId = orderId;
         row.history.unshift({ t, event, loc, orderId: orderId || null, by: by || this._actor || 'unknown', note });
         if (row.history.length > 50) row.history.length = 50;
@@ -125,6 +126,45 @@
       };
     };
 
+    /**
+     * Which picked serials go into a carton. Scanned ones must have been picked
+     * for this order and not packed yet; without a scan, the ones still to pack
+     * go in when they all fit, otherwise the packer scans which.
+     */
+    proto._serialsForCarton = function (item, orderId, raw, qty) {
+      const sns = list(raw);
+      if (!item || !item.serialized) {
+        if (sns.length) throw new Error(`${item ? item.itemNo : 'That item'} is not traced by serial number`);
+        return null;
+      }
+      if (sns.length) {
+        check(sns, item, qty);
+        for (const sn of sns) {
+          const row = this._serial(sn);
+          if (!row || row.itemNo !== item.itemNo || row.status !== 'picked' || row.orderId !== orderId) throw new Error(`Serial ${sn} was not picked for order ${orderId}`);
+          if (row.carton) throw new Error(`Serial ${sn} is already in carton ${row.carton}`);
+        }
+        return sns;
+      }
+      const open = Object.values(this.serials || {}).filter((r) => r.itemNo === item.itemNo && r.status === 'picked' && r.orderId === orderId && !r.carton).map((r) => r.sn).sort();
+      if (open.length <= qty) return open;
+      throw new Error(`${open.length} serials of ${item.itemNo} picked for ${orderId} are not packed yet: scan the ${qty} going into this carton`);
+    };
+
+    proto._serialsPack = function (sns, cartonId, by) {
+      const t = this.now();
+      for (const sn of sns || []) {
+        const row = this._serial(sn);
+        row.carton = cartonId;
+        row.history.unshift({ t, event: 'packed', loc: cartonId, orderId: row.orderId, by: by || this._actor || 'unknown', note: `in carton ${cartonId}` });
+      }
+    };
+
+    /** Serials that went out on an order, by carton (or none, when picked but not packed). */
+    proto.serialsForOrder = function (orderId) {
+      return Object.values(this.serials || {}).filter((r) => r.orderId === String(orderId)).map((r) => ({ sn: r.sn, itemNo: r.itemNo, carton: r.carton || null, status: this._serialState(r) })).sort((a, b) => String(a.carton).localeCompare(String(b.carton)) || a.itemNo.localeCompare(b.itemNo) || a.sn.localeCompare(b.sn));
+    };
+
     /** Mark every serial of an item booked at a place as removed (a correction took that stock out). */
     proto._serialsRemoveAt = function (itemNo, loc, note, by) {
       const gone = Object.values(this.serials || {}).filter((r) => r.itemNo === itemNo && r.status === 'in' && r.loc === loc).map((r) => r.sn);
@@ -144,7 +184,7 @@
       if (!row) throw new Error(`Serial ${sn} is not known`);
       const order = row.orderId && this.orders[row.orderId];
       const item = this.items[row.itemNo] || {};
-      return { sn: row.sn, itemNo: row.itemNo, name: item.name || '', status: this._serialState(row), loc: row.loc, orderId: row.orderId, customer: order ? order.customer : null, shippedAt: order && order.status === 'shipped' ? order.shippedAt || null : null, history: row.history };
+      return { sn: row.sn, itemNo: row.itemNo, name: item.name || '', status: this._serialState(row), loc: row.loc, carton: row.carton || null, orderId: row.orderId, customer: order ? order.customer : null, shippedAt: order && order.status === 'shipped' ? order.shippedAt || null : null, history: row.history };
     };
 
     /** Serials in stock, at a place and/or of an item. */
