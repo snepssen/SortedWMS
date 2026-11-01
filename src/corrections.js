@@ -84,7 +84,7 @@
     /** Everything booked at a location: pallets, plates without a pallet, and bin lines. */
     proto._stockAt = function (code) {
       const out = [];
-      for (const p of Object.values(this.pallets)) {
+      for (const p of this._livePallets()) {
         if (p.loc !== code || p.status === 'shipped') continue;
         out.push({ kind: 'pallet', sscc: p.sscc, plate: p.holderId || null, itemNo: p.itemNo, name: (this.items[p.itemNo] || {}).name || '', qty: p.qty, batch: p.batch || null });
       }

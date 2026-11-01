@@ -67,7 +67,8 @@
 
     proto._openWaveTasks = function () {
       const out = [];
-      for (const wave of Object.values(this.waves || {})) for (const t of wave.tasks) if (t.status === 'open') out.push(t);
+      // Waves with nothing open stay for history; the in-memory list skips them.
+      for (const wave of this._liveList('waves', this.waves || {}, (w) => w.tasks.some((t) => t.status === 'open'))) for (const t of wave.tasks) if (t.status === 'open') out.push(t);
       return out;
     };
 
@@ -86,7 +87,7 @@
     proto._waveStock = function () {
       const live = typeof this._liveMap === 'function' ? this._liveMap() : new Map();
       const pallets = new Map();
-      for (const p of Object.values(this.pallets)) {
+      for (const p of this._livePallets()) {
         // An Auto-Shift nobody has started yet does not stop a pick, as for the trucks' own picks.
         const job = live.get(p.sscc);
         // Short-dated pallets stay in: an order that takes fewer days left may use them.
@@ -232,7 +233,7 @@
       const stock = this._waveStock();
       const s = this.waveSettings();
       const now = this.now();
-      return Object.values(this.orders)
+      return this._liveOrders()
         .filter((o) => o.status !== 'shipped' && o.lines.some((l) => l.kind === 'each' && l.units - (l.picked || 0) - (stock.planned.get(`${o.id}|${l.itemNo}`) || 0) > 0))
         .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
         .map((o) => {
@@ -253,7 +254,7 @@
       if (wanted) for (const o of wanted) if (!this.orders[o]) throw new Error(`No order ${o}`);
       const stock = this._waveStock();
       const now = this.now();
-      const queue = Object.values(this.orders)
+      const queue = this._liveOrders()
         .filter((o) => o.status !== 'shipped' && (!wanted || wanted.includes(o.id)))
         .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1));
       // Orders that are due go first, so a box they open can serve the newer ones.
@@ -293,6 +294,7 @@
         short,
       };
       this.waves[waveId] = wave;
+      this._liveAdd('waves', wave);
       const count = (k) => wave.tasks.filter((t) => t.kind === k).length;
       this.log(`Wave ${waveId}${auto ? ' (from the queue)' : ''}: ${joined.length} order${joined.length === 1 ? '' : 's'}, ${count('pallet')} pallet, ${count('case')} box, ${count('bin')} bin pick${short.length ? `, ${short.length} short` : ''}`);
       return wave;

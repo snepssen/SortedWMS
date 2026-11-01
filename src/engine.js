@@ -624,7 +624,7 @@
 
     // Raising the minimum can make allocated pallets too short: swap them for good ones.
     _dropShortAllocations(itemNo) {
-      for (const t of Object.values(this.tasks)) {
+      for (const t of this._liveTasks()) {
         if (t.type !== 'PICK' || t.status !== 'open') continue;
         const p = this.pallets[t.sscc];
         if (p.itemNo !== itemNo || this.shipState(p) === 'ok') continue;
@@ -714,6 +714,7 @@
       if (over && loc.capacityMode !== 'warn') throw new Error(over);
       if (!this._fits(loc, pallet)) throw new Error(`Pallet …${sscc.slice(-6)} (${itemNo}) does not fit ${loc.code}: height, width, depth or weight`);
       this.pallets[sscc] = pallet;
+      this._liveAdd('pallets', pallet);
       this._place(pallet, code);
       this._quarantinePlacement(pallet, 'opening-stock');
       return pallet;
@@ -753,7 +754,7 @@
     _holdUncollectedPicks(ssccs, reason) {
       const held = new Set(ssccs);
       // Carried stock can still be dropped safely; check and shipment gates reject it.
-      for (const task of Object.values(this.tasks)) {
+      for (const task of this._liveTasks()) {
         if (!held.has(task.sscc) || task.type !== 'PICK' || !['open', 'active'].includes(task.status) || task.step !== 0) continue;
         this._unassign(task);
         task.status = 'held';
@@ -847,7 +848,7 @@
     }
 
     _detachQuarantineAllocation(pallet) {
-      for (const task of Object.values(this.tasks)) if (task.sscc === pallet.sscc && this._isLive(task)) this._cancelQuiet(task);
+      for (const task of this._liveTasks()) if (task.sscc === pallet.sscc && this._isLive(task)) this._cancelQuiet(task);
       const order = pallet.orderId && this.orders[pallet.orderId];
       if (order) {
         const line = order.lines.find((l) => l.allocated.includes(pallet.sscc));
@@ -931,7 +932,7 @@
       for (const item of Object.values(this.items)) {
         rows[item.itemNo] = { item, available: 0, short: 0, blocked: 0, qty: 0, next: null, batches: new Set() };
       }
-      for (const p of Object.values(this.pallets)) {
+      for (const p of this._livePallets()) {
         if (!p.loc || p.status === 'shipped' || p.status === 'missing') continue;
         const r = rows[p.itemNo];
         const state = this.shipState(p);
@@ -1043,7 +1044,7 @@
       if (patch.buriedStock !== undefined) {
         if (!['digout', 'pickfirst', 'both', 'off'].includes(patch.buriedStock)) throw new Error('Buried stock: digout, pickfirst, both or off');
         if (!['digout', 'both'].includes(patch.buriedStock)) {
-          for (const t of Object.values(this.tasks)) if (t.reason === 'digout' && t.status === 'open') this._cancelQuiet(t);
+          for (const t of this._liveTasks()) if (t.reason === 'digout' && t.status === 'open') this._cancelQuiet(t);
         }
         this.planDigOut();
       }
@@ -1155,6 +1156,7 @@
       }
       const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null, minDays: minDays == null || minDays === '' ? null : Number(minDays) };
       this.orders[id] = order;
+      this._liveAdd('orders', order);
       for (const line of lines) {
         const hasUnits = line.units != null && line.units !== '' && (line.pallets == null || line.pallets === '');
         if (hasUnits) {
@@ -1200,7 +1202,7 @@
       if (typeof trailer !== 'string' || !/^[A-Z0-9][A-Z0-9-]{0,29}$/.test(trailer.trim().toUpperCase())) throw new Error('Trailer ID must be 1 to 30 letters, digits or hyphens');
       trailer = trailer.trim().toUpperCase();
       const location = `TRAILER-${trailer}`;
-      if (Object.values(this.orders).some((o) => o.loading?.trailer === trailer && o.status !== 'shipped')) throw new Error('Trailer already belongs to another active order');
+      if (this._liveOrders().some((o) => o.loading?.trailer === trailer && o.status !== 'shipped')) throw new Error('Trailer already belongs to another active order');
       if (this.locations[location] && (this.locations[location].kind !== 'trailer' || this.locations[location].pallets.length)) throw new Error('Trailer location is not empty');
       const pallets = this._loadingPallets(order);
       for (const p of pallets) {
@@ -1799,7 +1801,7 @@
      * still holds, and nobody has to dig.
      */
     _rebindBlockPicks() {
-      for (const task of Object.values(this.tasks)) {
+      for (const task of this._liveTasks()) {
         if (task.type !== 'PICK' || task.status !== 'open') continue;
         const old = this.pallets[task.sscc];
         const loc = old && old.loc && this.locations[old.loc];
@@ -1867,7 +1869,7 @@
     }
 
     openTasks() {
-      return Object.values(this.tasks).filter((t) => t.status === 'open');
+      return this._liveTasks().filter((t) => t.status === 'open');
     }
 
     aisleOccupancy() {
@@ -2053,7 +2055,7 @@
 
     /** Pallets whose location is unknown (reported missing, or displaced by a transfer). */
     lostPallets() {
-      return Object.values(this.pallets).filter((p) => p.status === 'missing');
+      return this._livePallets().filter((p) => p.status === 'missing');
     }
 
     /**
@@ -2136,7 +2138,7 @@
 
     _itemLookup(item) {
       const order = { ok: 0, short: 1, expired: 2, blocked: 3 };
-      const pallets = Object.values(this.pallets)
+      const pallets = this._livePallets()
         .filter((p) => p.itemNo === item.itemNo && p.status !== 'shipped')
         .sort((a, b) => (a.status === 'missing') - (b.status === 'missing') || order[this.shipState(a)] - order[this.shipState(b)]
           || a.expiry.localeCompare(b.expiry) || a.receivedAt - b.receivedAt);
@@ -2335,7 +2337,7 @@
       const cartons = (this.shipments || []).flatMap((s) => (s.cartons || []).flatMap((id) => (((this.holders || {})[id] || {}).packed || []).filter(matches)
         .map((p) => ({ carton: id, itemNo: p.itemNo, qty: p.qty, batch: p.batch, expiry: p.expiry || null, orderId: s.orderId, customer: s.customer, t: s.t }))));
       const inBins = Object.entries(this.binStock || {}).flatMap(([loc, lines]) => lines.filter(matches).map((l) => ({ loc, itemNo: l.itemNo, qty: l.qty, batch: l.batch, expiry: l.expiry || null })));
-      const picked = Object.values(this.orders).filter((o) => o.status !== 'shipped').flatMap((o) => (o.staged || []).filter(matches).map((x) => ({ orderId: o.id, customer: o.customer, itemNo: x.itemNo, qty: x.qty, from: x.holder })));
+      const picked = this._liveOrders().filter((o) => o.status !== 'shipped').flatMap((o) => (o.staged || []).filter(matches).map((x) => ({ orderId: o.id, customer: o.customer, itemNo: x.itemNo, qty: x.qty, from: x.holder })));
       return {
         batch: b,
         inStock: pallets.filter((p) => p.status !== 'shipped'),
@@ -2354,7 +2356,7 @@
       const trace = this.trace(b, itemNo);
       const orderIds = new Set([...(hold ? hold.history.flatMap((e) => e.orders || []) : []), ...trace.inStock.map((p) => p.orderId).filter(Boolean), ...trace.picked.map((x) => x.orderId)]);
       return { ...trace, itemNo, active: Boolean(hold && hold.active), history: hold ? hold.history : [],
-        openOrders: Object.values(this.orders).filter((o) => orderIds.has(o.id) && o.status !== 'shipped').map((o) => ({ id: o.id, customer: o.customer, status: o.status, heldPallets: trace.inStock.filter((p) => p.orderId === o.id).map((p) => p.sscc) })),
+        openOrders: this._liveOrders().filter((o) => orderIds.has(o.id) && o.status !== 'shipped').map((o) => ({ id: o.id, customer: o.customer, status: o.status, heldPallets: trace.inStock.filter((p) => p.orderId === o.id).map((p) => p.sscc) })),
       };
     }
 
@@ -2384,7 +2386,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live') continue;
         out[k] = v;
       }
       return out;
@@ -2467,7 +2469,7 @@
     _stationRoom(stationId, exceptTaskId = null) {
       const st = this.stations[stationId];
       const here = this.locations[st.code].pallets.length;
-      const coming = Object.values(this.tasks).filter((t) => t.status === 'active' && t.to === st.code && t.id !== exceptTaskId).length;
+      const coming = this._liveTasks().filter((t) => t.status === 'active' && t.to === st.code && t.id !== exceptTaskId).length;
       return (st.dwell ? st.capacity : st.queue) - here - coming;
     }
 
@@ -2536,7 +2538,7 @@
     // Warm-room time up: the system creates the move out, flagged urgent. No phone timers.
     _checkDwell() {
       const now = this.now();
-      for (const pallet of Object.values(this.pallets)) {
+      for (const pallet of this._livePallets()) {
         const pr = pallet.proc;
         if (!pr || pr.state !== 'dwelling' || pr.dueAt > now) continue;
         const st = this.stations[this.locations[pallet.loc].station];
@@ -2598,7 +2600,7 @@
       const st = this.stations[stationId];
       const pallets = this.locations[st.code].pallets.map((s) => this.pallets[s]);
       const by = (state) => pallets.filter((p) => p.proc && p.proc.state === state);
-      const coming = Object.values(this.tasks).filter((t) => LIVE.has(t.status) && t.to === st.code).length;
+      const coming = this._liveTasks().filter((t) => LIVE.has(t.status) && t.to === st.code).length;
       const now = this.now();
       return {
         station: st,
@@ -2629,7 +2631,7 @@
       const desk = this.desks[deskId];
       if (!desk) throw new Error(`No desk ${deskId}`);
       if (desk.taskId) throw new Error(`${desk.name} is already receiving`);
-      const task = Object.values(this.tasks).find((t) => t.type === 'RECEIVE' && t.status === 'open'
+      const task = this._liveTasks().find((t) => t.type === 'RECEIVE' && t.status === 'open'
         && (deliveryId ? t.deliveryId === deliveryId : t.deskOnly));
       if (!task) throw new Error(deliveryId ? `Delivery ${deliveryId} is not waiting` : 'No delivery waiting for the desk');
       task.status = 'active';
@@ -2714,6 +2716,7 @@
       };
       if (fields.type === 'RECEIVE' || fields.type === 'CHECK') task.autoSlot = false;
       this.tasks[task.id] = task;
+      this._liveAdd('tasks', task);
       return task;
     }
 
@@ -3011,7 +3014,7 @@
     _fefo(itemNo, ctx = null) {
       const live = ctx ? ctx.live : this._liveMap();
       const blockers = ctx ? ctx.blockers : new Set(['pickfirst', 'both'].includes(this.config.buriedStock) ? this._blockers() : []);
-      const pool = ctx ? ctx.byItem.get(itemNo) || [] : Object.values(this.pallets);
+      const pool = ctx ? ctx.byItem.get(itemNo) || [] : this._livePallets();
       return pool
         .filter((p) => {
           if (p.itemNo !== itemNo || !p.loc || p.orderId || this.shipState(p) !== 'ok') return false;
@@ -3036,7 +3039,7 @@
     /** The lookups _fefo needs, made once: tasks in progress, buried-lane blockers, pallets by item. */
     _fefoContext() {
       const byItem = new Map();
-      for (const p of Object.values(this.pallets)) {
+      for (const p of this._livePallets()) {
         if (!p.loc || p.orderId) continue;
         const list = byItem.get(p.itemNo);
         if (list) list.push(p); else byItem.set(p.itemNo, [p]);
@@ -3110,7 +3113,7 @@
     planRemnants() {
       let n = 0;
       const lanes = new Set();
-      for (const task of Object.values(this.tasks)) {
+      for (const task of this._liveTasks()) {
         if (task.status !== 'open' || task.to || !task.sscc || (task.type !== 'PUTAWAY' && task.type !== 'MOVE')) continue;
         const pallet = this.pallets[task.sscc];
         if (!pallet || this.items[pallet.itemNo].storage !== 'block') continue;
@@ -3400,8 +3403,8 @@
     }
 
     _planCounts({ codes = null, limit = 10, truck = null }) {
-      const open = new Set(Object.values(this.tasks).filter((t) => t.type === 'COUNT' && LIVE.has(t.status)).map((t) => t.from));
-      const busy = new Set(Object.values(this.tasks).filter((t) => LIVE.has(t.status) && t.type !== 'COUNT').flatMap((t) => [t.from, t.to]));
+      const open = new Set(this._liveTasks().filter((t) => t.type === 'COUNT' && LIVE.has(t.status)).map((t) => t.from));
+      const busy = new Set(this._liveTasks().filter((t) => LIVE.has(t.status) && t.type !== 'COUNT').flatMap((t) => [t.from, t.to]));
       const categoryOf = (l) => l.category || (l.sscc && this.pallets[l.sscc] ? this.items[this.pallets[l.sscc].itemNo].category : null);
       let racks = (codes ? codes.map((c) => this.locations[c]).filter(Boolean) : this._racks())
         .filter((l) => l.kind === 'rack' && !l.blocked && !open.has(l.code) && !busy.has(l.code))
@@ -3894,13 +3897,49 @@
       return LIVE.has(t.status) && !(t.status === 'held' && t.replacedBy);
     }
 
+    /**
+     * The members of a collection that are still in play, kept in memory only
+     * (never saved, rebuilt after a restart or replay). Shipped pallets,
+     * finished tasks and shipped orders stay in the data for history, but
+     * after months they far outnumber the rest, and everyday work should not
+     * walk through them. Creation adds to the list (_liveAdd); members that
+     * stop passing `keep` drop out as they are met, and none come back.
+     */
+    _liveList(name, all, keep) {
+      this._live = this._live || {};
+      const cached = this._live[name];
+      const live = (cached && cached.all === all ? cached.list : Object.values(all)).filter(keep);
+      this._live[name] = { all, list: live };
+      return live.slice();
+    }
+
+    _liveAdd(name, member) {
+      const cached = this._live && this._live[name];
+      if (cached) cached.list.push(member);
+    }
+
+    /** Pallets still in the building: not shipped, emptied, deleted or sent to another site. */
+    _livePallets() {
+      return this._liveList('pallets', this.pallets, (p) => p.status !== 'shipped');
+    }
+
+    /** Tasks not finished: open, active or held. */
+    _liveTasks() {
+      return this._liveList('tasks', this.tasks, (t) => LIVE.has(t.status));
+    }
+
+    /** Orders not shipped yet. */
+    _liveOrders() {
+      return this._liveList('orders', this.orders, (o) => o.status !== 'shipped');
+    }
+
     _liveTaskFor(sscc) {
-      return Object.values(this.tasks).find((t) => t.sscc === sscc && this._isLive(t)) || null;
+      return this._liveTasks().find((t) => t.sscc === sscc && this._isLive(t)) || null;
     }
 
     _liveMap() {
       const map = new Map();
-      for (const t of Object.values(this.tasks)) if (t.sscc && this._isLive(t)) map.set(t.sscc, t);
+      for (const t of this._liveTasks()) if (t.sscc && this._isLive(t)) map.set(t.sscc, t);
       return map;
     }
 

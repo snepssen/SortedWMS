@@ -828,7 +828,7 @@
         if (!spec) continue;
         const onHand = this._faceQty(loc);
         if (onHand > spec.trigger) continue;
-        const open = Object.values(this.tasks).some((t) => t.reason === 'replenish' && t.to === loc.code && t.status !== 'done' && t.status !== 'cancelled');
+        const open = this._liveTasks().some((t) => t.reason === 'replenish' && t.to === loc.code && t.status !== 'done' && t.status !== 'cancelled');
         if (open) continue;
         const need = spec.max - onHand;
         if (need < 1) continue;
@@ -889,7 +889,7 @@
       const item = this.items[itemNo];
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       const actor = by || this._actor || 'office';
-      const pallet = Object.values(this.pallets).find((p) => p.itemNo === itemNo && p.status !== 'shipped' && p.loc && !p.orderId && p.qty === amount);
+      const pallet = this._livePallets().find((p) => p.itemNo === itemNo && p.status !== 'shipped' && p.loc && !p.orderId && p.qty === amount);
       let batch = null;
       let expiry = null;
       let clientId = item.clientId || null;
@@ -1072,7 +1072,7 @@
       if (this.siteTransfers[tid]) throw new Error(`Transfer ${tid} already exists`);
       this.ensureTransit();
       const actor = by || this._actor || 'office';
-      const pallet = Object.values(this.pallets).find((p) => p.itemNo === itemNo && p.status !== 'shipped' && p.loc && p.loc !== 'IN-TRANSIT' && !p.orderId && p.qty === amount);
+      const pallet = this._livePallets().find((p) => p.itemNo === itemNo && p.status !== 'shipped' && p.loc && p.loc !== 'IN-TRANSIT' && !p.orderId && p.qty === amount);
       let record;
       if (pallet) {
         const from = pallet.loc;
@@ -1388,7 +1388,7 @@
         if (!t) { t = { onHand: 0, allocated: 0, held: 0, reserved: 0 }; sum.set(itemNo, t); }
         return t;
       };
-      for (const p of Object.values(this.pallets)) {
+      for (const p of this._livePallets()) {
         if (p.status === 'shipped' || !p.loc) continue;
         const t = of(p.itemNo);
         t.onHand += p.qty;
@@ -1415,7 +1415,7 @@
           if (blocked) t.held += l.qty;
         }
       }
-      for (const order of Object.values(this.orders)) {
+      for (const order of this._liveOrders()) {
         if (order.status === 'shipped') continue;
         for (const line of order.lines) if (line.kind === 'each') of(line.itemNo).reserved += Math.max(0, line.units - (line.picked || 0));
       }
