@@ -193,6 +193,7 @@ const RULES = [
   ['POST', '/api/waves/tasks/:task/short', 'picks.execute'],
   ['GET', '/api/bins/suggest', 'stock.read'],
   ['POST', '/api/items/:itemNo/serials', 'items.write'],
+  ['GET', '/api/cartons/:id/slip.html', 'orders.read'],
   ['GET', '/api/serials', 'stock.read'],
   ['GET', '/api/serials/:sn', 'stock.read'],
   ['POST', '/api/waves/:id/cancel', 'orders.write'],

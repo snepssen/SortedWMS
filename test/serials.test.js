@@ -44,9 +44,15 @@ test('picking a traced item scans one serial per piece from that bin; a serial f
   const trace = w.serialTrace('x-777');
   assert.deepEqual([trace.status, trace.orderId, trace.customer, trace.history[0].note], ['picked', 'SO1', 'Builder Bob', 'from Tools-Bin2']);
   const carton = w.openCarton({ orderId: 'SO1' });
-  w.packIntoCarton({ carton: carton.id, code: 'Tools-Bin1', qty: 1 });
+  assert.throws(() => w.packIntoCarton({ carton: carton.id, code: 'Tools-Bin1', qty: 1 }), /3 serials of DRILL picked for SO1 are not packed yet: scan the 1/);
+  assert.throws(() => w.packIntoCarton({ carton: carton.id, code: 'Tools-Bin1', qty: 1, serials: ['D-001'] }), /D-001 was not picked for order SO1/);
+  w.packIntoCarton({ carton: carton.id, code: 'Tools-Bin1', qty: 1, serials: ['d-002'] });
   w.packIntoCarton({ carton: carton.id, code: 'Tools-Bin2', qty: 2 });
-  w.closeCarton({ carton: carton.id, lengthMm: 400, widthMm: 300, heightMm: 200, weightKg: 6 });
+  assert.deepEqual(carton.packed.map((p) => p.serials), [['D-002'], ['X-777', 'X-778']], 'the two left went in without a scan');
+  assert.equal(w.serialTrace('X-778').carton, carton.id);
+  const { slip } = w.closeCarton({ carton: carton.id, lengthMm: 400, widthMm: 300, heightMm: 200, weightKg: 6 });
+  assert.match(slip.zpl, /\^FDSN X-777, X-778\^FS/);
+  assert.match(w.packingSlipHtml(carton.id), /X-777, X-778/);
   w.dispatchCartons({ orderId: 'SO1' });
   assert.equal(w.serialTrace('D-002').status, 'shipped');
   assert.throws(() => w.serialTrace('NOPE-1'), /not known/);
@@ -117,4 +123,27 @@ test('serials over the API: an office user marks the item, the picker scans, and
     await new Promise((r) => server.close(r));
     store.close();
   }
+});
+
+test('an order over two cartons: scan which serials go in each; the delivery note and the slips list them', () => {
+  const w = wh();
+  const sns = Array.from({ length: 12 }, (_, i) => `SN-ABCDEF-${String(i + 1).padStart(3, '0')}`);
+  w.binPut({ loc: 'Tools-Bin1', itemNo: 'DRILL', qty: 12, serials: sns });
+  w.addOrder({ id: 'SO3', customer: 'Site office', lane: 'OUT-01', lines: [{ itemNo: 'DRILL', units: 12 }] });
+  w.binTake({ loc: 'Tools-Bin1', itemNo: 'DRILL', qty: 12, orderId: 'SO3', serials: sns });
+  const a = w.openCarton({ orderId: 'SO3' });
+  w.packIntoCarton({ carton: a.id, code: 'Tools-Bin1', qty: 8, serials: sns.slice(0, 8) });
+  assert.throws(() => w.packIntoCarton({ carton: a.id, code: 'Tools-Bin1', qty: 1, serials: [sns[0]] }), /already in carton/);
+  const { slip } = w.closeCarton({ carton: a.id, lengthMm: 600, widthMm: 400, heightMm: 300, weightKg: 14 });
+  assert.ok((slip.zpl.match(/\^FDSN /g) || []).length >= 2, 'eight long serials wrap over more than one row');
+  const b = w.openCarton({ orderId: 'SO3' });
+  w.packIntoCarton({ carton: b.id, code: 'Tools-Bin1', qty: 4 });
+  assert.deepEqual(b.packed[0].serials, sns.slice(8));
+  w.closeCarton({ carton: b.id, lengthMm: 400, widthMm: 300, heightMm: 300, weightKg: 7 });
+  w.stageShipment({ orderId: 'SO3' });
+  const note = w.deliveryNote('SO3');
+  assert.match(note, /<h2>Serial numbers<\/h2>/);
+  assert.match(note, new RegExp(`${a.id}</td><td>DRILL</td><td[^>]*>${sns[0]}, `));
+  assert.match(note, new RegExp(`${b.id}</td><td>DRILL</td><td[^>]*>${sns[8]}, ${sns[9]}, ${sns[10]}, ${sns[11]}<`));
+  assert.deepEqual(w.serialsForOrder('SO3').filter((s) => s.carton === b.id).map((s) => s.sn), sns.slice(8));
 });

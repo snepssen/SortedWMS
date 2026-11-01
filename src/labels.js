@@ -173,7 +173,19 @@
   }
 
   function packingSlip(d) {
-    const body = (d.lines || []).slice(0, 14).map((line, i) => `^FO40,${250 + i * 34}^A0N,26,26^FD${clean(line.qty)}  ${clean(line.itemNo)}  ${clean(line.name || '')}^FS`);
+    // One row per line, then its serial numbers in rows of about 55 characters, up to 26 rows.
+    const rows = [];
+    for (const line of d.lines || []) {
+      rows.push({ text: `${line.qty}  ${line.itemNo}  ${line.name || ''}`, size: 26 });
+      let sn = '';
+      for (const s of line.serials || []) {
+        if (sn && (sn + ', ' + s).length > 55) { rows.push({ text: `SN ${sn}`, size: 22 }); sn = ''; }
+        sn = sn ? `${sn}, ${s}` : s;
+      }
+      if (sn) rows.push({ text: `SN ${sn}`, size: 22 });
+    }
+    const shown = rows.length > 26 ? rows.slice(0, 25).concat({ text: `… ${rows.length - 25} more rows on the printed slip`, size: 22 }) : rows;
+    const body = shown.map((r, i) => `^FO${r.size === 26 ? 40 : 70},${250 + i * 34}^A0N,${r.size},${r.size}^FD${clean(r.text)}^FS`);
     return [
       '^XA',
       '^CI28',

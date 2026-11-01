@@ -680,7 +680,7 @@
       return carton;
     };
 
-    proto.packIntoCarton = function ({ carton, code, qty = 1, by } = {}) {
+    proto.packIntoCarton = function ({ carton, code, qty = 1, serials = null, by } = {}) {
       const box = this._holder(carton);
       if (box.series !== 'OUT' || box.cartonStatus !== 'open') throw new Error(`${box.id} is not an open carton`);
       const take = whole(qty, 'Pack quantity');
@@ -691,6 +691,7 @@
       const content = staged || (holder && (holder.contents || []).find((c) => Number(c.qty) >= take));
       if (!content) throw new Error(`${code} does not have ${take} to pack`);
       if (!order.lines.some((l) => l.itemNo === content.itemNo)) throw new Error(`${content.itemNo} is not on order ${order.id}`);
+      const sns = this._serialsForCarton ? this._serialsForCarton(this.items[content.itemNo], order.id, serials, take) : null;
       content.qty -= take;
       if (!staged && holder) {
         const line = order.lines.find((l) => l.kind === 'each' && l.itemNo === content.itemNo && (l.picked || 0) < l.units);
@@ -698,7 +699,9 @@
       }
       const fromId = holder ? holder.id : content.holder || null;
       const row = { itemNo: content.itemNo, qty: take, from: fromId, batch: content.batch || null, expiry: content.expiry || null };
+      if (sns && sns.length) row.serials = sns;
       box.packed.push(row);
+      if (sns && sns.length) this._serialsPack(sns, box.id, by || this._actor);
       box.contents = box.packed.map((p) => ({ ...p }));
       this.recordMovement({ holder: fromId, from: holder ? holder.loc : null, to: box.id, qty: take, event: 'packed', by: by || this._actor || 'office', note: order.id });
       this.log(`Packed ${content.itemNo} × ${take} into ${box.id}`);
@@ -731,6 +734,19 @@
       this.recordMovement({ holder: box.id, from: null, to: order.lane, qty, event: 'packed', by: by || this._actor || 'office', note: `${box.lengthMm}×${box.widthMm}×${box.heightMm} mm, ${box.weightKg} kg` });
       this.log(`Closed carton ${box.id} for order ${order.id}`);
       return { carton: box, label, slip };
+    };
+
+    /** A carton's packing slip as a page to print or save, with each line's serial numbers. */
+    proto.packingSlipHtml = function (carton) {
+      const box = this._holder(carton);
+      if (box.series !== 'OUT' || !box.packed) throw new Error(`${box.id} is not a carton`);
+      const order = this.orders[box.orderId] || {};
+      const rows = box.packed.map((p) => `<tr><td>${htmlEscape(p.qty)}</td><td>${htmlEscape(p.itemNo)}</td><td>${htmlEscape(this.items[p.itemNo] ? this.items[p.itemNo].name : '')}</td><td>${htmlEscape(p.batch || '')}</td><td class="sn">${(p.serials || []).map(htmlEscape).join(', ')}</td></tr>`).join('');
+      const size = box.lengthMm ? `${box.lengthMm} × ${box.widthMm} × ${box.heightMm} mm · ${box.weightKg} kg` : 'open';
+      return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Packing slip ${htmlEscape(box.id)}</title>
+        <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.sn{font-family:ui-monospace,monospace;font-size:13px}button{font:inherit;padding:8px 14px}@media print{button{display:none}body{margin:12px}}</style></head>
+        <body><p><button onclick="print()">Print</button></p><h1>Packing slip ${htmlEscape(box.id)}</h1><p>Order ${htmlEscape(order.id || box.orderId)} · ${htmlEscape(order.customer || '')} · ${htmlEscape(size)}</p>
+        <table><tr><th>Qty</th><th>Item</th><th>Description</th><th>Batch</th><th>Serial numbers</th></tr>${rows}</table></body></html>`;
     };
 
     proto.dispatchCartons = function ({ orderId, by } = {}) {
@@ -1058,11 +1074,17 @@
       const order = this.orders[String(orderId)];
       if (!order || !order.shipment) throw new Error(`Order ${orderId} has no shipment`);
       const ship = order.shipment;
+      const byBox = new Map();
+      for (const s of typeof this.serialsForOrder === 'function' ? this.serialsForOrder(order.id) : []) {
+        const k = `${s.carton || 'not packed'}|${s.itemNo}`;
+        byBox.set(k, (byBox.get(k) || []).concat(s.sn));
+      }
+      const serialRows = [...byBox].map(([k, sns]) => { const [box, itemNo] = k.split('|'); return `<tr><td>${htmlEscape(box)}</td><td>${htmlEscape(itemNo)}</td><td style="font-family:ui-monospace,monospace">${sns.map(htmlEscape).join(', ')}</td></tr>`; }).join('');
       const rows = ship.holders.map((h) => `<tr><td>${htmlEscape(h.kind)}</td><td>${htmlEscape(h.sscc || h.id)}</td><td>${htmlEscape(h.itemNo || '')}</td><td>${htmlEscape(h.qty)}</td><td>${h.loaded ? 'loaded' : 'staged'}</td></tr>`).join('');
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Delivery note ${htmlEscape(order.id)}</title>
         <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}@media print{body{margin:12px}}</style></head>
         <body><h1>Delivery note ${htmlEscape(order.id)}</h1><p>${htmlEscape(order.customer)} · lane ${htmlEscape(ship.lane)}${ship.truck ? ` · truck ${htmlEscape(ship.truck)}` : ''} · ${htmlEscape(ship.status)}</p>
-        <h2>Load manifest</h2><table><tr><th>Kind</th><th>Holder</th><th>Item</th><th>Qty</th><th>Load</th></tr>${rows}</table></body></html>`;
+        <h2>Load manifest</h2><table><tr><th>Kind</th><th>Holder</th><th>Item</th><th>Qty</th><th>Load</th></tr>${rows}</table>${serialRows ? `<h2>Serial numbers</h2><table><tr><th>Carton</th><th>Item</th><th>Serial numbers</th></tr>${serialRows}</table>` : ''}</body></html>`;
     };
 
     proto.ensureTransit = function () {
