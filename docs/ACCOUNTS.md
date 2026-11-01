@@ -21,17 +21,18 @@ Presets: chilled distribution centre (chilled and frozen zones), high-value, hom
 Node.js 22.13 or newer. No packages to install. macOS and Linux use the same commands.
 
 ```
+./start.sh              # your own warehouse: only the admin account
+./start.sh demo         # the demo, with every account below
 npm test
-npm run start:demo
 ```
 
-Open `http://localhost:8080/login`. `npm start` builds the example site without the made-up pallets; the accounts are still created.
+Open `http://localhost:8080/login`. On your own warehouse the admin starts on `sorted-admin` and has to choose their own password at the first sign-in, before anything else; any page they open goes to that screen first. An admin still on `sorted-admin` from before is asked at the next start. A new password can't be one of the passwords printed below. `npm start` builds the example site without the made-up pallets; the accounts are still created there.
 
 | Variable | Default | |
 | --- | --- | --- |
 | `SORTED_DB` | `data/sorted.db` | Warehouse journal, users and sessions. |
 | `SORTED_ADMIN_USER` | `admin` | First administrator, only if that username does not exist yet. |
-| `SORTED_ADMIN_PASSWORD` | `sorted-admin` | At least 8 characters. Printed at startup only when the default is still in use. |
+| `SORTED_ADMIN_PASSWORD` | `sorted-admin` | At least 8 characters. Set it before the first start and the admin keeps it; left at the default, the admin must change it at the first sign-in. |
 | `SORTED_DEMO_USERS` | on | `0` skips the five demo accounts below. |
 | `SORTED_TOKEN` | unset | Optional. A request with header `x-token` is a service administrator and does not need a cookie. |
 
@@ -39,7 +40,7 @@ Passwords are stored as scrypt hashes (`scrypt$N$r$p$salt$hash`). The session co
 
 ## Demo accounts
 
-Created when missing. Existing passwords are not reset.
+Created when missing, for the demo and the samples only (`./start.sh` on your own warehouse skips them). Existing passwords are not reset. The sign-in page lists them only where they exist.
 
 | Username | Password | Role | Lands on |
 | --- | --- | --- | --- |
