@@ -127,19 +127,34 @@
         if (t.box === 'open') p.open -= t.qty;
         if (t.box === 'new') p.open = p.open + t.per - t.qty;
       }
-      return { pallets, bins, planned };
+      // Rows by item, so planning one order looks only at its own items.
+      const byItem = new Map();
+      const slot = (itemNo) => { let e = byItem.get(itemNo); if (!e) { e = { pallets: [], bins: [] }; byItem.set(itemNo, e); } return e; };
+      for (const [k, p] of pallets) slot(p.itemNo).pallets.push(k);
+      for (const [k, b] of bins) slot(b.itemNo).bins.push(k);
+      return { pallets, bins, planned, byItem };
     };
 
     function lotKey(itemNo, loc, batch, expiry) {
       return `${itemNo}|${loc}|${batch || ''}|${expiry || ''}`;
     }
 
-    function copyStock(s) {
+    /** A copy of the stock rows an order's items use, to plan it on; `keep` writes it back. */
+    function copyFor(s, order) {
       const pallets = new Map();
-      for (const [k, v] of s.pallets) pallets.set(k, { ...v });
       const bins = new Map();
-      for (const [k, v] of s.bins) bins.set(k, { ...v });
-      return { pallets, bins, planned: new Map(s.planned) };
+      for (const line of order.lines) {
+        const rows = s.byItem.get(line.itemNo);
+        if (!rows) continue;
+        for (const k of rows.pallets) if (!pallets.has(k)) pallets.set(k, { ...s.pallets.get(k) });
+        for (const k of rows.bins) if (!bins.has(k)) bins.set(k, { ...s.bins.get(k) });
+      }
+      return { pallets, bins, planned: s.planned, byItem: s.byItem };
+    }
+
+    function keep(into, trial) {
+      for (const [k, v] of trial.pallets) into.pallets.set(k, v);
+      for (const [k, v] of trial.bins) into.bins.set(k, v);
     }
 
     /** Plan one order on a stock copy. Returns its tasks, what is short, and whether a new box is opened. */
@@ -156,7 +171,8 @@
         const per = stepOf(item);
         const min = this._minDaysFor(order, line.itemNo);
         const fits = (r) => this._lotState(line.itemNo, { expiry: r.expiry, allowShort: r.allowShort }, min) === 'ok';
-        const racks = () => [...stock.pallets.values()].filter((p) => p.itemNo === line.itemNo && p.free > 0 && fits(p)).sort(byAge);
+        const rows = stock.byItem.get(line.itemNo) || { pallets: [], bins: [] };
+        const racks = () => rows.pallets.map((k) => stock.pallets.get(k)).filter((p) => p && p.free > 0 && fits(p)).sort(byAge);
         const add = (t) => { tasks.push({ orderId: order.id, itemNo: line.itemNo, ...t }); left -= t.qty; };
         // 1. Whole pallets that fit, straight to the dock.
         for (const p of racks()) {
@@ -178,7 +194,7 @@
         }
         if (!left) continue;
         // 3. The rest: bins that hold all of it, else an opened box, else a new box.
-        const bins = [...stock.bins.values()].filter((b) => b.itemNo === line.itemNo && b.free > 0 && fits(b)).sort(byAge);
+        const bins = rows.bins.map((k) => stock.bins.get(k)).filter((b) => b && b.free > 0 && fits(b)).sort(byAge);
         if (bins.reduce((s, b) => s + b.free, 0) >= left) {
           for (const b of bins) {
             if (!left) break;
@@ -220,7 +236,7 @@
         .filter((o) => o.status !== 'shipped' && o.lines.some((l) => l.kind === 'each' && l.units - (l.picked || 0) - (stock.planned.get(`${o.id}|${l.itemNo}`) || 0) > 0))
         .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1))
         .map((o) => {
-          const plan = this._planOrder(o, copyStock(stock));
+          const plan = this._planOrder(o, copyFor(stock, o));
           const waited = Math.floor((now - o.createdAt) / MINUTE);
           return { orderId: o.id, customer: o.customer, waitedMin: waited, due: waited >= s.maxWaitMin, clean: !plan.opensBox, tasks: plan.tasks.length, short: plan.short };
         });
@@ -246,15 +262,15 @@
       const tasks = [];
       const short = [];
       const joined = [];
-      let working = stock;
+      const working = stock;
       for (const order of ordered) {
         if (!wanted && joined.length >= s.maxOrders) break;
-        const trial = copyStock(working);
+        const trial = copyFor(working, order);
         const plan = this._planOrder(order, trial);
         if (!plan.tasks.length && !plan.short.length) continue;
         if (!due(order) && plan.opensBox) continue;
         if (!plan.tasks.length) { if (wanted) short.push(...plan.short); continue; }
-        working = trial;
+        keep(working, trial);
         tasks.push(...plan.tasks);
         short.push(...plan.short);
         joined.push(order.id);

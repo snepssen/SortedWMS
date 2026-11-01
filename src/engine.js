@@ -942,8 +942,9 @@
         r.qty += p.qty;
         r.batches.add(p.batch);
       }
+      const ctx = this._fefoContext();
       for (const r of Object.values(rows)) {
-        const next = this._fefo(r.item.itemNo)[0];
+        const next = this._fefo(r.item.itemNo, ctx)[0];
         r.next = next || null;
         r.batches = r.batches.size;
       }
@@ -1435,14 +1436,23 @@
       const want = this.config.groundNextPerItem;
       if (!want) return 0;
       let n = 0;
+      // Shared by every item below: _fefo's lookups, and the ground slots by category (a slot only takes its own category).
+      const ctx = this._fefoContext();
+      const ground = new Map();
+      for (const l of this._racks()) {
+        if (l.level !== 0) continue;
+        const list = ground.get(l.category);
+        if (list) list.push(l); else ground.set(l.category, [l]);
+      }
       for (const itemNo of Object.keys(this.items)) {
         if (this.items[itemNo].storage === 'block') continue; // block stacks have no levels
-        const next = this._fefo(itemNo).slice(0, want);
+        const next = this._fefo(itemNo, ctx).slice(0, want);
         for (const pallet of next) {
           const loc = this.locations[pallet.loc];
-          if (loc.level === 0 || this._liveTaskFor(pallet.sscc)) continue;
-          if (!this._findSlot(pallet, loc.code, { ground: true })) continue;
-          this._newTask({ type: 'SHIFT', reason: 'ground', sscc: pallet.sscc, from: loc.code, to: null, ground: true, category: this.items[pallet.itemNo].category });
+          if (loc.level === 0 || ctx.live.get(pallet.sscc)) continue;
+          if (!this._findSlot(pallet, loc.code, { ground: true, among: ground.get(this.items[itemNo].category) || [] })) continue;
+          const job = this._newTask({ type: 'SHIFT', reason: 'ground', sscc: pallet.sscc, from: loc.code, to: null, ground: true, category: this.items[pallet.itemNo].category });
+          if (job) ctx.live.set(pallet.sscc, job);
           n++;
         }
       }
@@ -2374,7 +2384,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache') continue;
         out[k] = v;
       }
       return out;
@@ -2994,11 +3004,15 @@
       pallet.orderId = null;
     }
 
-    /** Usable pallets of an item in shipping order: first expiry, then first received, ground first. */
-    _fefo(itemNo) {
-      const live = this._liveMap();
-      const blockers = new Set(['pickfirst', 'both'].includes(this.config.buriedStock) ? this._blockers() : []);
-      return Object.values(this.pallets)
+    /**
+     * Usable pallets of an item in shipping order: first expiry, then first received, ground first.
+     * `ctx` (from _fefoContext) shares the lookups when many items are asked in a row.
+     */
+    _fefo(itemNo, ctx = null) {
+      const live = ctx ? ctx.live : this._liveMap();
+      const blockers = ctx ? ctx.blockers : new Set(['pickfirst', 'both'].includes(this.config.buriedStock) ? this._blockers() : []);
+      const pool = ctx ? ctx.byItem.get(itemNo) || [] : Object.values(this.pallets);
+      return pool
         .filter((p) => {
           if (p.itemNo !== itemNo || !p.loc || p.orderId || this.shipState(p) !== 'ok') return false;
           const loc = this.locations[p.loc];
@@ -3017,6 +3031,17 @@
           || a.receivedAt - b.receivedAt
           || (this.locations[a.loc].level || 0) - (this.locations[b.loc].level || 0)
           || (a.loc < b.loc ? -1 : 1));
+    }
+
+    /** The lookups _fefo needs, made once: tasks in progress, buried-lane blockers, pallets by item. */
+    _fefoContext() {
+      const byItem = new Map();
+      for (const p of Object.values(this.pallets)) {
+        if (!p.loc || p.orderId) continue;
+        const list = byItem.get(p.itemNo);
+        if (list) list.push(p); else byItem.set(p.itemNo, [p]);
+      }
+      return { live: this._liveMap(), blockers: new Set(['pickfirst', 'both'].includes(this.config.buriedStock) ? this._blockers() : []), byItem };
     }
 
     /** Pallets standing in front of an older batch in a block lane, front first. */
@@ -3600,7 +3625,7 @@
      * in the same bay level, then the right height (ground for what ships
      * next, high for blocked stock and later batches), then travel distance.
      */
-    _findSlot(pallet, origin, { ground = false, noBury = false, rackOnly = false } = {}) {
+    _findSlot(pallet, origin, { ground = false, noBury = false, rackOnly = false, among = null } = {}) {
       if (!pallet) return null;
       if (this.items[pallet.itemNo].storage === 'block' && !rackOnly) {
         // Block stacking, without burying older stock: a lane down to a few pallets is cleared to the
@@ -3613,7 +3638,8 @@
         return this._findSlot(pallet, origin, { ground, rackOnly: true }) || block;
       }
       const top = this.layout.levels - 1;
-      const nextOut = this.config.groundNextPerItem > 0
+      // A ground search scores every slot the same way whether or not this ships next.
+      const nextOut = !ground && this.config.groundNextPerItem > 0
         && this._fefo(pallet.itemNo)
           .concat(this.shipState(pallet) === 'ok' && !this._isRacked(pallet) ? [pallet] : [])
           .sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0) || a.receivedAt - b.receivedAt)
@@ -3625,9 +3651,9 @@
       const shipsOk = this.shipState(pallet) === 'ok';
       const originAisle = this._aisle(origin);
       const full = {}; // aisle -> no truck room left (the same for every slot in it)
-      for (const loc of this._racks()) {
-        if (!this._slotFree(loc, pallet) || loc.code === origin) continue;
+      for (const loc of among || this._racks()) {
         if (ground && loc.level !== 0) continue;
+        if (!this._slotFree(loc, pallet) || loc.code === origin) continue;
         let score = this.travel(origin, loc.code) * 10;
         for (const n of this._bayLevel(loc)) {
           if (!n.sscc || n === loc) continue;
