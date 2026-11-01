@@ -1264,6 +1264,13 @@
       return globalThis.SortedSerials;
     }
 
+    function loadReturns() {
+      if (typeof require === 'function') {
+        try { return require('./returns'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedReturns;
+    }
+
     function loadRenames() {
       if (typeof require === 'function') {
         try { return require('./renames'); } catch (e) { /* browser */ }
@@ -1430,6 +1437,8 @@
     if (renames && renames.install) renames.install(Warehouse, deps);
     const serials = loadSerials();
     if (serials && serials.install) serials.install(Warehouse, deps);
+    const returns = loadReturns();
+    if (returns && returns.install) returns.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

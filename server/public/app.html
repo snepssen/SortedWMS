@@ -34,6 +34,9 @@
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--dim); font-size: 12px; }
   .form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin: 8px 0; }
+  .form.stack { display: block; }
+  .form.stack > label { display: inline-flex; flex-direction: column; margin: 8px 8px 0 0; }
+  .rma { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
   label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
   input, select, textarea { font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
   textarea { min-height: 64px; width: 100%; }
@@ -76,7 +79,7 @@
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
-    inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins']],
+    inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     stock: [['stockctl', 'Stock control'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
     client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
@@ -88,7 +91,7 @@
   // Screens that belong to a module disappear while it is off.
   const PANEL_MODULE = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks' };
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -244,12 +247,45 @@
         ${table(['Order', 'Customer', 'Status'], open.slice(0, 12).map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td></tr>`))}</section>`;
     },
     async returns() {
-      const [rows, orders] = await Promise.all([api('GET', '/api/returns'), api('GET', '/api/orders')]);
-      return `<section><h2>Returns</h2><p class="hint">Receive against an order at a virtual return location, then grade the goods: restock, quarantine or scrap.</p>
-        <form class="form" data-act="return-receive"><label>RMA<input name="id" required placeholder="RMA-1"></label><label>Order<input name="orderId" required></label><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>At<input name="loc" value="RETURNS"></label><button class="primary">Receive</button></form>
-        <form class="form" data-act="return-grade"><label>RMA<input name="id" required></label><label>Grade<select name="grade"><option>restock</option><option>quarantine</option><option>scrap</option></select></label><label>To<input name="to" placeholder="location, except scrap"></label><button>Grade</button></form>
-        ${table(['RMA', 'Order', 'Item', 'Qty', 'Status'], (rows || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.orderId)}</td><td>${esc(r.itemNo)}</td><td>${esc(r.qty)}</td><td>${esc(r.status)}</td></tr>`))}
-        <p class="dim">${orders.filter((o) => o.status === 'shipped').length} shipped order(s) can take a return.</p></section>`;
+      const order = new URLSearchParams(location.hash.split('?')[1] || '').get('order') || '';
+      const rows = await api('GET', '/api/returns');
+      let lookup = '';
+      if (order) {
+        try {
+          const r = await api('GET', '/api/orders/' + encodeURIComponent(order) + '/returnable');
+          if (!r.shipped) lookup = msg(`Order ${r.orderId} has not shipped yet`, false);
+          else lookup = `<form class="form stack" data-act="return-receive"><input type="hidden" name="orderId" value="${esc(r.orderId)}">
+            <p>Order <b>${esc(r.orderId)}</b> for ${esc(r.customer)}. Fill in what came back.</p>
+            ${table(['Item', 'Shipped', 'Back already', 'Back now', 'Serials'], r.lines.map((l) => `<tr><td>${esc(l.itemNo)} <span class="dim">${esc(l.name)}</span></td><td>${l.shipped}</td><td>${l.returned}</td>
+              <td>${l.left ? `<input name="qty:${esc(l.itemNo)}" type="number" min="0" max="${l.left}" placeholder="0" style="width:5em">` : '<span class="dim">all back</span>'}</td>
+              <td>${l.serialized && l.left ? `<input name="sn:${esc(l.itemNo)}" size="18" placeholder="scan each one">${l.serials.length ? `<div class="dim">Went out: ${esc(l.serials.join(', '))}</div>` : ''}` : ''}</td></tr>`))}
+            <label>Why<select name="reason"><option>Not wanted</option><option>Faulty</option><option>Damaged in transit</option><option>Wrong item sent</option><option>Other</option></select></label>
+            <label>Note<input name="note" placeholder="optional"></label><label>Return number<input name="id" placeholder="automatic"></label><label>Waits at<input name="loc" placeholder="RETURNS"></label>
+            <button class="primary">Book the return</button></form>`;
+        } catch (e) { lookup = msg(e.message, false); }
+      }
+      const open = rows.filter((r) => r.status !== 'done');
+      const graders = await Promise.all(open.map(async (r) => {
+        const lines = await Promise.all(r.lines.filter((l) => l.waiting || l.held).map(async (l) => {
+          let hint = '';
+          if (l.waiting) { try { const s = await api('GET', '/api/bins/suggest?item=' + encodeURIComponent(l.itemNo) + '&qty=' + l.waiting); hint = s.best ? s.best.loc : ''; } catch (e) { hint = ''; } }
+          const pool = l.waiting ? l.open : l.heldSerials;
+          const what = l.waiting ? `${l.waiting} waiting` : `${l.held} on hold`;
+          return `<form class="form" data-act="return-grade"><input type="hidden" name="id" value="${esc(r.id)}"><input type="hidden" name="itemNo" value="${esc(l.itemNo)}">
+            <span><b>${esc(l.itemNo)}</b> ${esc(l.name)}: ${what}${l.waiting && l.held ? `, ${l.held} on hold` : ''}</span>
+            <label>Grade<select name="grade"><option value="restock">Restock</option>${l.waiting ? '<option value="quarantine">Hold for checking</option>' : ''}<option value="scrap">Scrap</option></select></label>
+            <label>Qty<input name="qty" type="number" min="1" placeholder="${l.waiting || l.held}" style="width:5em"></label>
+            <label>To<input name="to" value="${esc(hint)}" placeholder="bin, for restock" size="12"></label>
+            ${pool && pool.length ? `<label>Serials<input name="serials" size="16" placeholder="if not all"></label>` : ''}<button>Grade</button></form>`;
+        }));
+        return `<div class="rma"><p><b>${esc(r.id)}</b> · order ${esc(r.orderId)} · ${esc(r.customer || '')}${r.reason ? ` · ${esc(r.reason)}` : ''}${r.note ? ` <span class="dim">${esc(r.note)}</span>` : ''}</p>${lines.join('')}</div>`;
+      }));
+      const done = rows.filter((r) => r.status === 'done').slice(0, 15);
+      const sum = (r, k) => r.lines.reduce((s, l) => s + l[k], 0);
+      return `<section><h2>Returns</h2><p class="hint">Look up the order the parcel belongs to and book what came back: never more than went out. Then grade it, all at once or a few at a time. Restock puts it in a bin or rack slot where waves pick it again. Hold puts it on a plate in quarantine to grade later. Scrap writes it off. Traced items come back by serial.</p>
+        <form class="form" data-act="return-find"><label>Order<input name="orderId" value="${esc(order)}" required autocomplete="off"></label><button class="primary">Look up</button></form>${lookup}</section>
+        <section><h2>To grade</h2>${graders.join('') || '<p class="dim">Nothing waiting.</p>'}</section>
+        <section><h2>Done</h2>${table(['Return', 'Order', 'Why', 'Restocked', 'Scrapped'], done.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.orderId)}</td><td>${esc(r.reason || '')}</td><td>${sum(r, 'restocked')}</td><td>${sum(r, 'scrapped')}</td></tr>`))}</section>`;
     },
     async sites() {
       const data = await api('GET', '/api/sites');
@@ -821,6 +857,25 @@
       if (slot) slot.innerHTML = `<p class="msg ok">Renamed ${r.renamed}. The old codes still scan. <a href="#" data-sheet="${esc(q)}">Print the new labels</a></p>`;
       return;
     }
+    if (form.dataset.act === 'return-find') {
+      history.replaceState(null, '', '/app#returns?order=' + encodeURIComponent(data.orderId.trim()));
+      panel = 'returns';
+      draw();
+      return;
+    }
+    if (form.dataset.act === 'return-receive') {
+      const lines = Object.keys(data).filter((k) => k.startsWith('qty:') && Number(data[k]) > 0).map((k) => {
+        const itemNo = k.slice(4);
+        const sn = data['sn:' + itemNo];
+        return { itemNo, qty: Number(data[k]), serials: sn ? sn.split(/[\s,;]+/).filter(Boolean) : null };
+      });
+      if (!lines.length) throw new Error('Fill in how many came back');
+      const r = await api('POST', '/api/returns', { orderId: data.orderId, lines, reason: data.reason, note: data.note || null, id: data.id || null, loc: data.loc || null });
+      history.replaceState(null, '', '/app#returns');
+      await draw();
+      $('#main').insertAdjacentHTML('afterbegin', msg(`Booked ${r.id}: ${r.lines.map((l) => `${l.itemNo} × ${l.qty}`).join(', ')}. Grade it below.`, true));
+      return;
+    }
     if (form.dataset.act === 'close-carton') {
       const r = await api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
       await draw();
@@ -996,8 +1051,7 @@
     if (name === 'close-carton') return api('POST', '/api/cartons/' + encodeURIComponent(data.carton) + '/close', { lengthMm: Number(data.lengthMm), widthMm: Number(data.widthMm), heightMm: Number(data.heightMm), weightKg: Number(data.weightKg) });
     if (name === 'dispatch-cartons') return api('POST', '/api/orders/' + encodeURIComponent(data.orderId) + '/dispatch-cartons', {});
     if (name === 'plan-replen') return api('POST', '/api/replenishment/plan', {});
-    if (name === 'return-receive') return api('POST', '/api/returns', { id: data.id, orderId: data.orderId, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
-    if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { grade: data.grade, to: data.to || null });
+    if (name === 'return-grade') return api('POST', '/api/returns/' + encodeURIComponent(data.id) + '/grade', { itemNo: data.itemNo, grade: data.grade, qty: data.qty ? Number(data.qty) : null, to: data.grade === 'restock' ? data.to || null : null, serials: data.serials ? data.serials.split(/[\s,;]+/).filter(Boolean) : null });
     if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null, country: data.country || null, timeZone: data.timeZone || null });
     if (name === 'space') {
       const spaces = data.scope ? [{ scope: data.scope, cell: data.cell, aisle: data.aisle, bay: data.bay, pos: data.pos, level: data.level, fee: Number(data.fee || 0) }] : [];

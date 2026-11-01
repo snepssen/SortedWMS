@@ -455,7 +455,8 @@
     on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
     on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));
     on('POST', '/api/replenishment/plan', (_, q, b, by) => run('planReplenishment', {}, by));
-    on('GET', '/api/returns', () => Object.values(wh().returns || {}));
+    on('GET', '/api/returns', (_, q) => wh().returnList({ status: q.status || null, orderId: q.order || null }));
+    on('GET', '/api/orders/:id/returnable', ({ id }) => wh().returnable(decodeURIComponent(id)));
     on('POST', '/api/returns', (_, q, b, by) => run('receiveReturn', b, by));
     on('POST', '/api/returns/:id/grade', ({ id }, q, b, by) => run('gradeReturn', { ...b, id: decodeURIComponent(id) }, by));
     on('GET', '/api/reports/availability', () => wh().availability());
