@@ -173,10 +173,12 @@
   }
 
   function packingSlip(d) {
-    // One row per line, then its serial numbers in rows of about 55 characters, up to 26 rows.
+    // One row per line, its batch and best-before, then its serial numbers in rows of about 55 characters, up to 26 rows.
     const rows = [];
     for (const line of d.lines || []) {
       rows.push({ text: `${line.qty}  ${line.itemNo}  ${line.name || ''}`, size: 26 });
+      const lot = [line.batch ? `Batch ${line.batch}` : '', line.expiry ? `BB ${line.expiry}` : ''].filter(Boolean).join('  ');
+      if (lot) rows.push({ text: lot, size: 22 });
       let sn = '';
       for (const s of line.serials || []) {
         if (sn && (sn + ', ' + s).length > 55) { rows.push({ text: `SN ${sn}`, size: 22 }); sn = ''; }

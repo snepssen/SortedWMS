@@ -270,7 +270,7 @@
       const t = st.task;
       $('job').innerHTML = `<div class="kicker">Pick for <span class="code">${esc(t.orderId)}</span></div>
         <div class="dim">Go to</div><div class="big">${esc(t.loc)}</div>
-        <div class="mid">${esc(t.qty)} ${esc(t.unit || '')} · ${esc(t.itemNo)}</div><div class="dim">${esc(t.name)}${t.expiry ? ` · best before ${esc(t.expiry)}` : ''}</div>
+        <div class="mid">${esc(t.qty)} ${esc(t.unit || '')} · ${esc(t.itemNo)}</div><div class="dim">${esc(t.name)}${t.batch ? ` · batch <b>${esc(t.batch)}</b>` : ''}${t.expiry ? ` · best before <b>${esc(t.expiry)}</b>` : ''}</div>
         ${st.step === 'serials' || (t.serialized && st.step === 'take') ? serialBox() : ''}
         ${t.serialized ? steps(['Scan the bin', 'Scan the item', 'Serial numbers', 'Take them'], { bin: 0, item: 1, serials: 2, take: 3 }[st.step]) : steps(['Scan the bin', 'Scan the item', 'Take them'], { bin: 0, item: 1, take: 2 }[st.step])}`;
       $('extra').innerHTML = `<div class="row"><button type="button" id="short" class="bad">Not enough here</button><button type="button" id="skip">Later</button></div>${st.step === 'take' ? `<p><button type="button" class="primary" id="took" style="width:100%">Took ${esc(t.qty)}</button></p>` : ''}`;
@@ -404,7 +404,8 @@
         st = { step: 'qty', code, itemNo: found.itemNo, pack, hint: found, serialized: found.serialized, sns: [], need: 0 };
         $('job').innerHTML = `<div class="kicker">Put away</div><div class="mid">${esc(found.itemNo)}</div><div class="dim">${esc(found.name)}</div>
           ${found.best ? `<div class="dim" style="margin-top:8px">Put it in</div><div class="big">${esc(found.best.loc)}</div><div class="dim">${esc(found.best.why)}${found.others.length ? ` · or ${found.others.map((o) => esc(o.loc)).join(', ')}` : ''}</div>` : '<div class="msg bad">No bin has room. Scan any bin</div>'}
-          ${qtyBox(1, pack ? `How many ${pack.unit} (of ${pack.per})` : `How many ${found.unit || ''}`)}<div class="sn"></div>${steps(found.serialized ? ['Item', 'How many', 'Serial numbers', 'Scan the bin'] : ['Item', 'How many', 'Scan the bin'], 2)}`;
+          ${qtyBox(1, pack ? `How many ${pack.unit} (of ${pack.per})` : `How many ${found.unit || ''}`)}
+          ${found.lots ? '<div class="row" style="margin-top:8px"><label class="dim">Batch<input id="lotBatch" autocomplete="off"></label><label class="dim">Best before<input id="lotExpiry" type="date"></label></div>' : ''}<div class="sn"></div>${steps(found.serialized ? ['Item', 'How many', 'Serial numbers', 'Scan the bin'] : ['Item', 'How many', 'Scan the bin'], 2)}`;
         $('extra').innerHTML = found.serialized ? '<p class="dim">Scan the serial number on each piece, then the bin. <button type="button" id="noSn">No serials this time</button></p>' : '';
         if ($('noSn')) $('noSn').onclick = () => { st.serialized = false; $('extra').innerHTML = '<p class="dim">Without serials: scan the bin.</p>'; $('job').querySelector('.sn').innerHTML = ''; };
         st.redraw = () => { $('job').querySelector('.sn').innerHTML = serialBox(); };
@@ -419,7 +420,8 @@
           return;
         }
       }
-      const done = await write('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n, serials: st.serialized ? st.sns : null });
+      const lot = { batch: ($('lotBatch') || {}).value || null, expiry: ($('lotExpiry') || {}).value || null };
+      const done = await write('POST', '/api/bins/put', { loc: code, code: st.pack ? st.code : st.itemNo, qty: n, ...lot, serials: st.serialized ? st.sns : null });
       const pieces = n * (st.pack ? st.pack.per : 1);
       cacheChange(code, st.itemNo, pieces);
       say(done.queued ? `Put ${pieces} ${st.itemNo} in ${code}. ${queuedNote()}` : `Put ${done.qty} ${done.unit || ''} ${done.itemNo} in ${done.loc}`);

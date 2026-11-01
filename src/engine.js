@@ -1116,8 +1116,10 @@
      * (FEFO), oldest received first on a tie (FIFO). Blocked and expired
      * stock is never picked.
      */
-    addOrder({ id, customer, lane, lines, verifyLoading = false, clientId = null }) {
+    addOrder({ id, customer, lane, lines, verifyLoading = false, clientId = null, minDays = null }) {
       if (this.orders[id]) throw new Error(`Order ${id} already exists`);
+      // The fewest days of best-before left this customer takes on piece picks; blank keeps each item's minimum.
+      if (minDays != null && minDays !== '' && (!Number.isSafeInteger(Number(minDays)) || Number(minDays) < 0)) throw new Error('Minimum days left must be a whole number of 0 or more');
       if (typeof verifyLoading !== 'boolean') throw new Error('Loading verification must be true or false');
       if (clientId) clientId = String(clientId).trim().toUpperCase();
       const laneLoc = this._loc(lane);
@@ -1150,7 +1152,7 @@
         if (!client) throw new Error(`Unknown client ${clientId}`);
         if (client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
       }
-      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null };
+      const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null, minDays: minDays == null || minDays === '' ? null : Number(minDays) };
       this.orders[id] = order;
       for (const line of lines) {
         const hasUnits = line.units != null && line.units !== '' && (line.pallets == null || line.pallets === '');
@@ -2319,12 +2321,20 @@
       const pallets = Object.values(this.pallets).filter(matches);
       const deliveries = [...new Set(pallets.map((p) => p.deliveryId).filter(Boolean))].map((id) => this.deliveries[id]);
       const shipped = (this.shipments || []).flatMap((s) => s.pallets.filter(matches).map((p) => ({ ...p, orderId: s.orderId, customer: s.customer, t: s.t, ...(s.trailer ? { trailer: s.trailer, seal: s.seal } : {}) })));
+      // Small picks leave in cartons; each packed row keeps the batch it came from.
+      const cartons = (this.shipments || []).flatMap((s) => (s.cartons || []).flatMap((id) => (((this.holders || {})[id] || {}).packed || []).filter(matches)
+        .map((p) => ({ carton: id, itemNo: p.itemNo, qty: p.qty, batch: p.batch, expiry: p.expiry || null, orderId: s.orderId, customer: s.customer, t: s.t }))));
+      const inBins = Object.entries(this.binStock || {}).flatMap(([loc, lines]) => lines.filter(matches).map((l) => ({ loc, itemNo: l.itemNo, qty: l.qty, batch: l.batch, expiry: l.expiry || null })));
+      const picked = Object.values(this.orders).filter((o) => o.status !== 'shipped').flatMap((o) => (o.staged || []).filter(matches).map((x) => ({ orderId: o.id, customer: o.customer, itemNo: x.itemNo, qty: x.qty, from: x.holder })));
       return {
         batch: b,
         inStock: pallets.filter((p) => p.status !== 'shipped'),
+        inBins,
+        picked,
         received: deliveries.map((d) => ({ id: d.id, supplier: d.supplier, t: d.createdAt })),
         shipped,
-        customers: [...new Set(shipped.map((s) => s.customer))],
+        cartons,
+        customers: [...new Set(shipped.concat(cartons).map((s) => s.customer))],
       };
     }
 
@@ -2332,7 +2342,7 @@
       const b = this._batchIdentity(itemNo, batch);
       const hold = (this.batchHolds || []).find((h) => h.itemNo === itemNo && h.batch === b);
       const trace = this.trace(b, itemNo);
-      const orderIds = new Set([...(hold ? hold.history.flatMap((e) => e.orders || []) : []), ...trace.inStock.map((p) => p.orderId).filter(Boolean)]);
+      const orderIds = new Set([...(hold ? hold.history.flatMap((e) => e.orders || []) : []), ...trace.inStock.map((p) => p.orderId).filter(Boolean), ...trace.picked.map((x) => x.orderId)]);
       return { ...trace, itemNo, active: Boolean(hold && hold.active), history: hold ? hold.history : [],
         openOrders: Object.values(this.orders).filter((o) => orderIds.has(o.id) && o.status !== 'shipped').map((o) => ({ id: o.id, customer: o.customer, status: o.status, heldPallets: trace.inStock.filter((p) => p.orderId === o.id).map((p) => p.sscc) })),
       };

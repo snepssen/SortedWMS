@@ -691,6 +691,7 @@
       const content = staged || (holder && (holder.contents || []).find((c) => Number(c.qty) >= take));
       if (!content) throw new Error(`${code} does not have ${take} to pack`);
       if (!order.lines.some((l) => l.itemNo === content.itemNo)) throw new Error(`${content.itemNo} is not on order ${order.id}`);
+      if (content.batch && this.batchHoldFor({ itemNo: content.itemNo, batch: content.batch })) throw new Error(`${content.itemNo} batch ${content.batch} is on a recall hold: do not pack it`);
       const sns = this._serialsForCarton ? this._serialsForCarton(this.items[content.itemNo], order.id, serials, take) : null;
       content.qty -= take;
       if (!staged && holder) {
@@ -741,12 +742,12 @@
       const box = this._holder(carton);
       if (box.series !== 'OUT' || !box.packed) throw new Error(`${box.id} is not a carton`);
       const order = this.orders[box.orderId] || {};
-      const rows = box.packed.map((p) => `<tr><td>${htmlEscape(p.qty)}</td><td>${htmlEscape(p.itemNo)}</td><td>${htmlEscape(this.items[p.itemNo] ? this.items[p.itemNo].name : '')}</td><td>${htmlEscape(p.batch || '')}</td><td class="sn">${(p.serials || []).map(htmlEscape).join(', ')}</td></tr>`).join('');
+      const rows = box.packed.map((p) => `<tr><td>${htmlEscape(p.qty)}</td><td>${htmlEscape(p.itemNo)}</td><td>${htmlEscape(this.items[p.itemNo] ? this.items[p.itemNo].name : '')}</td><td>${htmlEscape(p.batch || '')}</td><td>${htmlEscape(p.expiry || '')}</td><td class="sn">${(p.serials || []).map(htmlEscape).join(', ')}</td></tr>`).join('');
       const size = box.lengthMm ? `${box.lengthMm} × ${box.widthMm} × ${box.heightMm} mm · ${box.weightKg} kg` : 'open';
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Packing slip ${htmlEscape(box.id)}</title>
         <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.sn{font-family:ui-monospace,monospace;font-size:13px}button{font:inherit;padding:8px 14px}@media print{button{display:none}body{margin:12px}}</style></head>
         <body><p><button onclick="print()">Print</button></p><h1>Packing slip ${htmlEscape(box.id)}</h1><p>Order ${htmlEscape(order.id || box.orderId)} · ${htmlEscape(order.customer || '')} · ${htmlEscape(size)}</p>
-        <table><tr><th>Qty</th><th>Item</th><th>Description</th><th>Batch</th><th>Serial numbers</th></tr>${rows}</table></body></html>`;
+        <table><tr><th>Qty</th><th>Item</th><th>Description</th><th>Batch</th><th>Best before</th><th>Serial numbers</th></tr>${rows}</table></body></html>`;
     };
 
     proto.dispatchCartons = function ({ orderId, by } = {}) {
@@ -1027,10 +1028,22 @@
       }
       const serialRows = [...byBox].map(([k, sns]) => { const [box, itemNo] = k.split('|'); return `<tr><td>${htmlEscape(box)}</td><td>${htmlEscape(itemNo)}</td><td style="font-family:ui-monospace,monospace">${sns.map(htmlEscape).join(', ')}</td></tr>`; }).join('');
       const rows = ship.holders.map((h) => `<tr><td>${htmlEscape(h.kind)}</td><td>${htmlEscape(h.sscc || h.id)}</td><td>${htmlEscape(h.itemNo || '')}</td><td>${htmlEscape(h.qty)}</td><td>${h.loaded ? 'loaded' : 'staged'}</td></tr>`).join('');
+      // What went out per batch and best-before: pallets as they are, cartons by what was packed.
+      const lots = new Map();
+      const addLot = (holder, itemNo, batch, expiry, qty) => {
+        if (!batch && !expiry) return;
+        const k = [holder, itemNo, batch || '', expiry || ''].join('|');
+        lots.set(k, (lots.get(k) || 0) + Number(qty || 0));
+      };
+      for (const h of ship.holders) {
+        if (h.kind === 'pallet') { const p = this.pallets[h.sscc] || {}; addLot(h.sscc, p.itemNo, p.batch, p.expiry, p.qty); continue; }
+        for (const r of ((this.holders || {})[h.id] || {}).packed || []) addLot(h.id, r.itemNo, r.batch, r.expiry, r.qty);
+      }
+      const lotRows = [...lots].map(([k, qty]) => { const [holder, itemNo, batch, expiry] = k.split('|'); return `<tr><td>${htmlEscape(holder)}</td><td>${htmlEscape(itemNo)}</td><td>${htmlEscape(batch)}</td><td>${htmlEscape(expiry)}</td><td>${qty}</td></tr>`; }).join('');
       return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Delivery note ${htmlEscape(order.id)}</title>
         <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px}th{color:#5d6b76}@media print{body{margin:12px}}</style></head>
         <body><h1>Delivery note ${htmlEscape(order.id)}</h1><p>${htmlEscape(order.customer)} · lane ${htmlEscape(ship.lane)}${ship.truck ? ` · truck ${htmlEscape(ship.truck)}` : ''} · ${htmlEscape(ship.status)}</p>
-        <h2>Load manifest</h2><table><tr><th>Kind</th><th>Holder</th><th>Item</th><th>Qty</th><th>Load</th></tr>${rows}</table>${serialRows ? `<h2>Serial numbers</h2><table><tr><th>Carton</th><th>Item</th><th>Serial numbers</th></tr>${serialRows}</table>` : ''}</body></html>`;
+        <h2>Load manifest</h2><table><tr><th>Kind</th><th>Holder</th><th>Item</th><th>Qty</th><th>Load</th></tr>${rows}</table>${lotRows ? `<h2>Batches and best-before</h2><table><tr><th>Holder</th><th>Item</th><th>Batch</th><th>Best before</th><th>Qty</th></tr>${lotRows}</table>` : ''}${serialRows ? `<h2>Serial numbers</h2><table><tr><th>Carton</th><th>Item</th><th>Serial numbers</th></tr>${serialRows}</table>` : ''}</body></html>`;
     };
 
     proto.ensureTransit = function () {

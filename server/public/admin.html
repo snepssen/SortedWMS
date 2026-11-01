@@ -240,8 +240,11 @@
     return `<p><b>${esc(r.itemNo)} / ${esc(r.batch)}</b> <span class="tag ${r.active ? 'bad' : ''}">${r.active ? 'Recall hold active' : 'No active recall hold'}</span></p>
       <p>${r.inStock.length} pallet(s) in warehouse (${r.inStock.reduce((n, p) => n + p.qty, 0)} cases). ${r.shipped.length} shipped (${r.shipped.reduce((n, p) => n + p.qty, 0)} cases).</p>
       <h3>Warehouse stock</h3>${table(['SSCC', 'Location', 'Cases', 'Order', 'Shipping eligibility'], r.inStock.map((p) => `<tr><td class="mono">${esc(p.sscc)}</td><td>${esc(p.locName || (p.status === 'missing' ? 'Location unknown' : 'On truck'))}</td><td>${p.qty}</td><td>${esc(p.orderId || '')}</td><td>${esc(p.holdReason || p.shipState)}</td></tr>`))}
+      ${r.inBins && r.inBins.length ? `<h3>Loose in bins</h3>${table(['Bin', 'Qty', 'Best before'], r.inBins.map((b) => `<tr><td>${esc(b.loc)}</td><td>${b.qty}</td><td>${esc(b.expiry || '')}</td></tr>`))}` : ''}
+      ${r.picked && r.picked.length ? `<h3>Picked, not shipped</h3>${table(['Order', 'Customer', 'Qty', 'From'], r.picked.map((x) => `<tr><td>${esc(x.orderId)}</td><td>${esc(x.customer)}</td><td>${x.qty}</td><td>${esc(x.from || '')}</td></tr>`))}` : ''}
       <h3>Affected open orders</h3>${table(['Order', 'Customer', 'Status', 'Batch pallets still allocated'], r.openOrders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td><td>${o.heldPallets.length}</td></tr>`))}
       <h3>Shipped recipients</h3>${table(['Shipped', 'Customer', 'Order', 'SSCC', 'Cases'], r.shipped.map((s) => `<tr><td>${when(s.t)}</td><td>${esc(s.customer)}</td><td>${esc(s.orderId)}</td><td class="mono">${esc(s.sscc)}</td><td>${s.qty}</td></tr>`))}
+      ${r.cartons && r.cartons.length ? `<h3>Shipped in cartons</h3>${table(['Shipped', 'Customer', 'Order', 'Carton', 'Qty'], r.cartons.map((c) => `<tr><td>${when(c.t)}</td><td>${esc(c.customer)}</td><td>${esc(c.orderId)}</td><td class="mono">${esc(c.carton)}</td><td>${c.qty}</td></tr>`))}` : ''}
       <h3>Decision history</h3>${table(['When', 'Decision', 'Reason', 'By'], r.history.map((e) => `<tr><td>${when(e.t)}</td><td>${e.kind === 'hold' ? 'Hold placed' : 'Hold released'}</td><td>${esc(e.reason)}</td><td>${esc(e.by)}</td></tr>`))}`;
   }
 

@@ -203,6 +203,7 @@ const RULES = [
   ['POST', '/api/bins/take', 'picks.execute'],
   ['POST', '/api/bins/move', 'moves.execute'],
   ['POST', '/api/bins/count', 'counts.execute'],
+  ['GET', '/api/best-before', 'stock.read'],
   ['POST', '/api/bins/:code/mode', 'locations.write'],
   ['POST', '/api/locations/guided', 'settings.write'],
   ['POST', '/api/locations/rename/preview', 'locations.write'],

@@ -59,7 +59,7 @@
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 
     // Orders and deliveries
-    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading, clientId: a.clientId || null }),
+    addOrder: (wh, a) => wh.addOrder({ id: String(req(a.id, 'id')), customer: req(a.customer, 'customer'), lane: req(a.lane, 'lane'), lines: req(a.lines, 'lines'), verifyLoading: a.verifyLoading === undefined ? false : a.verifyLoading, clientId: a.clientId || null, minDays: a.minDays == null || a.minDays === '' ? null : a.minDays }),
     startLoading: (wh, a, by) => wh.startLoading(String(req(a.id, 'id')), req(a.trailer, 'trailer'), by, { inspectionPolicy: a.inspectionPolicy === undefined ? null : a.inspectionPolicy }),
     recordTrailerInspection: (wh, a, by) => wh.recordTrailerInspection(String(req(a.id, 'id')), a, by),
     releaseTrailerHold: (wh, a, by) => wh.releaseTrailerHold(String(req(a.id, 'id')), req(a.reason, 'reason'), by),

@@ -19,7 +19,7 @@
   'use strict';
 
   const BIN_KINDS = ['bin', 'mezzanine'];
-  const COUNT_REASONS = ['recount', 'damage', 'found', 'correction', 'other'];
+  const COUNT_REASONS = ['recount', 'damage', 'expiry', 'found', 'correction', 'other'];
 
   function whole(value, label) {
     const n = Number(value);
@@ -178,14 +178,14 @@
      * With an order, the quantity counts against that order's piece line and
      * waits, staged under the bin code, for packing.
      */
-    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, orderId = null, serials = null, by, event = 'picked', to = null, at = null } = {}) {
+    proto.binTake = function ({ loc, itemNo = null, code = null, qty = 1, unit = null, batch = null, expiry, orderId = null, serials = null, by, event = 'picked', to = null, at = null } = {}) {
       const bin = this._bin(loc);
       if (this._assertNotHeld) this._assertNotHeld(bin.code);
       const { item, qty: amount } = this._binQty({ itemNo, code, qty, unit });
       const lines = this.binStock[bin.code] || [];
-      let mine = lines.filter((l) => l.itemNo === item.itemNo && (!batch || l.batch === batch));
-      const have = mine.reduce((s, l) => s + l.qty, 0);
-      if (have < amount) throw new Error(`${bin.code} has ${have} ${item.uom || ''} of ${item.itemNo}, not ${amount}`.replace(/\s+/g, ' '));
+      // A wave task names its lot exactly: batch and best-before (either may be blank).
+      const exact = expiry !== undefined;
+      let mine = lines.filter((l) => l.itemNo === item.itemNo && (exact ? (l.batch || null) === (batch || null) && (l.expiry || null) === (expiry || null) : !batch || l.batch === batch));
       let order = null;
       let open = null;
       if (orderId) {
@@ -196,7 +196,20 @@
         if (!open) throw new Error(`Order ${order.id} has no open line for ${item.itemNo}`);
         const need = open.units - (open.picked || 0);
         if (amount > need) throw new Error(`Order ${order.id} only needs ${need} more of ${item.itemNo}`);
+        // Only stock that can go to this customer: not expired, not recalled, enough days left.
+        const min = this._minDaysFor(order, item.itemNo);
+        const bad = mine.map((l) => ({ l, state: this._lotState(item.itemNo, l, min) })).filter((x) => x.state !== 'ok');
+        if (bad.length) {
+          mine = mine.filter((l) => !bad.some((x) => x.l === l));
+          const have = mine.reduce((s, l) => s + l.qty, 0);
+          if (have < amount) {
+            const why = bad.map(({ l, state }) => `${l.qty} ${lotText(l)} ${state === 'held' ? 'on a batch hold' : state === 'expired' ? 'expired' : `too short-dated (under ${min} days)`}`).join('; ');
+            throw new Error(`${bin.code} has ${have} ${item.itemNo} that can go on order ${order.id}, not ${amount}: ${why}`.replace(/\s+/g, ' '));
+          }
+        }
       }
+      const have = mine.reduce((s, l) => s + l.qty, 0);
+      if (have < amount) throw new Error(`${bin.code} has ${have} ${item.uom || ''} of ${item.itemNo}${exact ? ` (${lotText({ batch, expiry })})` : ''}, not ${amount}`.replace(/\s+/g, ' '));
       // A move carries its serials itself (binMove); everything else names them here.
       const sns = event === 'moved' || !this._serialsOut ? null : this._serialsOut(item, serials, amount, bin.code);
       const fefo = this.feature('fefo');
@@ -248,7 +261,8 @@
     };
 
     /** Count one item in a bin. A difference corrects the bin and is kept as an adjustment. */
-    proto.binCount = function ({ loc, itemNo = null, code = null, counted = null, unit = null, reason = 'recount', serials = null, by } = {}) {
+    /** Count what is in a bin. With a batch or best-before, only that lot is counted (an expiry write-off counts it to 0). */
+    proto.binCount = function ({ loc, itemNo = null, code = null, counted = null, unit = null, reason = 'recount', serials = null, batch = null, expiry = null, by } = {}) {
       const bin = this._bin(loc);
       const found = itemNo ? this.items[itemNo] : (this._unitFromCode(code) || {}).item;
       if (!found) throw new Error(`Unknown item ${itemNo || code}`);
@@ -262,17 +276,20 @@
       if (!Number.isInteger(n) || n < 0) throw new Error('The count is a whole number, 0 or more');
       const target = n === 0 ? 0 : this.toBaseUnits(found.itemNo, n, unit);
       const lines = this.binStock[bin.code] || [];
-      const before = lines.filter((l) => l.itemNo === found.itemNo).reduce((s, l) => s + l.qty, 0);
+      const lot = batch || expiry ? { batch: batch ? String(batch).trim() : null, expiry: expiry || null } : null;
+      if (lot && sc) throw new Error('Count a traced item by its serials, not by batch');
+      const mine = () => lines.filter((l) => l.itemNo === found.itemNo && (!lot || ((!lot.batch || l.batch === lot.batch) && (!lot.expiry || l.expiry === lot.expiry))));
+      const before = mine().reduce((s, l) => s + l.qty, 0);
       const actor = by || this._actor || 'operator';
       if (target !== before) {
         if (target > before) {
-          const newest = lines.filter((l) => l.itemNo === found.itemNo).sort((a, b) => b.since - a.since)[0];
+          const newest = mine().sort((a, b) => b.since - a.since)[0];
           if (newest) newest.qty += target - before;
-          else lines.push({ itemNo: found.itemNo, qty: target, batch: null, expiry: null, clientId: found.clientId || null, since: this.now() });
+          else lines.push({ itemNo: found.itemNo, qty: target, batch: lot ? lot.batch : null, expiry: lot ? lot.expiry : null, clientId: found.clientId || null, since: this.now() });
           this.binStock[bin.code] = lines;
         } else {
           let left = before - target;
-          for (const line of lines.filter((l) => l.itemNo === found.itemNo).sort((a, b) => a.since - b.since)) {
+          for (const line of mine().sort((a, b) => a.since - b.since)) {
             const k = Math.min(left, line.qty);
             line.qty -= k;
             left -= k;
@@ -281,14 +298,14 @@
           if (!this.binStock[bin.code].length) delete this.binStock[bin.code];
         }
         this.adjustments = this.adjustments || [];
-        this.adjustments.unshift({ t: this.now(), loc: bin.code, itemNo: found.itemNo, before, after: target, reason, by: actor });
+        this.adjustments.unshift({ t: this.now(), loc: bin.code, itemNo: found.itemNo, batch: lot ? lot.batch : undefined, before, after: target, reason, by: actor });
         if (this.adjustments.length > 5000) this.adjustments.length = 5000;
-        this.recordMovement({ from: bin.code, to: bin.code, qty: target - before, event: 'counted', by: actor, note: `${found.itemNo} ${before} → ${target}` });
+        this.recordMovement({ from: bin.code, to: bin.code, qty: target - before, event: 'counted', by: actor, note: `${found.itemNo}${lot ? ` (${lotText(lot)})` : ''} ${before} → ${target}` });
       }
       bin.lastCount = this.now();
       const serialNews = sc ? sc.commit() : null;
       this.log(`Counted ${bin.code}: ${found.itemNo} ${before} → ${target}${serialNews && serialNews.missing.length ? `, ${serialNews.missing.length} serial${serialNews.missing.length === 1 ? '' : 's'} missing` : ''}`);
-      return { loc: bin.code, itemNo: found.itemNo, before, after: target, difference: target - before, serials: serialNews };
+      return { loc: bin.code, itemNo: found.itemNo, batch: lot ? lot.batch : null, expiry: lot ? lot.expiry : null, before, after: target, difference: target - before, serials: serialNews };
     };
 
     proto.binContents = function (code) {
@@ -331,7 +348,44 @@
       const holding = usable.filter((l) => lines(l).some((x) => x.itemNo === item.itemNo) && room(l)).sort(byCode);
       const empty = usable.filter((l) => !lines(l).length && room(l)).sort(byCode);
       const pick = holding.map((l) => ({ loc: l.code, why: `already holds ${item.itemNo}` })).concat(empty.map((l) => ({ loc: l.code, why: 'empty' })));
-      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, serialized: Boolean(item.serialized), best: pick[0] || null, others: pick.slice(1, 4) };
+      return { itemNo: item.itemNo, name: item.name, unit: item.uom || null, serialized: Boolean(item.serialized), lots: this.feature('lotExpiry'), best: pick[0] || null, others: pick.slice(1, 4) };
+    };
+
+    /** The fewest days left an order takes: its own minimum, else the item's. */
+    proto._minDaysFor = function (order, itemNo) {
+      if (order && order.minDays != null) return order.minDays;
+      return (this.items[itemNo] || {}).minShipDays || 0;
+    };
+
+    /** Can this lot go out: 'ok', 'held' (batch recall hold), 'expired' or 'short' (under `minDays` left). */
+    proto._lotState = function (itemNo, lot, minDays = 0) {
+      if (lot.batch && this.batchHoldFor({ itemNo, batch: lot.batch })) return 'held';
+      if (lot.expiry && this.feature('lotExpiry')) {
+        const days = this.daysLeft(lot);
+        if (days < 0) return 'expired';
+        if (days < minDays && !lot.allowShort) return 'short';
+      }
+      return 'ok';
+    };
+
+    /**
+     * Loose stock by lot that is past its best-before, or within `days` of it,
+     * soonest first: for stock control to sell off or write off.
+     */
+    proto.bestBeforeWatch = function ({ days = 14 } = {}) {
+      const n = Number(days);
+      if (!Number.isInteger(n) || n < 0) throw new Error('Days must be a whole number of 0 or more');
+      const out = [];
+      for (const [loc, lines] of Object.entries(this.binStock || {})) {
+        for (const l of lines) {
+          if (!l.expiry) continue;
+          const left = this.daysLeft(l);
+          if (left > n) continue;
+          const item = this.items[l.itemNo] || {};
+          out.push({ loc, itemNo: l.itemNo, name: item.name || '', qty: l.qty, unit: item.uom || null, batch: l.batch, expiry: l.expiry, daysLeft: left, state: this._lotState(l.itemNo, l, item.minShipDays || 0) });
+        }
+      }
+      return out.sort((a, b) => a.expiry.localeCompare(b.expiry) || a.loc.localeCompare(b.loc, undefined, { numeric: true }));
     };
 
     /** Every bin that holds something, in code order. */
@@ -353,6 +407,14 @@
     };
   }
 
+  /** "batch L7, best before 2026-12-01" */
+  function lotText(l) {
+    const parts = [];
+    if (l.batch) parts.push(`batch ${l.batch}`);
+    if (l.expiry) parts.push(`best before ${l.expiry}`);
+    return parts.join(', ') || 'without a batch';
+  }
+
   /** "2 box + 6 piece" for a quantity in base units. */
   function packText(item, qty) {
     const packs = (item.packs || []).slice().sort((a, b) => b.per - a.per);
@@ -367,5 +429,5 @@
     return parts.join(' + ');
   }
 
-  return { install, BIN_KINDS, COUNT_REASONS, packText };
+  return { install, BIN_KINDS, COUNT_REASONS, packText, lotText };
 });

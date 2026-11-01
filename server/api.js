@@ -400,6 +400,7 @@
     on('POST', '/api/bins/take', (_, q, b, by) => run('binTake', b, by));
     on('POST', '/api/bins/move', (_, q, b, by) => run('binMove', b, by));
     on('POST', '/api/bins/count', (_, q, b, by) => run('binCount', b, by));
+    on('GET', '/api/best-before', (_, q) => ({ on: wh().feature('lotExpiry'), days: Number(q.days || 14), rows: wh().feature('lotExpiry') ? wh().bestBeforeWatch({ days: q.days == null || q.days === '' ? 14 : Number(q.days) }) : [] }));
     on('POST', '/api/bins/:code/mode', ({ code }, q, b, by) => run('setBinMode', { code: decodeURIComponent(code), mixed: b.mixed }, by));
     on('GET', '/api/waves', () => Object.values(wh().waves || {}).slice(-30).reverse());
     on('GET', '/api/waves/queue', () => ({ settings: wh().waveSettings(), active: wh().activeWave() ? wh().activeWave().id : null, queue: wh().waveQueue() }));
