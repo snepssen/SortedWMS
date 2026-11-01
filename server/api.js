@@ -105,10 +105,10 @@
       heldJobs: tasks.filter((t) => t.status === 'held' && !t.replacedBy).length,
       trucks: Object.values(wh.trucks).map((t) => ({ id: t.id, mode: t.mode, categories: t.categories, task: taskView(wh, wh.tasks[t.taskId]) })),
       orders: Object.values(wh.orders).filter((o) => o.status !== 'shipped').length,
-      pallets: Object.values(wh.pallets).filter((p) => p.loc).length,
+      pallets: wh._livePallets().filter((p) => p.loc).length,
       lost: wh.lostPallets().length,
-      cantShip: Object.values(wh.pallets).filter((p) => p.loc && wh.shipState(p) !== 'ok').length,
-      inProcess: Object.values(wh.pallets).filter((p) => p.proc).length,
+      cantShip: wh._livePallets().filter((p) => p.loc && wh.shipState(p) !== 'ok').length,
+      inProcess: wh._livePallets().filter((p) => p.proc).length,
       categories: wh.categories,
       naming: wh.naming.show,
       config: wh.config,
@@ -198,7 +198,7 @@
     });
     // Blocked pallets (damaged, expired on arrival, blocked by the office) and blocked locations: what the coordinator can release.
     on('GET', '/api/blocked', () => ({
-      pallets: Object.values(wh().pallets).filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
+      pallets: wh()._livePallets().filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
       locations: Object.values(wh().locations).filter((l) => l.blocked).map((l) => ({ code: l.code, name: placeName(wh(), l.code), kind: l.kind, sscc: l.sscc || null })),
     }));
     on('GET', '/api/lost', () => wh().lostPallets().map((p) => ({ ...palletView(wh(), p), missingFrom: p.missingFrom, missingFromName: placeName(wh(), p.missingFrom) })));
@@ -526,15 +526,15 @@
     on('GET', '/api/search', (_, q) => wh().search(q.q || ''));
     on('GET', '/api/exceptions', () => ({
       held: Object.values(wh().tasks).filter((t) => t.status === 'held' && !t.replacedBy).map((t) => taskView(wh(), t)),
-      blocked: Object.values(wh().pallets).filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
+      blocked: wh()._livePallets().filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
       lost: wh().lostPallets().map((p) => palletView(wh(), p)),
       faults: (wh().faults || []).filter((f) => f.status === 'open'),
-      quality: Object.values(wh().pallets).filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
+      quality: wh()._livePallets().filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
     }));
     on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
-      return Object.values(wh().pallets).filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
+      return wh()._livePallets().filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
     });
     on('GET', '/api/reports/orders', () => Object.values(wh().orders).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
     on('GET', '/api/reports/stock.csv', () => ({

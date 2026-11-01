@@ -186,7 +186,7 @@
 
     proto.stockForClient = function (id) {
       const clientId = String(id).trim().toUpperCase();
-      return Object.values(this.pallets).filter((p) => p.clientId === clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId === clientId));
+      return this._livePallets().filter((p) => p.clientId === clientId || (this.items[p.itemNo] && this.items[p.itemNo].clientId === clientId));
     };
 
     proto.updateItem = function (itemNo, patch) {
@@ -200,12 +200,12 @@
       if (patch.uom != null) item.uom = String(patch.uom).trim() || 'case';
       if (patch.storage != null && patch.storage !== item.storage) {
         if (!['rack', 'block'].includes(patch.storage)) throw new Error('Storage is rack or block');
-        if (Object.values(this.pallets).some((p) => p.itemNo === itemNo && p.status !== 'shipped')) throw new Error('Storage cannot change while the item is in stock');
+        if (this._livePallets().some((p) => p.itemNo === itemNo && p.status !== 'shipped')) throw new Error('Storage cannot change while the item is in stock');
         item.storage = patch.storage;
       }
       if (patch.category != null && patch.category !== item.category) {
         if (!this.categories[patch.category]) throw new Error(`Unknown category ${patch.category}`);
-        if (Object.values(this.pallets).some((p) => p.itemNo === itemNo && p.status !== 'shipped')) throw new Error('Category cannot change while the item is in stock');
+        if (this._livePallets().some((p) => p.itemNo === itemNo && p.status !== 'shipped')) throw new Error('Category cannot change while the item is in stock');
         item.category = patch.category;
       }
       if (patch.palletQty != null) {
@@ -455,7 +455,7 @@
       if (loc.reservedBy) throw new Error(`${loc.code} is reserved`);
       if (Object.values(this.holders || {}).some((h) => h.loc === loc.code)) throw new Error(`${loc.code} has a holder`);
       if (Object.values(this.locations).some((l) => l.parent === loc.code)) throw new Error(`Remove locations inside ${loc.code} first`);
-      if (Object.values(this.tasks).some((t) => (t.from === loc.code || t.to === loc.code) && ['open', 'active', 'held'].includes(t.status))) {
+      if (this._liveTasks().some((t) => (t.from === loc.code || t.to === loc.code) && ['open', 'active', 'held'].includes(t.status))) {
         throw new Error(`${loc.code} is on a job`);
       }
       delete this.locations[loc.code];
@@ -1344,7 +1344,7 @@
       }
       if (next.billing !== false && next.clients === false) throw new Error('3PL billing needs Clients');
       if (next.trucks === false) {
-        const busy = Object.values(this.tasks).filter((t) => t.truckId && this.trucks[t.truckId] && ['active'].includes(t.status));
+        const busy = this._liveTasks().filter((t) => t.truckId && this.trucks[t.truckId] && ['active'].includes(t.status));
         if (busy.length) throw new Error(`${busy.length} truck job${busy.length === 1 ? ' is' : 's are'} under way. Finish them before switching trucks off`);
       }
       if (next.waves === false && typeof this.activeWave === 'function' && this.activeWave()) throw new Error('A pick wave is active. Finish or cancel it first');

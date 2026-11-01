@@ -41,7 +41,7 @@
 
     // Orders: 1 to 3 lines of 1 to 4 pallets, drawn from what can ship right now.
     const free = {};
-    for (const p of Object.values(wh.pallets)) {
+    for (const p of wh._livePallets()) {
       if (!p.loc || p.orderId || p.proc || wh.shipState(p) !== 'ok' || wh._liveTaskFor(p.sscc)) continue;
       const loc = wh.locations[p.loc];
       if (!loc || (loc.kind !== 'rack' && loc.kind !== 'block')) continue;
