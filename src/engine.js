@@ -21,7 +21,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (GS1, Labels, Foundation) {
   'use strict';
 
-  const CATEGORIES = { YOG: 'Yoghurt', CHE: 'Cheese', PRO: 'Protein drinks' };
+  const CATEGORIES = { GEN: 'General', BULK: 'Bulk', FAST: 'Fast movers' };
 
   const TASK_TYPES = {
     PICK: { label: 'Pick for shipping', short: 'Pick' },

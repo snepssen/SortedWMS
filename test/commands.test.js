@@ -10,9 +10,9 @@ function setup() {
   let t = T0;
   const wh = new Warehouse({ aisles: 4, bays: 6, levels: 3, positions: 3, outLanes: 2, clock: () => t, config: { groundNextPerItem: 0 } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Greek yoghurt', category: 'YOG', palletQty: 96 });
-  wh.setLocationCategory({ aisle: 1 }, 'YOG');
-  wh.setLocationCategory({ aisle: 2 }, 'YOG');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Wall paint', category: 'GEN', palletQty: 96 });
+  wh.setLocationCategory({ aisle: 1 }, 'GEN');
+  wh.setLocationCategory({ aisle: 2 }, 'GEN');
   const put = (code, batch, expiry) => wh.stockPallet(code, { itemNo: 'Y1', batch, expiry });
   return { wh, put, advance: (s) => { t += s * 1000; } };
 }
@@ -106,7 +106,7 @@ test('commands: a report that is not possible says why straight away, without as
 
 test('commands: receiving needs no taps — FULL for a full pallet, DONE twice to close the delivery', () => {
   const { wh } = setup();
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy Co', category: 'YOG', pallets: 3 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 3 });
   wh.addTruck('RT1');
   assert.match(wh.scan('RT1', 'CMD-FULL').text, /Scan the batch first/);
   wh.scan('RT1', 'L2614');

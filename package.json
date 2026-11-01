@@ -5,7 +5,6 @@
   "description": "Warehouse management for any building: presets, license plates, roles, and optional food or high-value rules",
   "scripts": {
     "start": "node --no-warnings server/index.js",
-    "start:demo": "node --no-warnings server/index.js --seed-demo",
     "test": "node --no-warnings --test",
     "build:pages": "node scripts/build-pages.js",
     "load-test": "node --no-warnings scripts/load-test.js"

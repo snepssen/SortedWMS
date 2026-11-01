@@ -3,15 +3,14 @@ const assert = require('node:assert/strict');
 const { buildWarehouse } = require('../server/site');
 const { Store } = require('../server/store');
 const { createApi } = require('../server/api');
-const { Walkthrough } = require('../src/walkthrough');
-const site = require('../server/site.example.json');
+const site = require('./fixtures/site.json');
 const now = () => Date.UTC(2026, 9, 8, 6);
 
 function setup() {
   const wh = buildWarehouse(site, now);
   wh.setConfig({ groundNextPerItem: 0, checkAfterPick: false });
-  const first = wh.stockPallet(wh.resolve('AA01A1'), { itemNo: 'Y1001', batch: 'A', expiry: '2026-11-20' });
-  const second = wh.stockPallet(wh.resolve('AB01A1'), { itemNo: 'Y1001', batch: 'B', expiry: '2026-12-20' });
+  const first = wh.stockPallet(wh.resolve('AA01A1'), { itemNo: 'W1001', batch: 'A', expiry: '2026-11-20' });
+  const second = wh.stockPallet(wh.resolve('AB01A1'), { itemNo: 'W1001', batch: 'B', expiry: '2026-12-20' });
   return { wh, first, second };
 }
 
@@ -48,8 +47,8 @@ test('normal readings do not clear holds and quality release does not clear dama
 
 test('a new hold replaces a pick already assigned but not collected', () => {
   const { wh, first, second } = setup();
-  wh.addOrder({ id: 'Q1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1001', pallets: 1 }] });
-  wh.addTruck('RT1', { categories: ['YOG'] });
+  wh.addOrder({ id: 'Q1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'W1001', pallets: 1 }] });
+  wh.addTruck('RT1', { categories: ['GEN'] });
   const old = wh.tasks[wh.trucks.RT1.taskId];
   assert.equal(old.sscc, first.sscc);
   wh.recordTemperature(first.sscc, 9, 2, 6, 'Quality concern');
@@ -60,8 +59,8 @@ test('a new hold replaces a pick already assigned but not collected', () => {
 
 test('shipment rechecks all pallets before changing any stock', () => {
   const { wh, first, second } = setup();
-  wh.addOrder({ id: 'Q1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1001', pallets: 2 }] });
-  wh.addTruck('RT1', { categories: ['YOG'] });
+  wh.addOrder({ id: 'Q1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'W1001', pallets: 2 }] });
+  wh.addTruck('RT1', { categories: ['GEN'] });
   for (let i = 0; i < 2; i++) {
     const ins = wh.instruction('RT1');
     assert.ok(wh.scan('RT1', ins.pallet.sscc).ok);
@@ -83,7 +82,7 @@ test('shipment rechecks all pallets before changing any stock', () => {
 test('quality API journals readings and decisions and rebuilds their history', () => {
   const store = new Store({ site, now });
   try {
-    store.exec('importStock', { rows: [{ code: 'AA01A1', sscc: '387999990000091016', itemNo: 'Y1001', batch: 'Q', expiry: '2026-11-20' }] }, 'setup');
+    store.exec('importStock', { rows: [{ code: 'AA01A1', sscc: '387999990000091016', itemNo: 'W1001', batch: 'Q', expiry: '2026-11-20' }] }, 'setup');
     const api = createApi({ store, printers: { flush() {}, results: [] } });
     const path = '/api/pallets/387999990000091016';
     assert.equal(api.handle('POST', `${path}/temperature`, { temperature: 9, min: 2, max: 6, reason: 'Outside limits' }, 'receiver').status, 200);
@@ -95,18 +94,4 @@ test('quality API journals readings and decisions and rebuilds their history', (
     assert.equal(JSON.stringify(store.wh), before);
     assert.equal(api.handle('GET', '/api/quality').body[0].qualityHistory[1].by, 'quality');
   } finally { store.db.close(); }
-});
-
-test('quality walkthrough retains a hold after a normal reading and allocates only after review', () => {
-  const demo = new Walkthrough(site, 'quality');
-  while (demo.index < 9) demo.next();
-  assert.deepEqual(demo.wh.orders['4701'].lines[0].allocated, [demo.second]);
-  demo.next();
-  assert.equal(demo.wh.shipState(demo.wh.pallets[demo.first]), 'blocked');
-  demo.next();
-  assert.equal(demo.wh.shipState(demo.wh.pallets[demo.first]), 'ok');
-  demo.next();
-  assert.deepEqual(demo.wh.orders['4702'].lines[0].allocated, [demo.first]);
-  assert.equal(demo.wh.pallets[demo.first].qualityHistory.length, 3);
-  assert.equal(demo.step, null);
 });

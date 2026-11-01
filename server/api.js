@@ -8,6 +8,9 @@
   else root.SortedApi = factory(root.SortedWMS);
 })(typeof self !== 'undefined' ? self : this, function (Engine) {
   'use strict';
+  // The same routes run in the browser on Pages, where there is no require: use the globals the modules set there.
+  const presetsLib = () => (typeof require === 'function' ? require('../src/presets') : globalThis.SortedPresets);
+  const locationsLib = () => (typeof require === 'function' ? require('../src/locations') : globalThis.SortedLocations);
   const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, SCAN_COMMANDS, COMMAND_PREFIX } = Engine;
 
   // ---- Views: what the pages need, without engine internals --------------------
@@ -372,24 +375,26 @@
     on('GET', '/api/technical', () => ({ ...(wh().technical || {}), holderSeries: wh().holderSeries }));
     on('POST', '/api/technical', (_, q, b, by) => run('setTechnical', { patch: b }, by));
     on('GET', '/api/setup', () => {
-      const { PRESETS, FEATURES } = require('../src/presets');
-      const { EXAMPLES, LEVELS } = require('../src/locations');
+      const { PRESETS, FEATURES } = presetsLib();
+      const { EXAMPLES, LEVELS } = locationsLib();
       return {
         setup: wh().setup || { completed: false },
         features: wh().features,
+        categories: wh().categories,
         presets: PRESETS.map((p) => ({ id: p.id, name: p.name, summary: p.summary, features: p.features, modules: p.modules, locationPlan: p.locationPlan, virtual: p.virtual, categories: p.categories })),
         featureList: FEATURES.map(([id, label, hint]) => ({ id, label, hint })),
         modules: wh().moduleList(),
-        examples: Object.values(EXAMPLES).map((ex) => ({ ...ex, preview: require('../src/locations').expand(ex.plan, { limit: 6 }) })),
+        examples: Object.values(EXAMPLES).map((ex) => ({ ...ex, preview: locationsLib().expand(ex.plan, { limit: 6 }) })),
         levels: LEVELS,
       };
     });
     on('POST', '/api/setup/preset', (_, q, b, by) => run('applyPreset', b, by));
+    on('POST', '/api/categories', (_, q, b, by) => run('addCategory', b, by));
     on('GET', '/api/modules', () => wh().moduleList());
     on('POST', '/api/setup/modules', (_, q, b, by) => run('setModules', { modules: b.modules || b }, by));
     on('POST', '/api/setup/features', (_, q, b, by) => run('setFeatures', { features: b.features || b }, by));
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
-    on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
+    on('POST', '/api/locations/preview', (_, q, b) => locationsLib().expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
     on('POST', '/api/items/:itemNo/units', ({ itemNo }, q, b, by) => run('setItemUnits', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
     on('POST', '/api/items/:itemNo/serials', ({ itemNo }, q, b, by) => run('setItemSerials', { itemNo: decodeURIComponent(itemNo), on: b.on !== false }, by));
@@ -419,7 +424,7 @@
     on('GET', '/api/locations/aliases', () => wh().aliasList());
     on('POST', '/api/locations/aliases/drop', (_, q, b, by) => run('dropAliases', b, by));
     on('POST', '/api/locations/guided/preview', (_, q, b) => {
-      const out = require('../src/locations').guided(b.answers || b, { limit: 24 });
+      const out = locationsLib().guided(b.answers || b, { limit: 24 });
       return { total: out.total, sample: out.sample, sampleCode: out.sampleCode, plans: out.plans.map(({ section, type, total, sampleCode, lastCode, capacity }) => ({ section, type, total, sampleCode, lastCode, capacity })) };
     });
     on('POST', '/api/locations/guided', (_, q, b, by) => run('generateGuided', b, by));

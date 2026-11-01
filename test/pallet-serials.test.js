@@ -9,8 +9,8 @@ const sns = (prefix, n) => Array.from({ length: n }, (_, i) => `${prefix}-${Stri
 // Routers come 4 to a box, 8 to a pallet. Pallets stand in the racks; one shelf of bins.
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 10, 3, 8) });
-  w.addItem({ itemNo: 'RTR', name: 'Wifi router', category: 'YOG', palletQty: 8, uom: 'piece' });
-  w.addItem({ itemNo: 'CABLE', name: 'Cable', category: 'YOG', palletQty: 100, uom: 'piece' });
+  w.addItem({ itemNo: 'RTR', name: 'Wifi router', category: 'GEN', palletQty: 8, uom: 'piece' });
+  w.addItem({ itemNo: 'CABLE', name: 'Cable', category: 'GEN', palletQty: 100, uom: 'piece' });
   w.setItemUnits('RTR', { packs: [{ unit: 'box', per: 4 }] });
   w.setItemSerials('RTR', true);
   w.generateGuided({ sections: { count: 1, name: 'Shelf' }, layouts: [{ type: 'shelf', positions: { count: 2, name: 'Bin 1' } }] });
@@ -87,7 +87,7 @@ test('serials on the supplier\'s pallet list are booked when the pallet is recei
   w.setItemSerials('RTR', true);
   const s1 = GS1.makeSscc(3, '8712345', 1);
   const s2 = GS1.makeSscc(3, '8712345', 2);
-  w.addDelivery({ id: 'D1', supplier: 'Net Co', category: 'YOG', list: [
+  w.addDelivery({ id: 'D1', supplier: 'Net Co', category: 'GEN', list: [
     { sscc: s1, itemNo: 'RTR', batch: 'B1', expiry: '2027-11-01', qty: 8, serials: sns('ASN', 8) },
     { sscc: s2, itemNo: 'RTR', batch: 'B1', expiry: '2027-11-01', qty: 8, serials: sns('BAD', 3) },
   ] });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start SortedWMS. The only thing it needs is Node.js 22.13 or newer; when that
 # is missing this script offers to install it (Enter means yes) and never runs
-# sudo for you. Commands: start (default), demo, sample <home|maker|3pl>,
+# sudo for you. Commands: start (default), sample <home|maker|3pl>,
 # backup, backups, restore <file>, setup. See scripts/cli.js.
 set -euo pipefail
 cd "$(dirname "$0")"

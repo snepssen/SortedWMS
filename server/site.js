@@ -20,16 +20,7 @@
     for (const r of site.routes || []) wh.addRoute(r);
     for (const d of site.desks || []) wh.addDesk(d.id, d);
     for (const c of site.clients || []) wh.addClient(c);
-    const ownerOf = { YOG: 'CL-DAIRY', CHE: 'CL-CHEESE', PRO: 'CL-PROTEIN' };
-    for (const it of site.items || []) wh.addItem({ ...it, clientId: it.clientId || (wh.clients[ownerOf[it.category]] ? ownerOf[it.category] : null) });
-    const dims = {
-      Y1001: { lengthMm: 1200, widthMm: 800, heightMm: 1400, weightKg: 420 },
-      Y1002: { lengthMm: 1200, widthMm: 800, heightMm: 1500, weightKg: 480 },
-      C2001: { lengthMm: 1200, widthMm: 800, heightMm: 1200, weightKg: 350 },
-      C2005: { lengthMm: 1200, widthMm: 800, heightMm: 1600, weightKg: 600, uom: 'crate' },
-      P3001: { lengthMm: 1200, widthMm: 800, heightMm: 1300, weightKg: 390 },
-    };
-    for (const [itemNo, d] of Object.entries(dims)) if (wh.items[itemNo]) Object.assign(wh.items[itemNo], d);
+    for (const it of site.items || []) wh.addItem(it);
     for (const loc of site.extraLocations || []) wh.createLocation(loc);
     for (const h of site.holders || []) wh.addHolder(h);
     for (const eq of site.equipment || []) wh.addEquipment(eq);

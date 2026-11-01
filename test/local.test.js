@@ -7,14 +7,14 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'server/commands.js', 'server/site.js', 'server/seed.js', 'server/api.js', 'server/local.js'];
+const FILES = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'server/commands.js', 'server/site.js', 'test/fixtures/seed.js', 'server/api.js', 'server/local.js'];
 
 function browser(storage = new Map()) {
   const timers = [];
   const win = {
     localStorage: { getItem: (k) => (storage.has(k) ? storage.get(k) : null), setItem: (k, v) => storage.set(k, String(v)), removeItem: (k) => storage.delete(k) },
     document: { currentScript: null },
-    fetch: async () => ({ json: async () => JSON.parse(fs.readFileSync(path.join(ROOT, 'server', 'site.example.json'), 'utf8')) }),
+    fetch: async () => ({ json: async () => JSON.parse(fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'site.json'), 'utf8')) }),
     addEventListener: () => {},
     setInterval: (fn) => timers.push(fn),
     console, URL, JSON, Date, Math,
@@ -22,6 +22,10 @@ function browser(storage = new Map()) {
   win.self = win;
   const ctx = vm.createContext(win);
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  // The browser starts from an empty building; the first page loads the test warehouse into the shared journal.
+  const seeded = win.SortedLocal.store().then((store) => { if (!store.data.rows.length) win.SortedSeed.seedDemo(store); });
+  const fetchApi = win.SortedLocal.fetch;
+  win.SortedLocal.fetch = async (...args) => { await seeded; return fetchApi(...args); };
   return { win, storage };
 }
 
@@ -34,7 +38,7 @@ test('the WMS runs in the browser and two pages share one journal', async () => 
   const job = (await L.fetch('GET', '/api/devices/HH01')).body.instruction;
   assert.strictEqual(job.kind, 'pickup');
   assert.strictEqual((await L.fetch('POST', '/api/devices/HH01/scan', { code: job.pallet.sscc }, { operator: 'HH01' })).status, 200);
-  const preview = (await L.fetch('GET', '/api/template/preview?from=AA&to=AB&category=PRO')).body;
+  const preview = (await L.fetch('GET', '/api/template/preview?from=AA&to=AB&category=FAST')).body;
   assert.strictEqual(preview.locations, 300);
   assert.strictEqual((await L.fetch('GET', '/api/devices/NOPE')).status, 404);
 

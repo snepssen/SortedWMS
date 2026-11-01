@@ -1,0 +1,661 @@
+{
+  "name": "Example chilled warehouse",
+  "preset": "chilled-dc",
+  "features": {
+    "highValueSecurity": true
+  },
+  "_comment": "Example site. The chilled-dc preset turns temperature, lot, expiry and FEFO on. highValueSecurity is set afterwards so the demo can issue PAL and MASTER plates; the chilled preset itself leaves that off. Replace with the real location table, items and printers. Read once, when the database is first created.",
+  "layout": {
+    "aisles": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38
+    ],
+    "bays": 20,
+    "levels": 5,
+    "positions": [
+      10,
+      40,
+      70
+    ],
+    "outLanes": 4
+  },
+  "categories": {
+    "GEN": "General",
+    "BULK": "Bulk",
+    "FAST": "Fast movers",
+    "KIT": "Kitting"
+  },
+  "cells": {
+    "31": "A",
+    "32": "A",
+    "33": "A",
+    "34": "A",
+    "35": "A",
+    "36": "A",
+    "37": "A",
+    "38": "A"
+  },
+  "aisleEntry": {},
+  "config": {
+    "oneWay": true,
+    "aisleCap": 2
+  },
+  "naming": "row",
+  "templates": [
+    {
+      "from": "AA01A1",
+      "to": "AH10E3",
+      "category": "GEN"
+    },
+    {
+      "from": "AI01A1",
+      "to": "AP10E3",
+      "category": "BULK"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "BL01",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    },
+    {
+      "id": "BL02",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    },
+    {
+      "id": "BL03",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    },
+    {
+      "id": "BL04",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    },
+    {
+      "id": "BL05",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    },
+    {
+      "id": "BL06",
+      "stacks": 8,
+      "height": 6,
+      "category": "BULK"
+    }
+  ],
+  "stations": [
+    {
+      "id": "PRESS",
+      "name": "Pallet change",
+      "machine": "Hydraulic flip press",
+      "minutes": 5,
+      "operators": 2,
+      "sop": [
+        "New pallet on the press",
+        "Clamp and flip the load onto it",
+        "Pull out the old pallet",
+        "Flip back upright",
+        "Seal with foil"
+      ]
+    },
+    {
+      "id": "FOIL",
+      "name": "Crates off + foil",
+      "machine": "Stretch wrapper",
+      "minutes": 4,
+      "operators": 1,
+      "sop": [
+        "Lift off the crates",
+        "Stack crates for return",
+        "Wrap the load in foil"
+      ]
+    },
+    {
+      "id": "PLATE",
+      "name": "Plate press",
+      "machine": "Plate press",
+      "minutes": 3,
+      "operators": 1,
+      "sop": [
+        "Centre the crate stack",
+        "Apply / remove the metal plate",
+        "Check the plate is seated"
+      ]
+    },
+    {
+      "id": "WARM",
+      "name": "Curing room",
+      "dwell": true,
+      "capacity": 24
+    }
+  ],
+  "routes": [
+    {
+      "id": "CHANGE",
+      "name": "Pallet change",
+      "steps": [
+        {
+          "station": "PRESS",
+          "op": "Change pallet",
+          "reprint": true
+        }
+      ]
+    },
+    {
+      "id": "FOIL",
+      "name": "Crates off + foil",
+      "steps": [
+        {
+          "station": "FOIL",
+          "op": "Crates off, foil"
+        }
+      ]
+    },
+    {
+      "id": "CURE",
+      "name": "Plate and cure",
+      "steps": [
+        {
+          "station": "PLATE",
+          "op": "Apply plate"
+        },
+        {
+          "station": "WARM",
+          "dwellMin": 180
+        },
+        {
+          "station": "PLATE",
+          "op": "Remove plate"
+        }
+      ]
+    }
+  ],
+  "desks": [
+    {
+      "id": "DESK1",
+      "name": "Receiving desk"
+    }
+  ],
+  "items": [
+    {
+      "itemNo": "W1001",
+      "gtin": "2001200030000",
+      "name": "Wall paint white 10 L",
+      "category": "GEN",
+      "palletQty": 96,
+      "minShipDays": 10,
+      "storage": "rack",
+      "clientId": "CL-PAINT",
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 1400,
+      "weightKg": 420
+    },
+    {
+      "itemNo": "W1002",
+      "gtin": "2001200030017",
+      "name": "Wall paint grey 10 L",
+      "category": "GEN",
+      "palletQty": 120,
+      "minShipDays": 10,
+      "storage": "rack",
+      "clientId": "CL-PAINT",
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 1500,
+      "weightKg": 480
+    },
+    {
+      "itemNo": "W1003",
+      "gtin": "2001200030024",
+      "name": "Primer 5 L",
+      "category": "GEN",
+      "palletQty": 120,
+      "minShipDays": 10,
+      "storage": "rack",
+      "clientId": "CL-PAINT"
+    },
+    {
+      "itemNo": "W1004",
+      "gtin": "2001200030031",
+      "name": "Floor varnish 1 L",
+      "category": "GEN",
+      "palletQty": 84,
+      "minShipDays": 8,
+      "storage": "rack",
+      "clientId": "CL-PAINT"
+    },
+    {
+      "itemNo": "G2001",
+      "gtin": "2001200030048",
+      "name": "Potting soil 40 L",
+      "category": "BULK",
+      "palletQty": 160,
+      "minShipDays": 30,
+      "storage": "rack",
+      "clientId": "CL-GARDEN",
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 1200,
+      "weightKg": 350
+    },
+    {
+      "itemNo": "G2002",
+      "gtin": "2001200030055",
+      "name": "Garden gravel 25 kg",
+      "category": "BULK",
+      "palletQty": 120,
+      "minShipDays": 30,
+      "storage": "rack",
+      "clientId": "CL-GARDEN"
+    },
+    {
+      "itemNo": "G2003",
+      "gtin": "2001200030062",
+      "name": "Lawn seed 5 kg",
+      "category": "BULK",
+      "palletQty": 150,
+      "minShipDays": 25,
+      "storage": "rack",
+      "clientId": "CL-GARDEN"
+    },
+    {
+      "itemNo": "G2004",
+      "gtin": "2001200030079",
+      "name": "Bark mulch 50 L",
+      "category": "BULK",
+      "palletQty": 140,
+      "minShipDays": 14,
+      "storage": "rack",
+      "clientId": "CL-GARDEN"
+    },
+    {
+      "itemNo": "G2005",
+      "gtin": "2001200030086",
+      "name": "Paving slabs, crate pallet",
+      "category": "BULK",
+      "palletQty": 24,
+      "minShipDays": 30,
+      "storage": "block",
+      "clientId": "CL-GARDEN",
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 1600,
+      "weightKg": 600,
+      "uom": "crate"
+    },
+    {
+      "itemNo": "G2006",
+      "gtin": "2001200030093",
+      "name": "Concrete blocks, crate pallet",
+      "category": "BULK",
+      "palletQty": 20,
+      "minShipDays": 30,
+      "storage": "block",
+      "clientId": "CL-GARDEN"
+    },
+    {
+      "itemNo": "F3001",
+      "gtin": "2001200030109",
+      "name": "Wood glue 750 ml",
+      "category": "FAST",
+      "palletQty": 72,
+      "minShipDays": 60,
+      "storage": "rack",
+      "clientId": "CL-FIX",
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 1300,
+      "weightKg": 390
+    },
+    {
+      "itemNo": "F3002",
+      "gtin": "2001200030116",
+      "name": "Wood glue 250 ml",
+      "category": "FAST",
+      "palletQty": 72,
+      "minShipDays": 60,
+      "storage": "rack",
+      "clientId": "CL-FIX"
+    },
+    {
+      "itemNo": "S0545",
+      "name": "Sealant 12x300 ml",
+      "category": "GEN",
+      "palletQty": 80,
+      "minShipDays": 10,
+      "storage": "rack",
+      "unitGtin": "6141410054598",
+      "unitsPerCase": 12,
+      "codes": [
+        "70012009"
+      ],
+      "clientId": "CL-PAINT"
+    },
+    {
+      "itemNo": "T0960",
+      "name": "Tile grout 12x500 g",
+      "category": "GEN",
+      "palletQty": 96,
+      "minShipDays": 10,
+      "storage": "rack",
+      "gtin": "06141410009604",
+      "clientId": "CL-PAINT"
+    },
+    {
+      "itemNo": "NB-14",
+      "name": "Laptop 14 inch",
+      "category": "KIT",
+      "palletQty": 20,
+      "minShipDays": 0,
+      "storage": "rack",
+      "clientId": "CL-KIT",
+      "uom": "each"
+    },
+    {
+      "itemNo": "PLUG-EU",
+      "name": "EU power plug",
+      "category": "KIT",
+      "palletQty": 200,
+      "minShipDays": 0,
+      "storage": "rack",
+      "clientId": "CL-KIT",
+      "uom": "each"
+    }
+  ],
+  "kits": [
+    {
+      "id": "KIT-PLUG",
+      "name": "Laptop with EU plug",
+      "base": {
+        "itemNo": "NB-14",
+        "qty": 1
+      },
+      "components": [
+        {
+          "itemNo": "PLUG-EU",
+          "qty": 1
+        }
+      ]
+    }
+  ],
+  "valStations": [
+    {
+      "id": "VAL-01",
+      "name": "Kitting line 1",
+      "kitId": "KIT-PLUG"
+    }
+  ],
+  "technical": {
+    "autoSort": {
+      "enabled": true,
+      "strategy": "fefo",
+      "sameBatchTogether": true,
+      "groundForNextOut": true,
+      "rules": [
+        {
+          "category": "GEN",
+          "putaway": "rack, same batch, earliest expiry low"
+        },
+        {
+          "category": "BULK",
+          "putaway": "block lane when storage is block, otherwise rack"
+        },
+        {
+          "category": "KIT",
+          "putaway": "mezzanine pick face"
+        }
+      ]
+    }
+  },
+  "licensePlates": [
+    {
+      "series": "INB",
+      "itemNo": "W1002",
+      "qty": 12,
+      "loc": "DOCK-IN",
+      "batch": "INB-DEMO",
+      "expiry": "2026-12-01"
+    },
+    {
+      "series": "ST",
+      "itemNo": "W1001",
+      "qty": 6,
+      "loc": "MEZZ-A1",
+      "batch": "MEZZ-DEMO",
+      "expiry": "2026-12-15"
+    },
+    {
+      "series": "OUT",
+      "itemNo": "G2001",
+      "qty": 4,
+      "loc": "STAGE01",
+      "batch": "OUT-DEMO",
+      "expiry": "2027-01-10"
+    }
+  ],
+  "clients": [
+    {
+      "id": "CL-PAINT",
+      "name": "Brightwall Paints",
+      "contact": "Floor desk",
+      "email": "paints@example.test",
+      "phone": "+31 20 000 0001",
+      "notes": "Paint and filler. Stock is stored for this client."
+    },
+    {
+      "id": "CL-GARDEN",
+      "name": "Fieldstone Garden",
+      "contact": "Planning",
+      "email": "kaas@example.test",
+      "phone": "+31 20 000 0002",
+      "notes": "Garden stock, including crate pallets in the block lanes."
+    },
+    {
+      "id": "CL-FIX",
+      "name": "Fixwell Adhesives",
+      "contact": "Inbound",
+      "email": "pulse@example.test",
+      "phone": "+31 20 000 0003",
+      "notes": "Adhesives. The first deliveries are still arriving."
+    },
+    {
+      "id": "CL-KIT",
+      "name": "Kitting demo",
+      "contact": "VAL line",
+      "email": "kit@example.test",
+      "phone": "+31 20 000 0004",
+      "notes": "Value-added kitting, for example a power plug onto a laptop."
+    }
+  ],
+  "extraLocations": [
+    {
+      "code": "ZONE-CHILL",
+      "kind": "zone",
+      "name": "Chill hall"
+    },
+    {
+      "code": "AISLE-Z1",
+      "kind": "aisle",
+      "name": "Pick aisle Z1",
+      "parent": "ZONE-CHILL",
+      "zone": "ZONE-CHILL",
+      "aisle": "Z1"
+    },
+    {
+      "code": "RACK-Z1",
+      "kind": "rack",
+      "name": "Pick rack Z1",
+      "parent": "AISLE-Z1",
+      "zone": "ZONE-CHILL",
+      "aisle": "Z1",
+      "rack": "Z1"
+    },
+    {
+      "code": "LEVEL-Z1-A",
+      "kind": "level",
+      "name": "Ground level",
+      "parent": "RACK-Z1",
+      "zone": "ZONE-CHILL",
+      "aisle": "Z1",
+      "rack": "Z1",
+      "level": "A"
+    },
+    {
+      "code": "BIN-PICK-01",
+      "kind": "bin",
+      "name": "Paint pick face",
+      "parent": "LEVEL-Z1-A",
+      "zone": "ZONE-CHILL",
+      "aisle": "Z1",
+      "rack": "Z1",
+      "level": "A",
+      "bin": "01",
+      "category": "GEN",
+      "heightMm": 1800,
+      "widthMm": 1000,
+      "depthMm": 1200,
+      "maxWeightKg": 800
+    },
+    {
+      "code": "CONSO00",
+      "kind": "virtual",
+      "role": "consolidation",
+      "name": "Consolidation conso00"
+    },
+    {
+      "code": "STAGE01",
+      "kind": "virtual",
+      "role": "staging",
+      "name": "Outbound staging"
+    },
+    {
+      "code": "MEZZ-A1",
+      "kind": "mezzanine",
+      "name": "Mezzanine pick face A1",
+      "category": "GEN"
+    }
+  ],
+  "holders": [
+    {
+      "id": "H-PAL-01",
+      "type": "pallet",
+      "loc": "DOCK-IN",
+      "clientId": "CL-PAINT",
+      "tareKg": 25,
+      "lengthMm": 1200,
+      "widthMm": 800,
+      "heightMm": 150
+    },
+    {
+      "id": "H-CRT-01",
+      "type": "crate",
+      "loc": "BIN-PICK-01",
+      "clientId": "CL-GARDEN",
+      "tareKg": 8,
+      "lengthMm": 600,
+      "widthMm": 400,
+      "heightMm": 300
+    },
+    {
+      "id": "H-TOT-01",
+      "type": "tote",
+      "loc": "BIN-PICK-01",
+      "clientId": "CL-PAINT",
+      "tareKg": 2,
+      "lengthMm": 600,
+      "widthMm": 400,
+      "heightMm": 280,
+      "contents": [
+        {
+          "itemNo": "W1002",
+          "qty": 6,
+          "batch": "DEMO",
+          "expiry": "2026-12-01"
+        }
+      ]
+    }
+  ],
+  "equipment": [
+    {
+      "id": "EQ-PRESS",
+      "name": "Hydraulic flip press",
+      "kind": "machine",
+      "location": "ST-PRESS",
+      "stationId": "PRESS",
+      "status": "running"
+    },
+    {
+      "id": "EQ-FOIL",
+      "name": "Stretch wrapper",
+      "kind": "machine",
+      "location": "ST-FOIL",
+      "stationId": "FOIL",
+      "status": "running"
+    },
+    {
+      "id": "EQ-PLATE",
+      "name": "Plate press",
+      "kind": "machine",
+      "location": "ST-PLATE",
+      "stationId": "PLATE",
+      "status": "idle"
+    },
+    {
+      "id": "EQ-WARM",
+      "name": "Curing room",
+      "kind": "room",
+      "location": "ST-WARM",
+      "stationId": "WARM",
+      "status": "running"
+    }
+  ],
+  "faults": [
+    {
+      "equipmentId": "EQ-PRESS",
+      "summary": "Clamp sensor does not see the pallet",
+      "detail": "The interlock stays open after the load is centred. The line is stopped until maintenance clears it."
+    }
+  ],
+  "maintenance": [
+    {
+      "equipmentId": "EQ-FOIL",
+      "note": "Replaced the film roll and cleaned the cutter.",
+      "by": "tech"
+    }
+  ],
+  "customers": {
+    "Harbour Hardware": [
+      "No double-stacked pallets"
+    ],
+    "Main Street DIY": [
+      "Shipping label on the long side",
+      "Max. 1.8 m pallet height"
+    ],
+    "Site Office North": [
+      "Deliver before 06:00: load first"
+    ]
+  },
+  "printers": {
+    "LP-OUT-01": "",
+    "LP-OUT-02": "",
+    "LP-OUT-03": "",
+    "LP-OUT-04": "",
+    "LP-ST-PRESS": ""
+  },
+  "_printers": "Printer by name: \"host:port\", or {\"address\": \"10.0.4.51:9100\", \"dpi\": 300}. A Zebra ZT421 is 203 or 300 dpi (see its configuration label)."
+}

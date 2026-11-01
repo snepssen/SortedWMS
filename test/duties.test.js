@@ -10,7 +10,7 @@ const sscc = (n) => { const body = String(n).padStart(17, '0'); return body + GS
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10 });
+  w.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 10 });
   return w;
 }
 
@@ -61,7 +61,7 @@ test('stock control creates and deletes stock with a reason, and billing stops w
   let now = Date.UTC(2026, 9, 1);
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => now });
   w.addClient({ id: 'CL1', name: 'Client' });
-  w.addItem({ itemNo: 'Y1', name: 'Yoghurt', category: 'YOG', palletQty: 10, clientId: 'CL1' });
+  w.addItem({ itemNo: 'Y1', name: 'Paint', category: 'GEN', palletQty: 10, clientId: 'CL1' });
   const p = w.createStock({ code: '01-01-0-10', itemNo: 'Y1', qty: 8, reason: 'found', by: 'sam' });
   assert.equal(w.adjustments[0].after, 8);
   assert.equal(w.movements[0].event, 'created');

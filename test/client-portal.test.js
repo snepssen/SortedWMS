@@ -9,7 +9,7 @@ const { createServer } = require('../server/index');
 const { Printers } = require('../server/print');
 const { permissionFor, DEFAULTS } = require('../server/permissions');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function cookieOf(headers) {
   const raw = (headers.getSetCookie && headers.getSetCookie()[0]) || headers.get('set-cookie') || '';
@@ -39,50 +39,50 @@ test('a client only sees and edits their own items, and approval is off unless t
   const sign = async (username, password) => cookieOf((await call('POST', '/api/login', { username, password })).headers);
   try {
     const admin = await sign('admin', 'sorted-admin');
-    const made = await call('POST', '/api/users', { username: 'dairy', password: 'sorted-dairy', role: 'client', displayName: 'Dairy desk', clientId: 'CL-DAIRY' }, { cookie: admin });
+    const made = await call('POST', '/api/users', { username: 'paints', password: 'sorted-paints', role: 'client', displayName: 'Paint desk', clientId: 'CL-PAINT' }, { cookie: admin });
     assert.equal(made.status, 200, made.body && made.body.error);
-    assert.equal(made.body.user.clientId, 'CL-DAIRY');
+    assert.equal(made.body.user.clientId, 'CL-PAINT');
     assert.equal((await call('POST', '/api/users', { username: 'loose', password: 'sorted-loose', role: 'client', displayName: 'Loose' }, { cookie: admin })).status, 400);
 
-    const dairy = await sign('dairy', 'sorted-dairy');
-    const items = await call('GET', '/api/items', null, { cookie: dairy });
+    const paints = await sign('paints', 'sorted-paints');
+    const items = await call('GET', '/api/items', null, { cookie: paints });
     assert.equal(items.status, 200);
     assert.ok(items.body.length > 0);
-    assert.ok(items.body.every((i) => i.clientId === 'CL-DAIRY'));
-    const other = await call('GET', '/api/clients/CL-CHEESE', null, { cookie: dairy });
+    assert.ok(items.body.every((i) => i.clientId === 'CL-PAINT'));
+    const other = await call('GET', '/api/clients/CL-GARDEN', null, { cookie: paints });
     assert.equal(other.status, 403);
 
     const added = await call('POST', '/api/items', {
-      itemNo: 'DY-1', name: 'Skyr pot', category: 'YOG', uom: 'pot', codes: 'DY-BAR-1',
-      lengthMm: 80, widthMm: 80, heightMm: 90, weightKg: 0.2, food: true, clientId: 'CL-CHEESE',
-    }, { cookie: dairy });
+      itemNo: 'DY-1', name: 'Filler tub', category: 'GEN', uom: 'pot', codes: 'DY-BAR-1',
+      lengthMm: 80, widthMm: 80, heightMm: 90, weightKg: 0.2, food: true, clientId: 'CL-GARDEN',
+    }, { cookie: paints });
     assert.equal(added.status, 200, added.body && added.body.error);
-    assert.equal(added.body.clientId, 'CL-DAIRY');
+    assert.equal(added.body.clientId, 'CL-PAINT');
     assert.equal(added.body.status, 'active');
     assert.equal(added.body.flags.food, true);
     assert.equal(added.body.codes.includes('DY-BAR-1'), true);
-    assert.ok(store.journal({ op: 'addItem' }).some((r) => r.by === 'dairy'));
-    assert.match(store.wh.events[0].text, /added by dairy/);
+    assert.ok(store.journal({ op: 'addItem' }).some((r) => r.by === 'paints'));
+    assert.match(store.wh.events[0].text, /added by paints/);
 
-    const orders = await call('GET', '/api/orders', null, { cookie: dairy });
-    assert.ok(orders.body.every((o) => !o.clientId || o.clientId === 'CL-DAIRY'));
-    const stock = await call('GET', '/api/stock', null, { cookie: dairy });
+    const orders = await call('GET', '/api/orders', null, { cookie: paints });
+    assert.ok(orders.body.every((o) => !o.clientId || o.clientId === 'CL-PAINT'));
+    const stock = await call('GET', '/api/stock', null, { cookie: paints });
     assert.equal(stock.status, 200);
-    assert.ok(stock.body.every((r) => r.item.clientId === 'CL-DAIRY'));
+    assert.ok(stock.body.every((r) => r.item.clientId === 'CL-PAINT'));
 
     await call('POST', '/api/config', { itemApproval: true }, { cookie: admin });
-    const waiting = await call('POST', '/api/items', { itemNo: 'DY-2', name: 'Waiting skyr', category: 'YOG', uom: 'pot' }, { cookie: dairy });
+    const waiting = await call('POST', '/api/items', { itemNo: 'DY-2', name: 'Waiting filler', category: 'GEN', uom: 'pot' }, { cookie: paints });
     assert.equal(waiting.body.status, 'pending');
-    assert.equal((await call('POST', '/api/items/DY-2/approve', {}, { cookie: dairy })).status, 403);
+    assert.equal((await call('POST', '/api/items/DY-2/approve', {}, { cookie: paints })).status, 403);
     const office = await sign('office', 'sorted-office');
     const approved = await call('POST', '/api/items/DY-2/approve', {}, { cookie: office });
     assert.equal(approved.status, 200, approved.body && approved.body.error);
     assert.equal(approved.body.status, 'active');
     assert.match(store.wh.events[0].text, /approved by office/);
-    const off = await call('POST', '/api/items/DY-1/archive', {}, { cookie: dairy });
+    const off = await call('POST', '/api/items/DY-1/archive', {}, { cookie: paints });
     assert.equal(off.status, 200);
     assert.equal(store.wh.items['DY-1'].status, 'archived');
-    assert.match(store.wh.events[0].text, /archived by dairy/);
+    assert.match(store.wh.events[0].text, /archived by paints/);
   } finally {
     await new Promise((r) => server.close(r));
     store.close();

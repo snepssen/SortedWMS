@@ -9,8 +9,8 @@ const DAY = 86400000;
 function wh() {
   let t = Date.UTC(2026, 9, 8, 8);
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => t });
-  w.addItem({ itemNo: '845356', name: 'Mug, pink', category: 'YOG', palletQty: 72, uom: 'piece' });
-  w.addItem({ itemNo: '845359', name: 'Mug, blue', category: 'YOG', palletQty: 72, uom: 'piece' });
+  w.addItem({ itemNo: '845356', name: 'Mug, pink', category: 'GEN', palletQty: 72, uom: 'piece' });
+  w.addItem({ itemNo: '845359', name: 'Mug, blue', category: 'GEN', palletQty: 72, uom: 'piece' });
   w.setItemUnits('845356', { packs: [{ unit: 'box', per: 8 }] });
   w.generateGuided({ sections: { count: 1, name: 'Mezz' }, layouts: [{ type: 'shelf', positions: { count: 2, name: 'Bin 1' } }] });
   return { w, later: (ms) => { t += ms; } };

@@ -301,7 +301,7 @@
         <label>Category <select id="dCat">${catOptions()}</select></label><label>Pallets <input id="dPal" size="3" value="1"></label>
         <label>Received at <select id="dAt"><option value="dock">Dock (truck handheld)</option><option value="desk">Receiving desk</option></select></label></div>
         <label class="hint" style="display:block">Delivery list from the supplier (optional, paste from Excel or the ASN): one row per pallet, <span class="mono">sscc;item;batch;bestBefore;qty</span>. With it, each pallet is received with <b>one scan</b> of its SSCC, and the pallet count follows the list.
-          <textarea id="dList" placeholder="354111938100402747;05459;810040274;09-11-2026;80"></textarea></label>
+          <textarea id="dList" placeholder="306141410000027478;S0545;810040274;09-11-2026;80"></textarea></label>
         <div class="form" style="margin-top:6px"><button class="primary" id="dGo">Announce</button></div><div class="out" id="dOut" style="display:none"></div></section>
       <section><h2>Customer requirements</h2>
         <p class="hint">What a customer wants done with their pallets. The order brings it up on the handheld for every pick, drop and check: nobody looks it up or types it. One per line, short enough for the handheld.</p>
@@ -322,10 +322,10 @@
 
   async function renderImports() {
     const ex = {
-      items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nY1010;8712345000017;Skyr natural 450 g;YOG;120;10;rack',
-      locations: 'code;category;blocked;check\n38-02-0-10;CHE;0;47\nAA01A1;YOG;0;',
-      orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Fresh Market;OUT-01;Y1001;2;;1\n4601;Fresh Market;OUT-01;C2001;1;CHANGE;1',
-      stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;Y1001;L2610A;2026-11-20;96',
+      items: 'itemNo;gtin;name;category;palletQty;minShipDays;storage\nW1010;8712345000017;Wall filler 450 g;GEN;120;10;rack',
+      locations: 'code;category;blocked;check\n38-02-0-10;BULK;0;47\nAA01A1;GEN;0;',
+      orders: 'orderId;customer;lane;itemNo;pallets;process;verifyLoading\n4601;Harbour Hardware;OUT-01;W1001;2;;1\n4601;Harbour Hardware;OUT-01;G2001;1;CHANGE;1',
+      stock: 'code;sscc;itemNo;batch;expiry;qty\nAA01A2;087123450000099990;W1001;L2610A;2026-11-20;96',
     };
     const box = (k, title, note) => `<section><h2 id="im-title-${k}">${title}</h2><p class="hint">${note}</p><textarea id="im-${k}" aria-labelledby="im-title-${k}">${esc(ex[k])}</textarea>
       <div class="form" style="margin-top:8px"><button class="primary" data-import="${k}" aria-label="Import ${title}">Import</button></div><div class="out" id="imOut-${k}" style="display:none"></div></section>`;

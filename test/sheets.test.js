@@ -12,7 +12,7 @@ const { createAuth } = require('../server/auth');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 1, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 1, uom: 'piece' });
   w.setItemUnits('M3', { packs: [{ unit: 'box', per: 100, barcode: '8710000003' }] });
   w.generateGuided({ sections: { count: 1, name: 'Garage' }, layouts: [{ type: 'shelf', bays: { count: 2, name: 'Shelf 1' }, positions: { count: 3, name: 'Bin 1' } }] });
   return w;
@@ -57,7 +57,7 @@ test('item labels include each box barcode; plate labels use the plate number', 
 });
 
 test('the sheet is served to anyone who prints labels, and the camera button only appears where the browser reads barcodes', async () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureDemoUsers();

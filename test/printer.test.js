@@ -11,8 +11,8 @@ const hs = ({ paper = 0, pause = 0, head = 0, ribbon = 0 } = {}) =>
   `${STX}030,${paper},${pause},1218,000,0,0,0,000,0,0,0${ETX}\r\n${STX}000,0,${head},${ribbon},1,2,6,0,00000000,1,000${ETX}\r\n${STX}1234,0${ETX}\r\n`;
 
 const label = () => Labels.shippingLabel({
-  customer: 'Fresh Market', orderId: '4501', index: 1, total: 2, itemName: 'Skyr', itemNo: 'E0960', qty: 96,
-  batch: '41/06', expiry: '2026-11-10', labelCode: 'SL4501-1', sscc: '054133890000100974', lane: 'OUT-01', printedAt: '08:00',
+  customer: 'Harbour Hardware', orderId: '4501', index: 1, total: 2, itemName: 'Sealant', itemNo: 'T0960', qty: 96,
+  batch: '41/06', expiry: '2026-11-10', labelCode: 'SL4501-1', sscc: '006141410000009749', lane: 'OUT-01', printedAt: '08:00',
 });
 
 test('labels are laid out at 203 dpi and scaled for a 300 dpi printer', () => {
@@ -21,7 +21,7 @@ test('labels are laid out at 203 dpi and scaled for a 300 dpi printer', () => {
   const big = Labels.scaleZpl(zpl, 300);
   assert.match(big, /\^PW1200\^LL1800/, '4×6 inch at 300 dpi');
   assert.match(big, /\^FO59,59\^A0N,50,50\^FDSHIP TO/);
-  assert.match(big, /\^BY4\^BCN,325,N,N,N\^FD>;>800054133890000100974/, 'barcode module and height scale too');
+  assert.match(big, /\^BY4\^BCN,325,N,N,N\^FD>;>800006141410000009749/, 'barcode module and height scale too');
   assert.equal((big.match(/\^FD/g) || []).length, (zpl.match(/\^FD/g) || []).length, 'nothing lost');
 });
 

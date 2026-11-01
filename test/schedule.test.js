@@ -11,8 +11,8 @@ function setup(now) {
   const clock = { t: now };
   const wh = new Warehouse({ aisles: [31, 32], bays: 6, levels: 3, clock: () => clock.t, config: { groundNextPerItem: 0, checkAfterPick: false } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96, minShipDays: 5 });
-  wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96, minShipDays: 5 });
+  wh.applyTemplate(wh.selectLocations('31', '32'), 'GEN');
   return { wh, clock };
 }
 
@@ -24,7 +24,7 @@ test('job order by time of day: receiving first in the morning window, the norma
   assert.deepEqual(wh.activePriority().slice(0, 4), ['RECEIVE', 'PUTAWAY', 'CHECK', 'PICK'], 'named first, then the normal order');
   wh.stockPallet('31-02-0-10', { itemNo: 'Y1', batch: 'B1', expiry: '2026-12-01' });
   wh.addOrder({ id: 'O1', customer: 'Shop', lane: 'OUT-01', lines: [{ itemNo: 'Y1', pallets: 1 }] });
-  wh.addDelivery({ id: 'D1', supplier: 'Dairy', category: 'YOG', pallets: 1 });
+  wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
   assert.equal(wh.instruction('RT1').kind, 'receive', 'at 07:30 receiving goes before the pick');
   assert.match(wh.tasks[wh.trucks.RT1.taskId].dispatchReason, /Priority 1 \(06:00-10:00\)/);

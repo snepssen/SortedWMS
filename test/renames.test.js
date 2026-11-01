@@ -7,7 +7,7 @@ const { Store } = require('../server/store');
 
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 1, levels: 1, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 100, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 100, uom: 'piece' });
   w.generateGuided({ sections: { count: 1, name: 'Garage' }, layouts: [{ type: 'shelf', bays: { count: 2, name: 'Shelf 1' }, positions: { count: 2, name: 'Bin 1' } }] });
   w.generateGuided({ sections: { count: 1, name: 'Hall' }, layouts: [{ type: 'rack', bays: { count: 2, name: '1' } }] });
   return w;

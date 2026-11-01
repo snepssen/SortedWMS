@@ -7,9 +7,9 @@ const { Printers } = require('../server/print');
 const { createServer } = require('../server/index');
 const { createAuth, verifyPassword } = require('../server/auth');
 const { permissionFor } = require('../server/permissions');
-const { seedDemo } = require('../server/seed');
+const { seedDemo } = require('./fixtures/seed');
 
-const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
 
 function cookieOf(headers) {
   const raw = (headers.getSetCookie && headers.getSetCookie()[0]) || headers.get('set-cookie') || '';
@@ -121,7 +121,7 @@ test('each demo role can sign in and is refused a screen it does not own', async
     assert.equal((await app.call('GET', '/api/movements', null, { cookie: manager })).status, 200);
     const office = await app.sign('office', 'sorted-office');
     const clients = await app.call('GET', '/api/clients', null, { cookie: office });
-    assert.ok(clients.body.some((c) => c.id === 'CL-DAIRY' && c.pallets >= 0));
+    assert.ok(clients.body.some((c) => c.id === 'CL-PAINT' && c.pallets >= 0));
   } finally {
     await app.close();
     app.store.close();
@@ -137,15 +137,15 @@ test('office can create a client, an item, a location and a label; capacity is e
     assert.equal((await app.call('POST', '/api/clients', { id: 'CL-NEW', name: 'New Owner', email: 'new@example.test' }, { cookie: office })).status, 200);
     const GS1 = require('../src/gs1');
     const item = await app.call('POST', '/api/items', {
-      itemNo: 'N1', name: 'New yoghurt', category: 'YOG', palletQty: 10, clientId: 'CL-NEW', gtin: GS1.makeGtin13('20000', 9),
+      itemNo: 'N1', name: 'New paint', category: 'GEN', palletQty: 10, clientId: 'CL-NEW', gtin: GS1.makeGtin13('20000', 9),
       uom: 'case', lengthMm: 1200, widthMm: 800, heightMm: 1400, weightKg: 400,
     }, { cookie: office });
     assert.equal(item.status, 200);
     assert.equal((await app.call('POST', '/api/clients/CL-NEW/archive', {}, { cookie: office })).status, 200);
-    assert.match((await app.call('POST', '/api/items', { itemNo: 'N2', name: 'Nope', category: 'YOG', palletQty: 1, clientId: 'CL-NEW' }, { cookie: office })).body.error, /archived/);
+    assert.match((await app.call('POST', '/api/items', { itemNo: 'N2', name: 'Nope', category: 'GEN', palletQty: 1, clientId: 'CL-NEW' }, { cookie: office })).body.error, /archived/);
     await app.call('POST', '/api/clients/CL-NEW/restore', {}, { cookie: office });
 
-    const bin = await app.call('POST', '/api/locations', { code: 'BIN-TEST', kind: 'bin', category: 'YOG', heightMm: 500, widthMm: 700, depthMm: 900, maxWeightKg: 100 }, { cookie: manager });
+    const bin = await app.call('POST', '/api/locations', { code: 'BIN-TEST', kind: 'bin', category: 'GEN', heightMm: 500, widthMm: 700, depthMm: 900, maxWeightKg: 100 }, { cookie: manager });
     assert.equal(bin.status, 200);
     const sscc = app.store.wh.nextSscc();
     const tooBig = await app.call('POST', '/api/import/stock', { rows: [{ code: 'BIN-TEST', sscc, itemNo: 'N1', batch: 'B', expiry: '2027-01-01', qty: 10 }] }, { cookie: manager });

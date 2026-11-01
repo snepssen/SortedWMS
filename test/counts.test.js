@@ -10,8 +10,8 @@ const T0 = Date.UTC(2026, 9, 8, 6, 0);
 function setup(config = {}) {
   const wh = new Warehouse({ aisles: [31, 32], bays: 4, levels: 2, clock: () => T0, config: { groundNextPerItem: 0, checkAfterPick: false, ...config } });
   wh.setFeatures({ temperatureZones: true, lotExpiry: true, fefo: true });
-  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Yoghurt', category: 'YOG', palletQty: 96 });
-  wh.applyTemplate(wh.selectLocations('31', '32'), 'YOG');
+  wh.addItem({ itemNo: 'Y1', gtin: GS1.makeGtin13('20000', 1), name: 'Paint', category: 'GEN', palletQty: 96 });
+  wh.applyTemplate(wh.selectLocations('31', '32'), 'GEN');
   const put = (code, batch = 'B1') => wh.stockPallet(code, { itemNo: 'Y1', batch, expiry: '2026-12-01' });
   return { wh, put };
 }
@@ -185,10 +185,10 @@ test('count mode: a driver on inventory duty gets count after count, places that
 
 test('count mode: the command barcode switches to it, and a count-mode truck only counts its own categories', () => {
   const { wh } = setup();
-  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Gouda', category: 'CHE', palletQty: 80 });
-  wh.applyTemplate(wh.selectLocations('32', '32'), 'CHE');
-  wh.addTruck('RT1', { categories: ['CHE'] });
+  wh.addItem({ itemNo: 'C1', gtin: GS1.makeGtin13('20000', 3), name: 'Soil', category: 'BULK', palletQty: 80 });
+  wh.applyTemplate(wh.selectLocations('32', '32'), 'BULK');
+  wh.addTruck('RT1', { categories: ['BULK'] });
   assert.ok(wh.scan('RT1', 'CMD-COUNT').ok);
   assert.equal(wh.trucks.RT1.mode, 'count');
-  assert.equal(wh.locations[wh.instruction('RT1').target].category, 'CHE');
+  assert.equal(wh.locations[wh.instruction('RT1').target].category, 'BULK');
 });

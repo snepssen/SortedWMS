@@ -15,7 +15,7 @@ const sscc = (n) => { const body = String(n).padStart(17, '0'); return body + GS
 // racks; loose screws sit in shelf bins on the mezzanine.
 function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 200000, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 200000, uom: 'piece' });
   w.setItemUnits('M3', { packs: [{ unit: 'box', per: 5000 }] });
   w.generateGuided({ sections: { count: 1, name: 'Mezz' }, layouts: [{ type: 'shelf', bays: { count: 1, name: 'Shelf 1' }, positions: { count: 3, name: 'Bin 1' } }] });
   return w;
@@ -28,7 +28,7 @@ const MIN = 60000;
 function timed() {
   let t = Date.UTC(2026, 9, 8, 8);
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 2, positions: [10], outLanes: 1, clock: () => t });
-  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 200000, uom: 'piece' });
+  w.addItem({ itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 200000, uom: 'piece' });
   w.setItemUnits('M3', { packs: [{ unit: 'box', per: 5000 }] });
   w.generateGuided({ sections: { count: 1, name: 'Mezz' }, layouts: [{ type: 'shelf', bays: { count: 1, name: 'Shelf 1' }, positions: { count: 3, name: 'Bin 1' } }] });
   w.createLocation({ code: 'POSTPICK', kind: 'virtual', role: 'staging', name: 'Post-pick lane' });
@@ -186,7 +186,7 @@ test('short stock is reported, a cancelled wave frees its stock, and an emptied 
 });
 
 test('waves through the API: office plans, the man-up and the bin picker confirm, and a restart replays it', async () => {
-  const site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server', 'site.example.json'), 'utf8'));
+  const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.json'), 'utf8'));
   const store = new Store({ site });
   const auth = createAuth(store.db);
   auth.ensureDemoUsers();
@@ -205,9 +205,9 @@ test('waves through the API: office plans, the man-up and the bin picker confirm
     const picker = await login('picker', 'sorted-picker');
     const ok = (r) => { assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
     ok(await call('POST', '/api/locations/guided', { answers: { sections: { count: 1, name: 'Mezz' }, layouts: [{ type: 'shelf', positions: { count: 2, name: 'Bin 1' } }] } }, admin));
-    ok(await call('POST', '/api/items', { itemNo: 'M3', name: 'M3 screw', category: 'YOG', palletQty: 200000, uom: 'piece' }, admin));
+    ok(await call('POST', '/api/items', { itemNo: 'M3', name: 'M3 screw', category: 'GEN', palletQty: 200000, uom: 'piece' }, admin));
     ok(await call('POST', '/api/items/M3/units', { packs: [{ unit: 'box', per: 5000 }] }, admin));
-    const rack = store.wh._racks().find((l) => !l.sscc && !l.blocked && l.category === 'YOG').code;
+    const rack = store.wh._racks().find((l) => !l.sscc && !l.blocked && l.category === 'GEN').code;
     const added = store.exec('importStock', { rows: [{ code: rack, sscc: sscc(9911), itemNo: 'M3', qty: 200000, receivedAt: 1 }] }, 'admin');
     assert.equal(added.added, 1, JSON.stringify(added.errors));
     ok(await call('POST', '/api/bins/put', { loc: 'Mezz-Bin1', itemNo: 'M3', qty: 400 }, inbound));

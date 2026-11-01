@@ -173,6 +173,7 @@ const RULES = [
   ['POST', '/api/technical', 'technical.write'],
   ['GET', '/api/setup', 'settings.write'],
   ['POST', '/api/setup/preset', 'settings.write'],
+  ['POST', '/api/categories', 'settings.write'],
   ['POST', '/api/setup/features', 'settings.write'],
   ['POST', '/api/setup/modules', 'settings.write'],
   ['GET', '/api/backups', 'settings.write'],

@@ -4,7 +4,7 @@
  * like any other change. Only runs on an empty warehouse.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('../src/gs1'), require('../src/engine'));
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('../../src/gs1'), require('../../src/engine'));
   else root.SortedSeed = factory(root.GS1, root.SortedWMS);
 })(typeof self !== 'undefined' ? self : this, function (GS1, Engine) {
   'use strict';
@@ -36,7 +36,7 @@
     const rows = [];
     const put = (code, row) => { scratch.stockPallet(code, row); rows.push({ code, ...row }); };
     for (const item of Object.values(scratch.items)) {
-      if (item.category === 'PRO') continue; // protein drinks: first delivery still to come
+      if (item.category === 'FAST') continue; // adhesives: first delivery still to come
       if (item.storage === 'block') {
         const lanes = scratch.layout.blocks;
         const lane = lanes.find((l) => !scratch.laneBatches(l).length);
@@ -65,8 +65,8 @@
     }
     const stock = store.exec('importStock', { rows }, 'seed');
 
-    // Handhelds: two yoghurt, two cheese, all on Auto.
-    for (const [id, categories] of [['HH01', ['YOG']], ['HH02', ['YOG']], ['HH03', ['CHE']], ['HH04', ['CHE']]]) {
+    // Handhelds: two paint, two garden stock, all on Auto.
+    for (const [id, categories] of [['HH01', ['GEN']], ['HH02', ['GEN']], ['HH03', ['BULK']], ['HH04', ['BULK']]]) {
       store.exec('addTruck', { id, categories }, 'seed');
     }
     // The demo trucks take every job; the manager gives a truck a duty on the Floor screen.
@@ -80,22 +80,18 @@
 
     // Two orders, and a delivery announced with its pallet list (one scan per pallet at the dock).
     const items = store.wh.stockSummary().filter((r) => r.available >= 2);
-    store.exec('addOrder', { id: '4501', customer: 'Fresh Market', lane: 'OUT-01', lines: [{ itemNo: items[0].item.itemNo, pallets: 2 }] }, 'seed');
-    store.exec('addOrder', { id: '4502', customer: 'City Deli', lane: 'OUT-02', lines: [{ itemNo: items[items.length - 1].item.itemNo, pallets: 1 }] }, 'seed');
-    const pro = Object.values(store.wh.items).find((i) => i.category === 'PRO');
+    store.exec('addOrder', { id: '4501', customer: 'Harbour Hardware', lane: 'OUT-01', lines: [{ itemNo: items[0].item.itemNo, pallets: 2 }] }, 'seed');
+    store.exec('addOrder', { id: '4502', customer: 'Main Street DIY', lane: 'OUT-02', lines: [{ itemNo: items[items.length - 1].item.itemNo, pallets: 1 }] }, 'seed');
+    const pro = Object.values(store.wh.items).find((i) => i.category === 'FAST');
     const list = [];
     if (pro) {
       const expiry = day(240);
       for (let i = 0; i < 3; i++) list.push({ sscc: GS1.makeSscc(3, '8799999', 5000 + i), itemNo: pro.itemNo, batch: batchCode(pro.itemNo, expiry), expiry, qty: pro.palletQty });
-      store.exec('addDelivery', { id: 'D-2041', supplier: 'Drinks supplier', category: 'PRO', pallets: list.length, list }, 'seed');
+      store.exec('addDelivery', { id: 'D-2041', supplier: 'Adhesives supplier', category: 'FAST', pallets: list.length, list }, 'seed');
     }
-    // Real skyr pallets can be received too: no list, so their own labels are scanned (and typed where they have no barcode).
-    const skyr = store.wh.items['05459'] || store.wh.items.E0960;
-    if (skyr) store.exec('addDelivery', { id: 'D-2042', supplier: 'A-ware (real labels)', category: skyr.category, pallets: 6 }, 'seed');
     return [
       `Demo stock: ${stock.added} pallets${stock.errors.length ? ` (${stock.errors.length} skipped)` : ''}, handhelds HH01–HH04, orders 4501 and 4502.`,
-      skyr ? 'Delivery D-2042 (A-ware skyr, 6 pallets) takes real pallet labels: Gutes Land Skyr and JA! skyr natuur.' : '',
-      list.length ? `Delivery D-2041 (protein drinks) is announced with its list. Scan these SSCCs at the dock to receive it:\n  ${list.map((p) => `00${p.sscc}`).join('\n  ')}` : '',
+      list.length ? `Delivery D-2041 (adhesives) is announced with its list. Scan these SSCCs at the dock to receive it:\n  ${list.map((p) => `00${p.sscc}`).join('\n  ')}` : '',
     ].filter(Boolean).join('\n');
   }
 

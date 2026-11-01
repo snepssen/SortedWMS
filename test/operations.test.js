@@ -6,10 +6,10 @@ function wh() {
   const w = new Warehouse({ aisles: [1], bays: 2, levels: 1, positions: [10], outLanes: 1, clock: () => Date.UTC(2026, 9, 8, 8) });
   w.setFeatures({ lotExpiry: true, fefo: true });
   w.addClient({ id: 'CL-1', name: 'North Shop' });
-  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'YOG', palletQty: 10, clientId: 'CL-1' });
-  w.addItem({ itemNo: 'BASE', name: 'Laptop', category: 'YOG', palletQty: 1, clientId: 'CL-1' });
-  w.addItem({ itemNo: 'PLUG', name: 'Plug', category: 'YOG', palletQty: 1, clientId: 'CL-1' });
-  w.addItem({ itemNo: 'KITSKU', name: 'Laptop with plug', category: 'YOG', palletQty: 1, clientId: 'CL-1' });
+  w.addItem({ itemNo: 'SKU1', name: 'Mug', category: 'GEN', palletQty: 10, clientId: 'CL-1' });
+  w.addItem({ itemNo: 'BASE', name: 'Laptop', category: 'GEN', palletQty: 1, clientId: 'CL-1' });
+  w.addItem({ itemNo: 'PLUG', name: 'Plug', category: 'GEN', palletQty: 1, clientId: 'CL-1' });
+  w.addItem({ itemNo: 'KITSKU', name: 'Laptop with plug', category: 'GEN', palletQty: 1, clientId: 'CL-1' });
   w.createLocation({ code: 'MEZZ-A1', kind: 'mezzanine', name: 'Mezzanine' });
   w.createLocation({ code: 'RETURNS', kind: 'virtual', role: 'return', name: 'Returns' });
   w.createLocation({ code: 'QRET', kind: 'virtual', role: 'quarantine', name: 'Return quarantine' });

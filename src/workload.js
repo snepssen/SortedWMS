@@ -13,8 +13,9 @@
   'use strict';
 
   const DAY = 86400000;
-  const CUSTOMERS = ['Fresh Market', 'City Deli', 'Corner Shop', 'Daily Fresh', 'Super Plus', 'Green Grocer', 'Hotel Central', 'School Kitchen', 'Farm Shop', 'Station Kiosk'];
-  const SUPPLIERS = { YOG: ['Valley Dairy', 'A-ware Packaging', 'Hill Farm Yoghurt'], CHE: ['A-ware Kruibeke', 'Coast Cheese', 'Old Mill Cheese'], PRO: ['Drinks supplier', 'Sport Drinks Co'] };
+  // Made-up names: customers for the orders, suppliers for the deliveries (any category).
+  const CUSTOMERS = ['Harbour Hardware', 'Main Street DIY', 'Corner Builders', 'Hillside Hotel', 'Riverside School', 'Northgate Garage', 'Site Office North', 'Bayview Bakery', 'Old Town Florist', 'Station Kiosk'];
+  const SUPPLIERS = ['Northbank Packaging', 'Riverside Coatings', 'Westfield Supply', 'Eastway Trading', 'Summit Goods'];
   const MAX = 1000;
 
   function mulberry32(a) {
@@ -101,7 +102,7 @@
       }
       let id;
       do { id = `IN-${String(delSeq++).padStart(4, '0')}`; } while (wh.deliveries[id]);
-      deliveries.push({ id, supplier: pick(SUPPLIERS[category] || ['Supplier']), category, pallets: size, list, at: 'dock' });
+      deliveries.push({ id, supplier: pick(SUPPLIERS), category, pallets: size, list, at: 'dock' });
     }
     return { orders, deliveries, picks: picks - toPlace, short: toPlace, inbound: inbound - toReceive, noRoom: toReceive };
   }

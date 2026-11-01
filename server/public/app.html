@@ -107,6 +107,8 @@
   }
   const can = (p) => me && me.permissions && me.permissions.includes(p);
   const table = (heads, rows) => `<div style="overflow-x:auto"><table><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.join('') || `<tr><td class="dim" colspan="${heads.length}">Nothing here</td></tr>`}</table></div>`;
+  // The warehouse's own categories, set in the setup wizard.
+  const catOptions = () => Object.entries(me.categories || {}).map(([id, label]) => `<option value="${esc(id)}">${esc(label || id)}</option>`).join('') || '<option value="">No categories yet: add them in the setup wizard</option>';
   const msg = (text, ok) => `<p class="msg ${ok ? 'ok' : 'bad'}">${esc(text)}</p>`;
 
   function paintNav() {
@@ -141,7 +143,7 @@
       const inbound = holders.filter((h) => h.series === 'INB' || (h.id || '').startsWith('INB'));
       return `<section><h2>Inbound receiving</h2><p class="hint">On foot, with a handheld. A full pallet is labelled PAL and MASTER after it is received. Lower-value lines use an INB plate.</p>
         <form class="form" data-act="issue-plates"><label>Received pallet SSCC<input name="sscc" required placeholder="18 digit SSCC"></label><button class="primary">Issue PAL + MASTER</button></form>
-        <form class="form" data-act="issue-series"><input type="hidden" name="series" value="INB"><label>Item<input name="itemNo" value="Y1002"></label><label>Qty<input name="qty" type="number" value="1"></label><label>Location<input name="loc" value="DOCK-IN"></label><button>Issue INB plate</button></form>
+        <form class="form" data-act="issue-series"><input type="hidden" name="series" value="INB"><label>Item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" value="1"></label><label>Location<input name="loc" value="DOCK-IN"></label><button>Issue INB plate</button></form>
         <h3>Serial numbers on a pallet</h3><p class="hint">For a traced item: paste or scan one serial per piece. The supplier's pallet list can carry them too, and then they are booked at receiving. They follow the pallet and ship with it, without scanning again.</p>
         <form class="form" data-act="pallet-serials"><label>Pallet SSCC<input name="sscc" required autocomplete="off"></label><label>Serials<textarea name="serials" rows="2" cols="34" placeholder="one per piece, spaces or new lines between" required></textarea></label><button>Book serials</button></form><div id="psOut"></div>
         <h3>Open deliveries</h3>${table(['Delivery', 'Supplier', 'ASN', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || d.id)}</td><td>${esc(d.status)}</td></tr>`))}
@@ -326,9 +328,9 @@
     async replenish() {
       const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
       return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
-        <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" value="Y1001"></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><label>Mode<select name="mode"><option value="units">units to max</option><option value="pallet">whole pallet</option></select></label><button>Save min / max</button></form>
+        <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" required></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><label>Mode<select name="mode"><option value="units">units to max</option><option value="pallet">whole pallet</option></select></label><button>Save min / max</button></form>
         <form class="form" data-act="plan-replen"><button class="primary">Queue replenishment</button></form>
-        <form class="form" data-act="replenish"><label>Item<input name="itemNo" value="Y1001"></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
+        <form class="form" data-act="replenish"><label>Item<input name="itemNo" required></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
         <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><label>Keep MASTER<input name="master" placeholder="blank = earliest"></label><button>Consolidate</button></form>
         <p class="hint">The earliest MASTER survives unless you name another MASTER already on these pallets. The other MASTER plates are retired and their numbers are not reused.</p></section>`;
     },
@@ -384,7 +386,7 @@
       const roles = ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock', 'client'];
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
       return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
-        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Client id<input name="clientId" placeholder="CL-DAIRY, for a client login"></label><button class="primary">Add user</button></form>
+        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
@@ -412,12 +414,12 @@
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
         <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p>
-        <p><a href="/setup">Open the setup wizard</a> to change the warehouse type, category features and location codes.</p></section>`;
+        <p><a href="${window.SORTED_DEMO ? 'setup.html' : '/setup'}">Open the setup wizard</a> to change the warehouse type, category features and location codes.</p></section>`;
     },
     async audit() { return `<section><h2>Audit log</h2><p class="hint">Warehouse commands and sign-in events. The journal is also how the warehouse is rebuilt.</p>${await auditBits(80)}</section>`; },
     async master() {
       return `<section><h2>Master data</h2><p class="hint">Office owns clients and items. The manager owns locations and holders. You can use the same screens.</p>
-        <p><a href="/app#clients">Clients</a> · <a href="/app#items">Items</a> · <a href="/app#locations">Locations</a> · <a href="/app#holders">Holders</a> · <a href="/app#labels">Labels</a></p></section>${await PANELS.clients()}`;
+        <p><a href="#clients">Clients</a> · <a href="#items">Items</a> · <a href="#locations">Locations</a> · <a href="#holders">Holders</a> · <a href="#labels">Labels</a></p></section>${await PANELS.clients()}`;
     },
     async floor() {
       if (me.role === 'office') return PANELS.office();
@@ -460,7 +462,7 @@
         <form class="form" data-act="client-add"><label>Id<input name="id" required placeholder="CL-NEW"></label><label>Name<input name="name" required></label><label>Email<input name="email"></label><button class="primary">Add client</button></form></section>
         <div class="grid"><section><h2>Orders</h2>${table(['Order', 'Customer', 'Status', 'Lane'], orders.slice(0, 8).map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.status)}</td><td>${esc(o.lane)}</td></tr>`))}</section>
         <section><h2>Inbound / outbound</h2>${table(['Delivery', 'Supplier', 'ASN', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || '')}</td><td>${esc(d.status)}</td></tr>`))}
-        <p><a href="/app#reports">Stock and expiry reports</a> · <a href="/loading">Loading</a></p></section></div>`;
+        <p><a href="#reports">Stock and expiry reports</a> · <a href="/loading">Loading</a></p></section></div>`;
     },
     async clients() { return PANELS.office(); },
     async stock() {
@@ -478,19 +480,19 @@
         const showFrozen = features.temperatureZones;
         const showValue = features.highValueSecurity;
         return `<section><h2>Your items</h2><p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
-          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<button class="primary">Add item</button></form>
+          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category">${catOptions()}</select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<button class="primary">Add item</button></form>
           ${table(['SKU', 'Description', 'Unit', 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td><td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
       }
       const items = await api('GET', '/api/items');
       const clients = await api('GET', '/api/clients?archived=1');
       const opts = clients.filter((c) => c.status === 'active').map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-      return `<section><h2>Items</h2><form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><button class="primary">Add item</button></form>
+      return `<section><h2>Items</h2><form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><button class="primary">Add item</button></form>
         ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
     },
     async inbound() {
       const deliveries = await api('GET', '/api/deliveries');
       const clients = await api('GET', '/api/clients');
-      return `<section><h2>Inbound and ASN</h2><form class="form" data-act="asn"><label>Id<input name="id" required></label><label>ASN<input name="asn"></label><label>Supplier<input name="supplier" required></label><label>Category<select name="category"><option>YOG</option><option>CHE</option><option>PRO</option></select></label><label>Pallets<input name="pallets" type="number" value="1"></label><label>Client<select name="clientId"><option value="">Any</option>${clients.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>Expected<input name="expectedAt" type="date"></label><button class="primary">Announce</button></form>
+      return `<section><h2>Inbound and ASN</h2><form class="form" data-act="asn"><label>Id<input name="id" required></label><label>ASN<input name="asn"></label><label>Supplier<input name="supplier" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Pallets<input name="pallets" type="number" value="1"></label><label>Client<select name="clientId"><option value="">Any</option>${clients.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>Expected<input name="expectedAt" type="date"></label><button class="primary">Announce</button></form>
         ${table(['Delivery', 'Supplier', 'ASN', 'Expected', 'Received', 'Status'], deliveries.map((d) => `<tr><td>${esc(d.id)}</td><td>${esc(d.supplier)}</td><td>${esc(d.asn || '')}</td><td>${esc(d.expectedAt || '')}</td><td>${(d.received || []).length}/${esc(d.expected)}</td><td>${esc(d.status)}</td></tr>`))}</section>`;
     },
     async orders() {
@@ -512,8 +514,8 @@
         <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
         <p class="dim">${low.length} low-stock alert(s).</p>
         <h3>Tariff</h3>
-        <p><a href="/app#tariff">Rate cards</a> set tiers, seasons and versions. <a href="/api/reports/billing.html?clientId=CL-DAIRY">Printable invoice</a> · <a href="/api/reports/invoice.csv?clientId=CL-DAIRY">Invoice CSV</a></p>
-        <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)}</td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
+        <p><a href="#tariff">Rate cards</a> set tiers, seasons and versions. Each client below has its printable invoice and CSV.</p>
+        <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)} <a href="/api/reports/billing.html?clientId=${encodeURIComponent(r.clientId)}">invoice</a> · <a href="/api/reports/invoice.csv?clientId=${encodeURIComponent(r.clientId)}">CSV</a></td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
         <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
         <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
     },
@@ -622,7 +624,7 @@
         <form class="form" data-act="label-sheet"><label>Labels for<select name="kind"><option value="locations">Locations</option><option value="items">Items and their boxes</option><option value="plates">License plates</option></select></label><label>Which<input name="which" placeholder="codes starting with Shelf1, or a list" size="26"></label><label>Layout<select name="layout">${layouts.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label><label>Stickers used<input name="skip" type="number" min="0" value="0" style="width:5em"></label><button class="primary">Open the sheet</button></form>
         <p class="hint">Locations: a start of the code (every location starting with it) or a list. Items: a list, or empty for all. Plates: a list.</p></section>
         <section><h2>Pallet and master labels</h2><p class="hint">ZPL for a thermal printer. The HTML page is the browser print / PDF fallback. Simulated printers keep the job.</p>
-        <form class="form" data-act="label-pallet"><label>SSCC in stock<input name="sscc" placeholder="18 digits, or leave blank"></label><label>Or item<input name="itemNo" placeholder="Y1001"></label><label>Batch<input name="batch"></label><label>Best before<input name="expiry" type="date"></label><label>Qty<input name="qty" type="number"></label><button class="primary">Pallet label</button></form>
+        <form class="form" data-act="label-pallet"><label>SSCC in stock<input name="sscc" placeholder="18 digits, or leave blank"></label><label>Or item<input name="itemNo" placeholder="W1001"></label><label>Batch<input name="batch"></label><label>Best before<input name="expiry" type="date"></label><label>Qty<input name="qty" type="number"></label><button class="primary">Pallet label</button></form>
         <form class="form" data-act="label-master"><label>Child SSCCs<textarea name="children" placeholder="one SSCC per line"></textarea></label><label>Title<input name="title" value="Master logistic unit"></label><button class="primary">Master label</button></form>
         <p class="dim">${holders.length} holders on the floor. A holder label uses its id when that id is an SSCC.</p><div id="labelOut"></div></section>`;
     },
@@ -632,14 +634,14 @@
         <form class="form" data-act="rename"><label>From<input name="from" required placeholder="Garage-Shelf1-Bin1, or Garage-"></label><label>To<input name="to" required placeholder="new code, or new start"></label><label><input type="checkbox" name="all"> Every code starting with it</label><button name="go" value="preview">Preview</button><button class="primary" name="go" value="rename">Rename</button></form><div id="renameOut"></div>
         ${aliases.length ? `<h3>Old codes that still scan</h3><p class="hint">Drop them once the new labels are up; then an old label no longer finds anything.</p>${table(['Old code', 'Finds', ''], aliases.slice(0, 50).map((a) => `<tr><td><code>${esc(a.old)}</code></td><td><code>${esc(a.code)}</code></td><td><button type="button" data-act="alias-drop" data-id="${esc(a.old)}">Drop</button></td></tr>`))}${aliases.length > 50 ? `<p class="dim">${aliases.length - 50} more</p>` : ''}<p><button type="button" data-act="alias-drop-all">Drop all ${aliases.length} old codes</button></p>` : ''}</section>` : '';
       return `${rename}<section><h2>Locations</h2><p class="hint">Zones, aisles, racks, levels and bins, plus block lanes. Height, width, depth and weight are enforced when both the location and the load know them.</p>
-        <form class="form" data-act="loc-add"><label>Code<input name="code" required></label><label>Kind<select name="kind"><option>zone</option><option>aisle</option><option>rack</option><option>level</option><option>bin</option><option>block</option></select></label><label>Name<input name="name"></label><label>Parent<input name="parent"></label><label>Category<input name="category" placeholder="YOG"></label><label>H mm<input name="heightMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>D mm<input name="depthMm" type="number"></label><label>Max kg<input name="maxWeightKg" type="number"></label><label>Stacks<input name="stacks" type="number" placeholder="block"></label><button class="primary">Create</button></form>
+        <form class="form" data-act="loc-add"><label>Code<input name="code" required></label><label>Kind<select name="kind"><option>zone</option><option>aisle</option><option>rack</option><option>level</option><option>bin</option><option>block</option></select></label><label>Name<input name="name"></label><label>Parent<input name="parent"></label><label>Category<input name="category" placeholder="a category code"></label><label>H mm<input name="heightMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>D mm<input name="depthMm" type="number"></label><label>Max kg<input name="maxWeightKg" type="number"></label><label>Stacks<input name="stacks" type="number" placeholder="block"></label><button class="primary">Create</button></form>
         <form class="form" data-act="loc-cap"><label>Code<input name="code" required></label><label>H<input name="heightMm" type="number"></label><label>W<input name="widthMm" type="number"></label><label>D<input name="depthMm" type="number"></label><label>kg<input name="maxWeightKg" type="number"></label><button>Set capacity</button></form>
         ${table(['Code', 'Kind', 'Name', 'Capacity', 'Occupied', ''], data.locations.map((l) => `<tr><td>${esc(l.code)}</td><td>${esc(l.kind)}</td><td>${esc(l.name || '')}</td><td>${l.capacity ? `${l.capacity.heightMm || '–'}×${l.capacity.widthMm || '–'}×${l.capacity.depthMm || '–'} mm / ${l.capacity.maxWeightKg || '–'} kg` : ''}</td><td>${esc(l.occupied)}</td><td><button type="button" data-act="loc-del" data-id="${esc(l.code)}">Delete</button></td></tr>`))}</section>`;
     },
     async holders() {
       const holders = await api('GET', '/api/holders');
       return `<section><h2>License plates</h2><p class="hint">PAL, MASTER, ST, INB and OUT are issued numbers. A MASTER can hold several PAL plates after consolidation.</p>
-        <form class="form" data-act="holder-add"><label>Id<input name="id" required></label><label>Type<select name="type"><option>pallet</option><option>crate</option><option>tote</option></select></label><label>Location<input name="loc" value="DOCK-IN"></label><label>Client<input name="clientId" placeholder="CL-DAIRY"></label><button class="primary">Add</button></form>
+        <form class="form" data-act="holder-add"><label>Id<input name="id" required></label><label>Type<select name="type"><option>pallet</option><option>crate</option><option>tote</option></select></label><label>Location<input name="loc" value="DOCK-IN"></label><label>Client<input name="clientId" placeholder="e.g. CL-ACME"></label><button class="primary">Add</button></form>
         <form class="form" data-act="holder-move"><label>Holder<input name="id" required></label><label>To<input name="loc" required></label><button>Move</button></form>
         <form class="form" data-act="holder-load"><label>Holder<input name="id" required></label><label>Item<input name="itemNo"></label><label>Qty<input name="qty" type="number"></label><label>Or SSCC<input name="sscc"></label><button>Load</button></form>
         ${table(['Holder', 'Type', 'Where', 'Client', 'On it', ''], holders.map((h) => `<tr><td>${esc(h.id)}</td><td>${esc(h.type)}</td><td>${esc(h.loc || '')}</td><td>${esc(h.clientId || '')}</td><td>${(h.contents || []).map((c) => `${esc(c.itemNo)}×${esc(c.qty)}${c.sscc ? ' …' + esc(c.sscc.slice(-6)) : ''}`).join(', ')}</td><td><button type="button" data-act="holder-del" data-id="${esc(h.id)}">Remove</button></td></tr>`))}</section>`;
@@ -742,7 +744,7 @@
     const b = e.target.closest('[data-panel]');
     if (!b) return;
     panel = b.dataset.panel;
-    history.replaceState(null, '', '/app#' + panel);
+    history.replaceState(null, '', '#' + panel);
     draw();
   };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
@@ -800,7 +802,7 @@
     if (e.target.id === 'devicePick') { sessionStorage.setItem('device', e.target.value); draw(); }
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
-    if (e.target.id === 'tariffClient') { history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'tariffClient') { history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
     if (e.target.id === 'countryPick') {
       const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
       const field = document.getElementById('timeZone');
@@ -815,7 +817,7 @@
     try {
       if (form.dataset.act === 'tariff-preview') {
         const q = new URLSearchParams({ client: data.clientId, from: data.from || '', to: data.to || '', preview: '1' });
-        history.replaceState(null, '', '/app#tariff?' + q.toString());
+        history.replaceState(null, '', '#tariff?' + q.toString());
         panel = 'tariff';
         draw();
         return;
@@ -869,7 +871,7 @@
       return;
     }
     if (form.dataset.act === 'return-find') {
-      history.replaceState(null, '', '/app#returns?order=' + encodeURIComponent(data.orderId.trim()));
+      history.replaceState(null, '', '#returns?order=' + encodeURIComponent(data.orderId.trim()));
       panel = 'returns';
       draw();
       return;
@@ -882,7 +884,7 @@
       });
       if (!lines.length) throw new Error('Fill in how many came back');
       const r = await api('POST', '/api/returns', { orderId: data.orderId, lines, reason: data.reason, note: data.note || null, id: data.id || null, loc: data.loc || null });
-      history.replaceState(null, '', '/app#returns');
+      history.replaceState(null, '', '#returns');
       await draw();
       $('#main').insertAdjacentHTML('afterbegin', msg(`Booked ${r.id}: ${r.lines.map((l) => `${l.itemNo} × ${l.qty}`).join(', ')}. Grade it below.`, true));
       return;
@@ -1067,7 +1069,7 @@
     if (name === 'site-add') return api('POST', '/api/sites', { id: data.id, name: data.name, preset: data.preset || null, country: data.country || null, timeZone: data.timeZone || null });
     if (name === 'space') {
       const spaces = data.scope ? [{ scope: data.scope, cell: data.cell, aisle: data.aisle, bay: data.bay, pos: data.pos, level: data.level, fee: Number(data.fee || 0) }] : [];
-      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(data.clientId));
       panel = 'tariff';
       return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/space', { spaces });
     }
@@ -1107,7 +1109,7 @@
         if (row.effect === 'each') row.amount = data['season' + i + 'Rate'];
         body.seasons.push(row);
       }
-      history.replaceState(null, '', '/app#tariff?client=' + encodeURIComponent(data.clientId));
+      history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(data.clientId));
       panel = 'tariff';
       return api('POST', '/api/clients/' + encodeURIComponent(data.clientId) + '/tariff', body);
     }
@@ -1190,6 +1192,8 @@
     if (window.SORTED_DEMO) {
       const role = new URLSearchParams(location.search).get('as') || 'administrator';
       me = demoUser(DEMO_NAV_ROLES.includes(role) ? role : 'administrator');
+      const here = await api('GET', '/api/summary').catch(() => ({}));
+      me.categories = here.categories || {};
       showDemoBar();
       panel = (location.hash || '#').slice(1).split('?')[0];
       await draw();
@@ -1198,6 +1202,7 @@
     const session = await api('GET', '/api/session');
     me = session.user;
     me.features = session.features || {};
+    me.categories = session.categories || {};
     me.itemApproval = Boolean(session.itemApproval);
     if (me.mustChangePassword) {
       document.body.dataset.role = me.role;

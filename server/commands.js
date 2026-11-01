@@ -173,6 +173,7 @@
     setTariff: (wh, a, by) => wh.setTariff(req(a.clientId, 'clientId'), a.tariff || a, by),
     setSpaces: (wh, a, by) => wh.setSpaces(req(a.clientId, 'clientId'), a.spaces || [], by),
     applyPreset: (wh, a) => wh.applyPreset(req(a.id, 'id')),
+    addCategory: (wh, a) => wh.addCategory({ code: req(a.code, 'code'), name: a.name }),
     setModules: (wh, a) => wh.setModules(a.modules || a),
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),

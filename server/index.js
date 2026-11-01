@@ -3,7 +3,7 @@
  * SortedWMS server: JSON API for handhelds, desks, stations and the office,
  * backed by the engine and a SQLite journal. No dependencies beyond Node 22.
  *
- *   PORT=8080 SORTED_DB=data/sorted.db SORTED_SITE=server/site.example.json node --no-warnings server/index.js
+ *   PORT=8080 SORTED_DB=data/sorted.db node --no-warnings server/index.js
  *
  * Set SORTED_TOKEN to require a token on every API call (header x-token).
  */
@@ -23,11 +23,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
-    '/': 'index.html', '/index.html': 'index.html',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
     '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
-    '/kit': 'server/public/kit.html', '/kit.html': 'server/public/kit.html',
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
@@ -42,6 +40,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...headers });
       res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
     };
+    if (req.method === 'GET' && url.pathname === '/') return send(302, '', 'text/plain', { location: '/app' });
     if (req.method === 'GET' && pages[url.pathname]) {
       // Someone who must choose a password first gets the screen that asks for it.
       if (auth && /^\/(setup|admin|handheld|bins|kit|station|desk|loading|keys|card)(\.html)?$/.test(url.pathname)) {
@@ -83,7 +82,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') return send(200, { demoUsers: auth.hasDemoUsers() });
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
-        return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
+        return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, categories: (store.wh && store.wh.categories) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
       }
 
       let by;
@@ -169,7 +168,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
 
 function main() {
   const dbFile = process.env.SORTED_DB || path.join(ROOT, 'data', 'sorted.db');
-  const siteFile = process.env.SORTED_SITE || path.join(__dirname, 'site.example.json');
+  const siteFile = process.env.SORTED_SITE || path.join(__dirname, 'site.blank.json');
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
   const site = JSON.parse(fs.readFileSync(siteFile, 'utf8'));
   const store = new Store({ file: dbFile, site });
@@ -182,10 +181,6 @@ function main() {
   // A real warehouse (no demo sign-ins) never keeps the password printed on the sign-in page.
   const boot = auth.ensureAdmin({ username: adminUser, password: adminPass, displayName: 'Administrator', mustChange: adminPass === 'sorted-admin' && process.env.SORTED_DEMO_USERS === '0' });
   const demoUsers = process.env.SORTED_DEMO_USERS === '0' ? [] : auth.ensureDemoUsers();
-  if (process.argv.includes('--seed-demo') && !Object.keys(store.wh.pallets).length) {
-    const { seedDemo } = require('./seed');
-    console.log(seedDemo(store));
-  }
   const sample = (process.argv.find((a) => a.startsWith('--sample=')) || '').slice('--sample='.length);
   if (sample) {
     const { loadSample } = require('./samples');
@@ -198,7 +193,7 @@ function main() {
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   const port = Number(process.env.PORT || 8080);
   server.listen(port, () => {
-    console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin  ·  demo: /`);
+    console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin`);
     if (boot.mustChange) console.log(`Administrator ${boot.username} / sorted-admin: sign in and choose a new password`);
     else if (boot.created && adminPass === 'sorted-admin') console.log(`Administrator ${boot.username} / sorted-admin  (set SORTED_ADMIN_PASSWORD to change it)`);
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
