@@ -175,6 +175,7 @@
         this.recordMovement({ from: code, to: null, qty: had, event: 'deleted', by: actor, note: `${id}: ${wrong} ${why}` });
       }
       this._adjust({ loc: code, sscc: from.sscc || null, plate: from.plate || null, itemNo: from.itemNo, before: from.qty, after: 0, reason: why, by: actor, correctionId: id });
+      if (this._serialsRemoveAt && from.itemNo) this._serialsRemoveAt(from.itemNo, code, `${id}: ${why}`, actor);
       // The right item, at the same place.
       const to = { itemNo: item.itemNo, qty: amount };
       if (from.kind === 'bin') {

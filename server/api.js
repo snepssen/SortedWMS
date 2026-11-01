@@ -390,6 +390,9 @@
     on('POST', '/api/locations/preview', (_, q, b) => require('../src/locations').expand(b.plan || b, { limit: 24 }));
     on('POST', '/api/locations/generate', (_, q, b, by) => run('generateLocations', b, by));
     on('POST', '/api/items/:itemNo/units', ({ itemNo }, q, b, by) => run('setItemUnits', { ...b, itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items/:itemNo/serials', ({ itemNo }, q, b, by) => run('setItemSerials', { itemNo: decodeURIComponent(itemNo), on: b.on !== false }, by));
+    on('GET', '/api/serials', (_, q) => wh().serialsIn({ loc: q.loc || null, itemNo: q.item || null }));
+    on('GET', '/api/serials/:sn', ({ sn }) => wh().serialTrace(decodeURIComponent(sn)));
     on('GET', '/api/bins/suggest', (_, q) => wh().suggestBin(q.item || '', q.qty || 1));
     on('GET', '/api/bins', (_, q) => (q.item || q.itemNo ? wh().binsFor(q.item || q.itemNo) : wh().binList()));
     on('GET', '/api/bins/:code', ({ code }) => wh().binContents(decodeURIComponent(code)));
@@ -406,7 +409,7 @@
     on('POST', '/api/waves/tasks/:task/release', ({ task }, q, b, by) => run('releaseWaveTask', { task: decodeURIComponent(task) }, by));
     on('POST', '/api/waves/tasks/:task/short', ({ task }, q, b, by) => run('shortWaveTask', { task: decodeURIComponent(task), found: b.found }, by));
     on('POST', '/api/waves', (_, q, b, by) => run('planWave', b, by));
-    on('POST', '/api/waves/tasks/:task/confirm', ({ task }, q, b, by) => run('confirmWaveTask', { task: decodeURIComponent(task), scan: b.scan }, by));
+    on('POST', '/api/waves/tasks/:task/confirm', ({ task }, q, b, by) => run('confirmWaveTask', { task: decodeURIComponent(task), scan: b.scan, serials: b.serials || null }, by));
     on('POST', '/api/waves/:id/cancel', ({ id }, q, b, by) => run('cancelWave', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/locations/rename/preview', (_, q, b) => ({ pairs: wh().renamePlan(b) }));
     on('POST', '/api/locations/rename', (_, q, b, by) => run('renameLocations', b, by));

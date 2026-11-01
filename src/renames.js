@@ -105,6 +105,7 @@
       if (this.binStock) for (const p of plan) if (this.binStock[p.from]) { this.binStock[p.to] = this.binStock[p.from]; delete this.binStock[p.from]; }
       for (const w of Object.values(this.waves || {})) for (const t of w.tasks) { t.loc = swap(t.loc); t.dropTo = swap(t.dropTo); }
       for (const c of Object.values(this.checks || {})) c.loc = swap(c.loc);
+      for (const r of Object.values(this.serials || {})) r.loc = swap(r.loc);
       for (const o of Object.values(this.orders)) for (const s of o.staged || []) { s.holder = swap(s.holder); if (s.at) s.at = swap(s.at); }
       if (this.waveConfig && this.waveConfig.postPick) this.waveConfig.postPick = swap(this.waveConfig.postPick);
       if (typeof this._forgetPlaces === 'function') this._forgetPlaces();
