@@ -791,6 +791,7 @@
       if (!Number.isInteger(trig) || trig < minN || trig > maxN) throw new Error('The trigger sits between the minimum and the maximum');
       const mode = arguments[0].mode === 'pallet' ? 'pallet' : 'units';
       loc.replenishment = { itemNo: item.itemNo, min: minN, max: maxN, trigger: trig, mode };
+      this._faceCache = null;
       this.log(`Pick face ${loc.code}: ${item.itemNo} min ${minN} trigger ${trig} max ${maxN} (${mode})`);
       return loc.replenishment;
     };
@@ -812,9 +813,17 @@
       return n;
     };
 
+    /** Locations with a pick-face rule. Kept in memory only; rebuilt when one is set, renamed or gone. */
+    proto._pickFaces = function () {
+      const cached = this._faceCache;
+      if (cached && cached.every((l) => this.locations[l.code] === l && l.replenishment)) return cached;
+      this._faceCache = Object.values(this.locations).filter((l) => l.replenishment);
+      return this._faceCache;
+    };
+
     proto.planReplenishment = function () {
       const created = [];
-      for (const loc of Object.values(this.locations)) {
+      for (const loc of this._pickFaces()) {
         const spec = loc.replenishment;
         if (!spec) continue;
         const onHand = this._faceQty(loc);
@@ -1372,39 +1381,48 @@
     };
 
     proto.availability = function () {
+      // One pass over pallets, plates, bins and orders, added up per item.
+      const sum = new Map();
+      const of = (itemNo) => {
+        let t = sum.get(itemNo);
+        if (!t) { t = { onHand: 0, allocated: 0, held: 0, reserved: 0 }; sum.set(itemNo, t); }
+        return t;
+      };
+      for (const p of Object.values(this.pallets)) {
+        if (p.status === 'shipped' || !p.loc) continue;
+        const t = of(p.itemNo);
+        t.onHand += p.qty;
+        if (p.orderId) t.allocated += p.qty;
+        if (p.status === 'blocked' || p.qualityHold || p.quarantine) t.held += p.qty;
+      }
+      for (const h of Object.values(this.holders || {})) {
+        if (h.status === 'retired' || h.cartonStatus || (h.sscc && this.pallets[h.sscc])) continue;
+        const place = h.loc && this.locations[h.loc];
+        const blocked = place && (place.role === 'quarantine' || place.role === 'return' || place.quarantine);
+        for (const c of h.contents || []) {
+          const q = Number(c.qty) || 0;
+          const t = of(c.itemNo);
+          t.onHand += q;
+          if (blocked) t.held += q;
+        }
+      }
+      for (const [code, lines] of Object.entries(this.binStock || {})) {
+        const place = this.locations[code];
+        const blocked = place && (place.role === 'quarantine' || place.role === 'return' || place.quarantine || place.blocked);
+        for (const l of lines) {
+          const t = of(l.itemNo);
+          t.onHand += l.qty;
+          if (blocked) t.held += l.qty;
+        }
+      }
+      for (const order of Object.values(this.orders)) {
+        if (order.status === 'shipped') continue;
+        for (const line of order.lines) if (line.kind === 'each') of(line.itemNo).reserved += Math.max(0, line.units - (line.picked || 0));
+      }
       const rows = [];
       for (const item of Object.values(this.items)) {
         if (item.status === 'archived') continue;
-        let onHand = 0;
-        let allocated = 0;
-        let held = 0;
-        for (const p of Object.values(this.pallets)) {
-          if (p.itemNo !== item.itemNo || p.status === 'shipped' || !p.loc) continue;
-          onHand += p.qty;
-          if (p.orderId) allocated += p.qty;
-          if (p.status === 'blocked' || p.qualityHold || p.quarantine) held += p.qty;
-        }
-        for (const h of Object.values(this.holders || {})) {
-          if (h.status === 'retired' || h.cartonStatus || (h.sscc && this.pallets[h.sscc])) continue;
-          const place = h.loc && this.locations[h.loc];
-          const blocked = place && (place.role === 'quarantine' || place.role === 'return' || place.quarantine);
-          for (const c of h.contents || []) {
-            if (c.itemNo !== item.itemNo) continue;
-            const q = Number(c.qty) || 0;
-            onHand += q;
-            if (blocked) held += q;
-          }
-        }
-        if (typeof this._binTotals === 'function') {
-          const loose = this._binTotals(item.itemNo);
-          onHand += loose.onHand;
-          held += loose.held;
-        }
-        let reserved = 0;
-        for (const order of Object.values(this.orders)) {
-          if (order.status === 'shipped') continue;
-          for (const line of order.lines) if (line.kind === 'each' && line.itemNo === item.itemNo) reserved += Math.max(0, line.units - (line.picked || 0));
-        }
+        const { onHand, allocated, held, reserved } = sum.get(item.itemNo) || { onHand: 0, allocated: 0, held: 0, reserved: 0 };
         const available = Math.max(0, onHand - allocated - held - reserved);
         rows.push({
           itemNo: item.itemNo, name: item.name, sku: item.itemNo, onHand, allocated, held, reserved, available,
