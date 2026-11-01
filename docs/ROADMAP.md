@@ -1,6 +1,6 @@
 # Roadmap
 
-SortedWMS is a warehouse system for any warehouse: a chilled distribution centre with reach trucks, a 3PL with clients and invoices, a small maker, or one person with a wall of bins at home. It is built and tested with made-up locations, items and stock. There is no plan here for deploying it at any particular site.
+SortedWMS is an open-source warehouse system for any warehouse: a chilled distribution centre with reach trucks, a 3PL with clients and invoices, a small maker, or one person with a wall of bins at home. It sets its own standard, and is built and tested with made-up locations, items and stock only.
 
 ## Done
 
@@ -25,14 +25,15 @@ SortedWMS is a warehouse system for any warehouse: a chilled distribution centre
 
 **Running it**
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.
-- A load test (`npm run load-test`); everyday work does not slow down as history grows.
+- A load test (`npm run load-test`); everyday work does not slow down as history grows, and an import of 1,000 orders takes milliseconds.
+- Categories added one by one, like items; a new building starts with one, General.
 
 ## Next
 
-In the order I would take them:
+In order of priority:
 
-1. **Faster order imports.** A new order takes about 5 ms because the ground-level placement is re-planned after each one; a CSV of 2,000 orders takes about 9 s, and the server waits meanwhile. An import could plan once at the end, as a new command so that replaying old journals is unchanged.
-2. **Connections.** Orders in from a shop or ERP (file drop or API), ASNs in from suppliers, and goods received and shipped back out. Today orders and ASNs come in by CSV or the API one at a time.
+1. **A demo built on the full WMS.** The old simulation and its scripted scenarios were built around one kind of warehouse and are gone. A new demo should run on the real screens: a sample warehouse, worked through by role, that shows what SortedWMS does end to end.
+2. **Connections.** Orders in from a shop or ERP (file drop or API), ASNs in from suppliers, and goods received and shipped back out. Today orders and ASNs come in by CSV import or the API.
 3. **Check on real devices.** The bin handheld opened with no connection at all on a phone, and the camera scanner with a real camera. Both are tested in a browser only.
 4. **A4 documents as PDF.** Delivery notes, packing slips and loading lists print from the browser today.
 5. **Smaller snapshots.** History stays in the saved state; with a year of it a snapshot takes about 0.16 s to write, every 200 changes. Old history could move out of the snapshot into its own table.

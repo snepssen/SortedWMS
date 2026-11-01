@@ -1,6 +1,6 @@
-# Hardware at the site
+# Hardware
 
-What SortedWMS expects from the equipment on the floor, and how to set it up. Based on photos of the site's own equipment and pallets (October 2026).
+What SortedWMS expects from the equipment on the floor, and how to set it up. The Zebra MC9401 handheld and ZT421 printer below are worked examples; other scanners that type into a field and printers that take ZPL work the same way.
 
 ## Device modes (no scanner or printer required yet)
 
@@ -11,7 +11,7 @@ The server keeps one accept path for scans and one send path for labels, so a re
 | Scanner | Keyboard wedge (fast keystrokes, then Enter), typed manual entry, or the **Simulate scan** button | A DataWedge profile that types into the same field and sends Enter. The page does not need a new API. |
 | Printer | **Simulated** (job kept, nothing sent), **browser** (open the label HTML and print or save PDF), or **network** (ZPL on port 9100 via `Printers.send`) | A printer address in the site file, then set the mode to network. Scaling and `~HS` status stay as they are. |
 
-The technical role or an administrator sets the mode under Hardware or Settings. The default is wedge + simulated, which is what `npm run start:demo` uses. The barcode on a new pallet or master label is the license plate (`PAL0000001`, `MASTER0000001`). An SSCC can be printed underneath it.
+The technical role or an administrator sets the mode under Hardware or Settings. The default is wedge + simulated. The barcode on a new pallet or master label is the license plate (`PAL0000001`, `MASTER0000001`). An SSCC can be printed underneath it.
 
 ## Without warehouse hardware
 
@@ -89,38 +89,38 @@ An industrial label printer that takes ZPL over the network on port 9100, which 
 
 ## Supplier pallet labels
 
-Two A-ware labels were photographed on skyr pallets. They show why receiving must handle both full GS1 labels and labels where half the information is only printed as text.
+Supplier labels come in two kinds, and receiving handles both. The numbers below are made up (GS1's documentation prefix 0614141) and are the ones the tests use.
 
-### A-ware Packaging (Netto Gutes Land Skyr 12×500 g)
+### A label that needs typing
 
 | Barcode | Contains | Notes |
 | --- | --- | --- |
-| Top | `(02)4316268741606(37)0960` | The **pot's** EAN and the count **in pots**: 960 pots = 80 cases of 12. The EAN is printed with 13 digits where GS1 wants 14; it is read as `04316268741606`. |
-| Middle | `(91)40012009` | A-ware's own article number ("INTERNAL") |
-| Bottom | `(00)354111938100402747` | The SSCC: the pallet's identity |
+| Top | `(02)6141410054598(37)0960` | The **consumer unit's** EAN and the count **in units**: 960 tubes = 80 cases of 12. A 13-digit EAN where GS1 wants 14 is read as `06141410054598`. |
+| Middle | `(91)70012009` | The supplier's own article number |
+| Bottom | `(00)306141410000027478` | The SSCC: the pallet's identity |
 
-**Batch (810040274) and best-before (09/11/2026) are printed as text only, not in any barcode.** That's why "we only use the bottom one". Receiving one of these pallets:
+Batch and best-before are printed as text only, not in any barcode. Receiving one of these pallets:
 1. Scan the bottom barcode (SSCC).
 2. Type the batch, ENT.
 3. Type the best-before date, e.g. `09112026`, ENT.
-4. Scan the top barcode: item and count (960 pots → 80 cases). Or scan the middle one (the item), then confirm the full pallet.
+4. Scan the top barcode: item and count (960 units → 80 cases). Or scan the middle one (the item), then confirm the full pallet.
 
-So 2 scans and 2 typed entries. If A-ware sends a delivery list (ASN) with batch and date per SSCC, it's **1 scan**.
+So 2 scans and 2 typed entries. With a delivery list (ASN) giving batch and date per SSCC, it's **1 scan**.
 
-### A-ware Kruibeke (JA! skyr natuur 12×500 g)
+### A full GS1 label
 
 | Barcode | Contains |
 | --- | --- |
-| Top | `(02)04388860261127(37)96(15)261110(10)41/06`: case GTIN, 96 cases, best-before 10-11-2026, batch 41/06 |
-| Bottom | `(00)054133890000100974`: SSCC |
+| Top | `(02)06141410009604(37)96(15)261110(10)41/06`: case GTIN, 96 cases, best-before 10-11-2026, batch 41/06 |
+| Bottom | `(00)006141410000009749`: SSCC |
 
-**2 scans, nothing typed.** The small label beside it (E0960, barcode 2026410074) isn't needed.
+**2 scans, nothing typed.**
 
 ### What the item master needs for this
 
 Per item:
 - **gtin**: the case GTIN, as on full GS1 labels.
-- **unitGtin** + **unitsPerCase**: the consumer unit's EAN, for labels that count units (A-ware Packaging: `4316268741606`, 12 per case).
-- **codes**: supplier article numbers, such as `40012009`, for the `(91)` barcode. A stock check also finds the item by any of these.
+- **unitGtin** + **unitsPerCase**: the consumer unit's EAN, for labels that count units.
+- **codes**: supplier article numbers, for the `(91)` barcode. A stock check also finds the item by any of these.
 
-The example site (`server/site.example.json`) has both skyr items set up like this. On the Pages demo, delivery D-2042 takes these real labels.
+`test/supplier-labels.test.js` sets up both kinds of item and receives both labels.

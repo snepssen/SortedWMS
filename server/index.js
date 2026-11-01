@@ -197,7 +197,7 @@ function main() {
     if (boot.mustChange) console.log(`Administrator ${boot.username} / sorted-admin: sign in and choose a new password`);
     else if (boot.created && adminPass === 'sorted-admin') console.log(`Administrator ${boot.username} / sorted-admin  (set SORTED_ADMIN_PASSWORD to change it)`);
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
-    if (demoUsers.length) console.log(`Demo sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
+    if (demoUsers.length) console.log(`Sample sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
   });
   const stop = () => { clearInterval(tick); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
