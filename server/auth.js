@@ -147,6 +147,17 @@ function createAuth(db, { now = () => Date.now() } = {}) {
       user_id INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      key_hash TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL,
+      client_id TEXT,
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      last_used INTEGER,
+      revoked_at INTEGER
+    );
   `);
   const have = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
   const add = (table, column, ddl) => { if (!have(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`); };
@@ -279,7 +290,65 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     return rowToUser(row);
   }
 
+  /*
+   * API keys: how another system (a shop, an ERP, a carrier) signs in. A key
+   * works with one role, and a client key only sees its own client. It is
+   * shown once when made; only its hash is kept. It can be revoked, never
+   * made an administrator.
+   */
+  const KEY_PREFIX = 'swk_';
+
+  function keyToActor(row) {
+    return {
+      id: `key:${row.id}`, username: `key:${row.name}`, displayName: row.name, role: row.role, roleLabel: roleLabel(row.role),
+      active: true, apiKey: true, clientId: row.client_id || null, sites: null, permissions: permissionsFor(row.role),
+    };
+  }
+
+  function userFromApiKey(raw) {
+    const key = String(raw || '').trim();
+    if (!key.startsWith(KEY_PREFIX)) return null;
+    const row = db.prepare('SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL').get(tokenHash(key));
+    if (!row) return null;
+    if (!row.last_used || now() - row.last_used > 60000) db.prepare('UPDATE api_keys SET last_used = ? WHERE id = ?').run(now(), row.id);
+    return keyToActor(row);
+  }
+
+  function keyRow(row) {
+    return { id: row.id, name: row.name, role: row.role, roleLabel: roleLabel(row.role), clientId: row.client_id || null, createdAt: row.created_at, createdBy: row.created_by || null, lastUsed: row.last_used || null, revokedAt: row.revoked_at || null };
+  }
+
+  function createApiKey({ name, role, clientId = null } = {}, by = null) {
+    const label = String(name || '').trim().toLowerCase();
+    if (!/^[a-z][a-z0-9._-]{1,31}$/.test(label)) throw new Error('Name: start with a letter, then letters, digits, dot, underscore or hyphen');
+    if (!ROLE_IDS.includes(role)) throw new Error(`Role is one of ${ROLE_IDS.join(', ')}`);
+    if (role === 'administrator') throw new Error('An API key cannot be an administrator: give it the role of the work it does');
+    const owner = clientId ? String(clientId).trim().toUpperCase() : null;
+    if (role === 'client' && !owner) throw new Error('A client key needs a client id');
+    if (db.prepare('SELECT id FROM api_keys WHERE name = ?').get(label)) throw new Error(`A key named ${label} exists already`);
+    const key = KEY_PREFIX + randomBytes(24).toString('base64url');
+    const info = db.prepare('INSERT INTO api_keys (name, key_hash, role, client_id, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)').run(label, tokenHash(key), role, role === 'client' ? owner : null, now(), by || null);
+    record('api-key-created', by, { name: label, role, clientId: role === 'client' ? owner : null });
+    return { key, ...keyRow(db.prepare('SELECT * FROM api_keys WHERE id = ?').get(Number(info.lastInsertRowid))) };
+  }
+
+  function listApiKeys() {
+    return db.prepare('SELECT * FROM api_keys ORDER BY revoked_at IS NOT NULL, name').all().map(keyRow);
+  }
+
+  function revokeApiKey(id, by = null) {
+    const row = db.prepare('SELECT * FROM api_keys WHERE id = ?').get(Number(id));
+    if (!row) throw new Error('Unknown API key');
+    if (row.revoked_at) throw new Error(`Key ${row.name} is revoked already`);
+    db.prepare('UPDATE api_keys SET revoked_at = ? WHERE id = ?').run(now(), row.id);
+    record('api-key-revoked', by, { name: row.name });
+    return keyRow(db.prepare('SELECT * FROM api_keys WHERE id = ?').get(row.id));
+  }
+
   function userFromRequest(req) {
+    const h = req.headers || {};
+    const bearer = /^Bearer\s+(\S+)$/i.exec(String(h.authorization || ''));
+    if (bearer || h['x-api-key']) return userFromApiKey(bearer ? bearer[1] : h['x-api-key']);
     return userFromToken(cookies(req).sorted_session);
   }
 
@@ -424,6 +493,10 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     disableTotp,
     canAccessSite,
     audit,
+    createApiKey,
+    listApiKeys,
+    revokeApiKey,
+    userFromApiKey,
     catalog() {
       return {
         permissions: PERMISSIONS.map(([id, label]) => ({ id, label })),

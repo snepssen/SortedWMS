@@ -58,6 +58,7 @@ const PERMISSIONS = [
   ['wms.write', 'Warehouse changes that have no finer permission'],
   ['sites.switch', 'Switch the active warehouse'],
   ['sites.write', 'Create a warehouse'],
+  ['messages.read', 'Read the confirmations sent to other systems'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -85,7 +86,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -108,7 +109,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read'],
 };
 
 // null permission means the route is public.
@@ -124,6 +125,10 @@ const RULES = [
   ['GET', '/api/roles', 'roles.read'],
   ['POST', '/api/roles/:role', 'roles.write'],
   ['GET', '/api/auth-log', 'audit.read'],
+  ['GET', '/api/keys', 'users.read'],
+  ['POST', '/api/keys', 'users.write'],
+  ['POST', '/api/keys/:id/revoke', 'users.write'],
+  ['GET', '/api/messages', 'messages.read'],
   ['GET', '/api/journal', 'audit.read'],
   ['POST', '/api/config', 'settings.write'],
   ['POST', '/api/naming', 'settings.write'],

@@ -86,7 +86,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
@@ -402,6 +402,29 @@
         <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
+    },
+    async connections() {
+      const roles = ['manager', 'office', 'inbound', 'picker', 'stock', 'client'];
+      const local = Boolean(window.SORTED_DEMO);
+      const keys = local ? [] : (await api('GET', '/api/keys')).keys;
+      const log = await api('GET', '/api/messages?limit=1000');
+      const recent = log.messages.slice(-15).reverse();
+      const sum = (m) => {
+        const d = m.data || {};
+        if (m.type === 'order.shipped') return `${d.orderId} to ${d.customer}: ${d.pallets.length} pallet(s), ${d.cartons.length} carton(s)${d.serials ? `, ${d.serials.length} serials` : ''}`;
+        if (m.type === 'delivery.received') return `${d.deliveryId} from ${d.supplier}: ${d.received} of ${d.expected} pallets`;
+        if (m.type === 'return.received') return `${d.returnId} on ${d.orderId}: ${d.lines.map((l) => `${l.qty} × ${l.itemNo}`).join(', ')}`;
+        if (m.type === 'return.graded') return `${d.returnId}: ${d.qty} × ${d.itemNo} ${d.grade}`;
+        if (m.type === 'stock.adjusted') return `${d.itemNo} at ${d.loc || d.sscc}: ${d.before} → ${d.after} (${d.reason})`;
+        return '';
+      };
+      const keyPart = local ? '<p class="hint">API keys are made on a server; this browser demo has none.</p>' : `
+        <form class="form" data-act="key-create"><label>Name<input name="name" required placeholder="e.g. webshop"></label><label>Role<select name="role">${roles.map((r) => `<option ${r === 'office' ? 'selected' : ''}>${r}</option>`).join('')}</select></label><label>Client (for a client key)<input name="clientId" placeholder="e.g. CL-ACME"></label><button class="primary">Make a key</button></form>
+        <div id="keyOut"></div>
+        ${table(['Name', 'Role', 'Client', 'Made', 'Last used', ''], keys.map((k) => `<tr><td>${esc(k.name)}</td><td>${esc(k.roleLabel)}</td><td>${esc(k.clientId || '')}</td><td>${new Date(k.createdAt).toLocaleDateString()}${k.createdBy ? ` by ${esc(k.createdBy)}` : ''}</td><td>${k.lastUsed ? new Date(k.lastUsed).toLocaleString() : 'never'}</td><td>${k.revokedAt ? 'revoked' : `<button type="button" data-act="key-revoke" data-id="${k.id}">Revoke</button>`}</td></tr>`))}`;
+      return `<section><h2>Connections</h2><p class="hint">Other systems (a webshop, an ERP, a carrier) sign in with an API key: <code>Authorization: Bearer swk_…</code>. A key works with one role; a client key only sees that client's orders, stock and messages. It cannot be an administrator. See docs/CONNECTIONS.md.</p>${keyPart}</section>
+        <section><h2>Messages out</h2><p class="hint">What the warehouse confirms to other systems, numbered: a connection reads <code>GET /api/messages?after=N</code> from the last number it took. ${log.last} so far.</p>
+        ${table(['#', 'When', 'Message', 'Client', 'What'], recent.map((m) => `<tr><td>${m.seq}</td><td>${esc(new Date(m.t).toLocaleString())}</td><td><code>${esc(m.type)}</code></td><td>${esc(m.clientId || '')}</td><td>${esc(sum(m))}</td></tr>`))}</section>`;
     },
     async roles() {
       const cat = await api('GET', '/api/roles');
@@ -801,6 +824,7 @@
         $('#main').insertAdjacentHTML('afterbegin', msg(`Temporary password for ${reset.username}: ${reset.temporaryPassword}. They must change it at the next sign-in.`, true));
         return;
       }
+      if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -913,6 +937,13 @@
       document.getElementById('paSscc').value = s.sscc;
       document.getElementById('paTo').value = s.to || '';
       document.getElementById('paOut').innerHTML = s.to ? msg(`…${s.sscc.slice(-6)} ${s.itemNo} goes to ${s.to}`, true) : msg('No free slot of its category. Name one, or free one first', false);
+      return;
+    }
+    if (form.dataset.act === 'key-create') {
+      const r = await api('POST', '/api/keys', { name: data.name, role: data.role, clientId: data.clientId || null });
+      await draw();
+      const out = document.getElementById('keyOut');
+      if (out) out.innerHTML = `<div class="msg ok">Key for <b>${esc(r.name)}</b>: <code style="user-select:all">${esc(r.key)}</code><br>Copy it now and give it to that system: it is not shown again.</div>`;
       return;
     }
     if (form.dataset.act === 'putaway') {

@@ -24,7 +24,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
-    '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
+    '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/src/messages.js': 'src/messages.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
@@ -156,6 +156,15 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         try { return send(200, { role: roleEdit[1], permissions: auth.setRolePermissions(roleEdit[1], body.permissions, by) }); } catch (e) { return send(400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/auth-log') return send(200, auth.audit(url.searchParams.get('limit')));
+      // API keys for other systems: made by an administrator, shown once, revoked here.
+      if (auth && req.method === 'GET' && url.pathname === '/api/keys') return send(200, { keys: auth.listApiKeys() });
+      if (auth && req.method === 'POST' && url.pathname === '/api/keys') {
+        try { return send(200, auth.createApiKey(body, by)); } catch (e) { return send(400, { error: e.message }); }
+      }
+      const keyRevoke = url.pathname.match(/^\/api\/keys\/(\d+)\/revoke$/);
+      if (auth && req.method === 'POST' && keyRevoke) {
+        try { return send(200, auth.revokeApiKey(keyRevoke[1], by)); } catch (e) { return send(400, { error: e.message }); }
+      }
 
       const requestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']).slice(0, 80) : null;
       Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor)).then((out) => {
