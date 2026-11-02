@@ -5,11 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#17231f">
 <title>SortedWMS loading</title>
+<script src="theme.js"></script>
 <style>
-  :root { color-scheme: light; --ink: #17231f; --dim: #61706a; --line: #d8e1dc; --green: #24634f; --red: #a72e32; --bg: #f4f7f5; }
+  :root { --ink: #17231f; --dim: #61706a; --line: #d8e1dc; --green: #24634f; --red: #a72e32; --bg: #f4f7f5; --card: #fff; --on-green: #fff; }
+  :root[data-theme="dark"] { --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --green: #4cc38a; --red: #ff6b63; --bg: #0f1316; --card: #182026; --on-green: #0b1620; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
-  header { padding: 16px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: white; border-bottom: 1px solid var(--line); }
+  header { padding: 16px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--card); border-bottom: 1px solid var(--line); }
   header strong { font-size: 20px; } header span { color: var(--dim); } header a { margin-left: auto; color: var(--green); }
   main { max-width: 1000px; margin: auto; padding: 0 24px 32px; }
   section { padding: 24px 0; border-bottom: 1px solid var(--line); min-width: 0; }
@@ -17,9 +19,9 @@
   h2 { font-size: 18px; margin: 0 0 12px; } p { margin: 8px 0; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 14px; color: var(--dim); min-width: 0; }
   input, select, button { font: inherit; border-radius: 6px; padding: 10px 12px; border: 1px solid var(--line); min-height: 44px; min-width: 0; }
-  input, select { color: var(--ink); background: white; width: 100%; }
-  button { color: var(--ink); background: white; cursor: pointer; }
-  button.primary { background: var(--green); color: white; border-color: var(--green); font-weight: 600; }
+  input, select { color: var(--ink); background: var(--card); width: 100%; }
+  button { color: var(--ink); background: var(--card); cursor: pointer; }
+  button.primary { background: var(--green); color: var(--on-green); border-color: var(--green); font-weight: 600; }
   button:disabled { opacity: .45; cursor: default; }
   .row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
   .row label { flex: 1 1 160px; } .row .wide { flex: 2 1 240px; }
@@ -32,11 +34,11 @@
   .count { font-size: 24px; font-weight: 700; }
   progress { width: 100%; height: 8px; accent-color: var(--green); margin: 12px 0; }
   .modes { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 6px; width: max-content; overflow: hidden; }
-  .modes label { padding: 10px 16px; flex-direction: row; align-items: center; color: var(--ink); cursor: pointer; background: white; }
-  .modes label:has(input:checked) { background: var(--ink); color: white; }
+  .modes label { padding: 10px 16px; flex-direction: row; align-items: center; color: var(--ink); cursor: pointer; background: var(--card); }
+  .modes label:has(input:checked) { background: var(--ink); color: var(--bg); }
   .modes input { width: 16px; min-height: 16px; margin: 0; accent-color: var(--green); }
   .target { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
-  .barcode { background: white; max-width: 100%; padding: 10px; }
+  .barcode { background: white; max-width: 100%; padding: 10px; } /* white in both themes: scanners read dark bars on white */
   .barcode svg { display: block; max-width: 100%; width: 260px; height: 68px; }
   #scan { font-size: 20px; }
   .table { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: 14px; }
@@ -51,7 +53,7 @@
 </style>
 </head>
 <body>
-<header><strong>SortedWMS</strong><span>Outbound loading</span><a id="office" href="admin">Office</a></header>
+<header><strong>SortedWMS</strong><span>Outbound loading</span><a id="office" href="admin">Office</a><select data-theme-picker></select></header>
 <main>
   <section><div class="row">
     <label class="wide">Order <select id="order"><option value="">Select order</option></select></label>

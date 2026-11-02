@@ -128,3 +128,21 @@ test('a bin is refilled from a rack pallet, with the pallet\'s batch and best-be
   assert.equal(wh.pallets[a].status, 'shipped', 'an emptied pallet is gone');
   assert.ok(!wh.locations[wh.resolve('AC01A1')].sscc, 'and its slot is free');
 });
+
+test('demo: the cards point at what just happened, for the roles it concerns, with a screen to see it', () => {
+  const { wh, start } = shift({ hours: 4 });
+  const now = start + 4 * 3600000;
+  const news = Demo.highlights(wh, now);
+  const kinds = new Set(news.map((h) => h.kind));
+  for (const k of ['shipped', 'wave', 'bestbefore']) assert.ok(kinds.has(k), `${k} is pointed at`);
+  assert.ok(kinds.has('corrected') || kinds.has('check'), 'a short bin is pointed at');
+  const ids = new Set(Demo.crew().map((b) => b.id).concat('manager', 'admin'));
+  for (const h of news) {
+    assert.ok(h.roles.length && h.roles.every((r) => ids.has(r)), `${h.kind}: known roles`);
+    assert.match(h.go, /^(app|desk|bins|handheld)\.html/, `${h.kind}: a screen to open`);
+    assert.ok(h.at <= now && (h.standing || now - h.at <= 24 * 3600000));
+  }
+  for (let i = 1; i < news.length; i++) assert.ok(news[i - 1].at >= news[i].at, 'newest first');
+  const nb = news.find((h) => h.kind === 'bestbefore');
+  assert.ok(nb.standing && nb.roles.includes('S1'));
+});

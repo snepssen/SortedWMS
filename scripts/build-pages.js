@@ -28,6 +28,7 @@ for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site
 fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out, 'card.html')); // needs only src/
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'camera.js')); // scanning with the camera
+fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'theme.js')); // one light/dark setting for every screen
 
 const tags = LOCAL.map((f) => `<script src="${f}"></script>`).join('\n');
 for (const name of SCREENS) {
@@ -44,6 +45,7 @@ const demoTags = [`<script>window.SORTED_LOCAL = { key: '${DEMO_KEY}', demo: tru
   .concat(LOCAL.slice(0, LOCAL.indexOf('server/commands.js')).concat('src/demo.js', LOCAL.slice(LOCAL.indexOf('server/commands.js'))).map((f) => `<script src="../${f}"></script>`)).join('\n');
 fs.mkdirSync(path.join(out, 'demo'), { recursive: true });
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'demo', 'camera.js'));
+fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'demo', 'theme.js'));
 for (const name of SCREENS) {
   const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="../src/').replace(/src="src\//g, 'src="../src/');
   const i = src.indexOf('<script>');
@@ -61,9 +63,12 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="SortedWMS: an open-source warehouse management system for any warehouse, from a wall of bins to a reach-truck distribution centre.">
 <title>SortedWMS</title>
+<script src="theme.js"></script>
 <style>
-  :root { --bg: #f6f7f9; --ink: #17202a; --dim: #5d6b76; --card: #fff; --line: #dde3e8; --accent: #2f5fb3; color-scheme: light dark; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #11161c; --ink: #e8edf2; --dim: #9aa8b4; --card: #19212a; --line: #2a3540; --accent: #7aa7f0; } }
+  :root { --bg: #f6f7f9; --ink: #17202a; --dim: #5d6b76; --card: #fff; --line: #dde3e8; --accent: #2f5fb3; }
+  :root[data-theme="dark"] { --bg: #0f1316; --ink: #e9eef2; --dim: #93a1ad; --card: #182026; --line: #2a343d; --accent: #59a9ff; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
   h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 19px; margin: 28px 0 8px; }
@@ -78,7 +83,7 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
 </head>
 <body>
 <main>
-  <h1>SortedWMS</h1>
+  <div class="top"><h1>SortedWMS</h1><select data-theme-picker></select></div>
   <p class="dim">An open-source warehouse management system for any warehouse: a wall of bins at home, a small maker, a 3PL with clients and invoices, or a reach-truck distribution centre.</p>
 
   <div class="cards">

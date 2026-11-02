@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS</title>
+<script src="theme.js"></script>
 <style>
-  :root { --bg: #f3f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #5d6b76; --acc: #1769c2; --ok: #0f7a45; --bad: #b42318; --warn: #9a6700; --chip: #eef2f5; }
+  :root { --bg: #f3f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #5d6b76; --acc: #1769c2; --ok: #0f7a45; --bad: #b42318; --warn: #9a6700; --chip: #eef2f5; --field: #fff; --on-acc: #fff; }
+  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c36; --field: #10161b; --on-acc: #0b1620; }
   body[data-role="administrator"] { --acc: #3d348b; }
   body[data-role="manager"] { --acc: #1769c2; }
   body[data-role="office"] { --acc: #0f6e56; }
@@ -13,6 +15,14 @@
   body[data-role="inbound"] { --acc: #1d4e89; }
   body[data-role="picker"] { --acc: #9a3412; }
   body[data-role="stock"] { --acc: #5b3f8c; }
+  /* Each role keeps its colour in the dark, lighter so it reads on a dark background. */
+  [data-theme="dark"] body[data-role="administrator"] { --acc: #a99cff; }
+  [data-theme="dark"] body[data-role="manager"] { --acc: #59a9ff; }
+  [data-theme="dark"] body[data-role="office"] { --acc: #3fc49a; }
+  [data-theme="dark"] body[data-role="technician"] { --acc: #e0a92e; }
+  [data-theme="dark"] body[data-role="inbound"] { --acc: #6fa8ef; }
+  [data-theme="dark"] body[data-role="picker"] { --acc: #f0875a; }
+  [data-theme="dark"] body[data-role="stock"] { --acc: #b49be6; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, sans-serif; }
   header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--card); border-bottom: 3px solid var(--acc); }
@@ -20,8 +30,8 @@
   header .who { color: var(--dim); }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav button, button, .btn { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 7px 11px; cursor: pointer; text-decoration: none; }
-  nav button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
-  button.primary { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+  nav button.on { background: var(--acc); color: var(--on-acc); border-color: var(--acc); }
+  button.primary { background: var(--acc); color: var(--on-acc); border-color: var(--acc); font-weight: 700; }
   main { padding: 16px; max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
   h2 { font-size: 16px; margin: 0 0 8px; }
@@ -38,7 +48,7 @@
   .form.stack > label { display: inline-flex; flex-direction: column; margin: 8px 8px 0 0; }
   .rma { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
   label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
-  input, select, textarea { font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
   textarea { min-height: 64px; width: 100%; }
   .msg { padding: 8px 10px; border-radius: 8px; background: var(--chip); }
   .msg.bad { color: var(--bad); }
@@ -65,6 +75,7 @@
   <label id="siteLabel" class="who">Warehouse <select id="sitePick"></select></label>
   <a class="btn" href="/admin" id="floorLink">Floor</a>
   <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
+  <select data-theme-picker></select>
   <button id="out" type="button">Sign out</button>
 </header>
 <main id="main"></main>
