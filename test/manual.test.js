@@ -119,8 +119,8 @@ test('trace a batch: received from, in stock, shipped to whom', () => {
   wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'GEN', pallets: 2, at: 'desk' });
   wh.addDesk('DESK1');
   wh.deskStart('DESK1');
-  const s1 = GS1.makeSscc(3, '8712345', 1);
-  const s2 = GS1.makeSscc(3, '8712345', 2);
+  const s1 = GS1.makeSscc(3, '0614141', 1);
+  const s2 = GS1.makeSscc(3, '0614141', 2);
   for (const s of [s1, s2]) wh.scan('DESK1', `(00)${s}(02)${GS1.gtin14(wh.items.Y1.gtin)}(15)261101(10)LOT7(37)96`);
   wh.transferPallet(s1, 'OUT-01');
   wh.addOrder({ id: 'O1', customer: 'Corner Builders', lane: 'OUT-01', lines: [] });

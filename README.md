@@ -2,13 +2,13 @@
 
 An open-source warehouse management system for any warehouse: a wall of bins at home, a small maker, a 3PL with clients and invoices, a high-value store, or a reach-truck distribution centre. It sets its own standard for how a WMS should work, rather than copying any one company's. MIT licensed.
 
-**Try it in your browser: https://snepssen.github.io/SortedWMS/**. The real screens run in the browser, starting as an empty building: open the setup wizard, add your categories and items one by one, and work it. Nothing leaves your browser.
+**Watch the demo: https://snepssen.github.io/SortedWMS/demo/**. A made-up distribution centre for four clients runs on the real screens in your browser. Bots work every role: the office takes in orders and books deliveries, reach trucks receive, put away and pick pallets, a man-up and a bin picker work the pick waves, and the packing bench and loading ship it all. Speed the clock up, open any role's screen, or take a role over and work it yourself. **Or start your own** from an empty building on the same page: open the setup wizard, add your categories and items one by one, and work it. Nothing leaves your browser.
 
 **Run it yourself** with `./start.sh` (Node 22.13 or newer, nothing else: no packages, no Docker), then open `http://localhost:8080/login` and sign in as `admin` / `sorted-admin`. A new warehouse asks the admin to choose their own password before anything else, then the [setup wizard](http://localhost:8080/setup) shapes the building: a preset, the features it uses, categories, and location codes. To look around first: `./start.sh sample home` (also `maker` and `3pl`). Accounts and passwords are in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
 
 A fresh warehouse has temperature zones, lot and expiry, FEFO and high-value PAL/MASTER plates turned off, and one category, General. A preset turns on what that kind of building uses; anything can be switched later.
 
-A better demo, built on the full WMS, is on the [roadmap](docs/ROADMAP.md). Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What it does
 
@@ -86,6 +86,7 @@ Each handheld has a mode bar. Auto is the default; the others are for when a dri
 | Receiving, 3-barcode supplier label | 3 scans, any order: top (item + count), middle (best-before + batch), bottom (SSCC) |
 | Receiving, label without batch/date barcodes | 2 scans (SSCC, item + count) + batch and best-before typed on the keypad |
 | Receiving, no usable label | batch → best-before → item → SSCC (4 scans) + 1 tap for quantity |
+| Receiving an item marked **No best-before** (tools, hardware) | the same, without the best-before |
 
 **Customer requirements.** What a customer wants done with their pallets (*No double-stacked pallets*, *Label on the long side*) is kept per customer in the office, or in the site file. Every pick, drop and check for that customer's order shows it on the handheld in amber: the order number brings it up, with no lookup and nothing typed.
 
@@ -286,9 +287,10 @@ Settings, through environment variables:
 | `scripts/load-test.js` | The load test (`npm run load-test`). |
 | `server/print.js` | Sends ZPL to network label printers. |
 | `server/api.js` | The API routes and screen views; used by the server, and in the browser on Pages. |
-| `server/local.js` | The WMS running in the browser for GitHub Pages: the journal is kept in browser storage. |
+| `server/local.js` | The WMS running in the browser for GitHub Pages: the journal is kept in browser storage. The demo has its own journal and a shared clock that runs only while the demo page is open. |
+| `src/demo.js`, `pages/demo.html` | The demo: its warehouse, stock and bots, and the page that runs them with a card per role. |
 | `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
-| `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page and the real screens running in the browser (`npm run build:pages`). |
+| `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page, the real screens running in the browser, and the demo in `demo/` (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What is done, and what could come next. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 

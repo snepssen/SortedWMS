@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const GS1 = require('../src/gs1');
 
 test('check digits', () => {
-  assert.equal(GS1.checkDigit('00871234500000001'), 3);
+  assert.equal(GS1.checkDigit('00614141000000001'), 2);
   assert.ok(GS1.isValidSscc(GS1.makeSscc(0, '9990000', 42)));
   assert.ok(!GS1.isValidSscc('999000000000000421'));
   assert.ok(GS1.isValidGtin(GS1.makeGtin13('20000', 1001)));

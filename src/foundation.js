@@ -198,6 +198,10 @@
         item.name = name;
       }
       if (patch.uom != null) item.uom = String(patch.uom).trim() || 'case';
+      if ('bestBefore' in patch) {
+        if (patch.bestBefore === false || patch.bestBefore === 'false') item.bestBefore = false;
+        else delete item.bestBefore;
+      }
       if (patch.storage != null && patch.storage !== item.storage) {
         if (!['rack', 'block'].includes(patch.storage)) throw new Error('Storage is rack or block');
         if (this._livePallets().some((p) => p.itemNo === itemNo && p.status !== 'shipped')) throw new Error('Storage cannot change while the item is in stock');

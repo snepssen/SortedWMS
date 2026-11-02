@@ -622,7 +622,10 @@
 
   async function start() {
     try {
-      if (window.SortedLocal) me = { username: 'demo', displayName: 'Demo', permissions: null };
+      if (window.SortedLocal) { // the browser demo: ?as=P1 works as that picker
+        const as = (new URLSearchParams(location.search).get('as') || '').toUpperCase().slice(0, 20);
+        me = { username: as || 'demo', displayName: as ? `Picker ${as}` : 'Demo', permissions: null };
+      }
       else {
         me = (await api('GET', '/api/session')).user;
         try { localStorage.setItem('sorted.bins.me', JSON.stringify(me)); } catch (e) { /* storage optional */ }

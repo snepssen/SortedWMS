@@ -9,17 +9,51 @@
   'use strict';
   const { COMMANDS } = root.SortedCommands;
   const { buildWarehouse } = root.SortedSite;
-  const KEY = 'sortedwms.journal.v1';
+  // window.SORTED_LOCAL = { key, demo: true } before this script: the demo keeps its own journal and clock.
+  const CONF = root.SORTED_LOCAL || {};
+  const Demo = CONF.demo ? root.SortedDemo : null;
+  const KEY = CONF.key || 'sortedwms.journal.v1';
   const base = (document.currentScript && document.currentScript.src.replace(/server\/local\.js.*$/, '')) || './';
+
+  /*
+   * The demo clock: warehouse time runs at a chosen speed (paused, 1×, 10×,
+   * 60×), shared by every page through browser storage. The demo page moves
+   * the clock on every second; when no demo page is open, time stops a few
+   * seconds after the last one, so the warehouse waits for the visitor.
+   */
+  const CLOCK = `${KEY}.clock`;
+  const HOLD = 5000;
+  const clock = Demo && {
+    last: 0,
+    state() {
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem(CLOCK)); } catch (e) { s = null; }
+      return s && Number.isFinite(s.sim) ? s : { sim: Demo.morning(Date.now()), wall: Date.now(), speed: 10 };
+    },
+    now() {
+      const s = this.state();
+      this.last = Math.max(this.last, Math.round(s.sim + Math.min(Math.max(0, Date.now() - s.wall), HOLD) * s.speed));
+      return this.last;
+    },
+    get speed() { return this.state().speed; },
+    /** Carry the clock on from where it is, at a new speed if given. */
+    beat(speed) {
+      const s = this.state();
+      const t = this.now();
+      try { localStorage.setItem(CLOCK, JSON.stringify({ sim: t, wall: Date.now(), speed: speed == null ? s.speed : speed })); } catch (e) { /* storage off: time stays put */ }
+      return t;
+    },
+    reset() { try { localStorage.removeItem(CLOCK); } catch (e) { /* ignore */ } this.last = 0; },
+  };
 
   function read() {
     try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; }
   }
 
   class LocalStore {
-    constructor(site) {
+    constructor(site, now) {
       this.site = site;
-      this.now = () => Date.now();
+      this.now = now || (() => Date.now());
       this.replayT = null;
       this.clock = () => (this.replayT == null ? this.now() : this.replayT);
       this.load();
@@ -58,7 +92,8 @@
     exec(op, args = {}, by = 'unknown') {
       if (!COMMANDS[op]) throw new Error(`Unknown command ${op}`);
       this.sync();
-      const t = this.now();
+      const rows = this.data.rows;
+      const t = Math.max(this.now(), rows.length ? rows[rows.length - 1].t : 0);
       this.replayT = t;
       let result;
       try {
@@ -95,7 +130,21 @@
 
     reset() {
       try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+      if (clock) clock.reset();
       this.load();
+      this.fill();
+    }
+
+    /** The demo starts from its own warehouse, filled through ordinary commands. */
+    fill() {
+      if (!Demo || this.data.rows.length) return;
+      this._save();
+      Demo.seed((op, args) => this.exec(op, args, 'demo'), this.now(), () => this.wh);
+    }
+
+    /** Bytes the journal takes in browser storage. */
+    size() {
+      try { return (localStorage.getItem(KEY) || '').length; } catch (e) { return 0; }
     }
   }
 
@@ -110,11 +159,13 @@
     },
   };
 
-  const ready = fetch(`${base}server/site.blank.json`).then((r) => r.json()).then((site) => {
-    const store = new LocalStore(site);
+  const site = Demo ? Promise.resolve(Demo.SITE) : fetch(`${base}server/site.blank.json`).then((r) => r.json());
+  const ready = site.then((plan) => {
+    const store = new LocalStore(plan, clock ? () => clock.now() : null);
+    store.fill();
     const api = root.SortedApi.createApi({ store, printers });
     addEventListener('storage', (e) => { if (e.key === KEY || e.key === null) store.sync(); });
-    setInterval(() => store.tick(), 10000);
+    setInterval(() => store.tick(), Demo ? 3000 : 10000);
     return { store, api };
   });
 
@@ -128,5 +179,8 @@
     },
     async reset() { const { store } = await ready; store.reset(); },
     async store() { return (await ready).store; },
+    demo: Boolean(Demo),
+    clock: clock || null,
+    key: KEY,
   };
 })(typeof self !== 'undefined' ? self : this);

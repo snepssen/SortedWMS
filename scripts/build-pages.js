@@ -3,7 +3,9 @@
  * Build the GitHub Pages site: a short project page, and the real WMS screens
  * with the WMS running in the browser (server/local.js), since Pages has no
  * server. The in-browser warehouse starts as an empty building: run the setup
- * wizard, then add items one by one. Changes stay in that browser.
+ * wizard, then add items one by one. demo/ holds the same screens on a demo
+ * warehouse worked by bots (src/demo.js, pages/demo.html). Changes stay in
+ * that browser.
  * Output: _site/
  */
 const fs = require('fs');
@@ -13,7 +15,7 @@ const root = path.join(__dirname, '..');
 const out = path.join(root, '_site');
 const REPO = 'https://github.com/snepssen/SortedWMS';
 
-const SRC = ['gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'workload.js', 'drivers.js'];
+const SRC = ['demo.js', 'gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'workload.js', 'drivers.js'];
 // The WMS screens with the in-browser backend loaded before their own script.
 const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/api.js', 'server/local.js'];
 const SCREENS = ['app.html', 'setup.html', 'bins.html', 'handheld.html', 'admin.html', 'loading.html', 'station.html', 'desk.html'];
@@ -35,6 +37,22 @@ for (const name of SCREENS) {
   const boot = name === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${tags}\n` : `${tags}\n`;
   fs.writeFileSync(path.join(out, name), `${src.slice(0, i)}${boot}${src.slice(i)}`);
 }
+
+// The demo: the same screens in demo/, on their own journal and clock, with the demo warehouse and its bots.
+const DEMO_KEY = 'sortedwms.demo.v1';
+const demoTags = [`<script>window.SORTED_LOCAL = { key: '${DEMO_KEY}', demo: true };</script>`]
+  .concat(LOCAL.slice(0, LOCAL.indexOf('server/commands.js')).concat('src/demo.js', LOCAL.slice(LOCAL.indexOf('server/commands.js'))).map((f) => `<script src="../${f}"></script>`)).join('\n');
+fs.mkdirSync(path.join(out, 'demo'), { recursive: true });
+fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'demo', 'camera.js'));
+for (const name of SCREENS) {
+  const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="../src/').replace(/src="src\//g, 'src="../src/');
+  const i = src.indexOf('<script>');
+  const boot = name === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${demoTags}\n` : `${demoTags}\n`;
+  fs.writeFileSync(path.join(out, 'demo', name), `${src.slice(0, i)}${boot}${src.slice(i)}`);
+}
+const hub = fs.readFileSync(path.join(root, 'pages', 'demo.html'), 'utf8');
+if (!hub.includes('<!-- WMS -->')) throw new Error('pages/demo.html: expected <!-- WMS -->');
+fs.writeFileSync(path.join(out, 'demo', 'index.html'), hub.replace('<!-- WMS -->', demoTags));
 
 fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
 <html lang="en">
@@ -64,7 +82,8 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
   <p class="dim">An open-source warehouse management system for any warehouse: a wall of bins at home, a small maker, a 3PL with clients and invoices, or a reach-truck distribution centre.</p>
 
   <div class="cards">
-    <a class="card" href="app.html"><b>Try it in your browser →</b>The real screens, running in this browser. It starts as an empty building: open the setup wizard, then add your items one by one. Nothing leaves your browser.</a>
+    <a class="card" href="demo/"><b>Watch the demo →</b>A made-up distribution centre run by bots on the real screens: reach trucks, pick waves, packing and loading. Take over any role and work it yourself.</a>
+    <a class="card" href="app.html"><b>Start your own →</b>The real screens, running in this browser. It starts as an empty building: open the setup wizard, then add your items one by one. Nothing leaves your browser.</a>
     <a class="card" href="${REPO}"><b>Source on GitHub →</b>MIT licensed. Node 22 and nothing else: no packages, no Docker.</a>
   </div>
 

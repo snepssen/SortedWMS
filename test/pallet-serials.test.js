@@ -85,8 +85,8 @@ test('a pallet taken out of stock takes its serials out too', () => {
 test('serials on the supplier\'s pallet list are booked when the pallet is received', () => {
   const w = wh();
   w.setItemSerials('RTR', true);
-  const s1 = GS1.makeSscc(3, '8712345', 1);
-  const s2 = GS1.makeSscc(3, '8712345', 2);
+  const s1 = GS1.makeSscc(3, '0614141', 1);
+  const s2 = GS1.makeSscc(3, '0614141', 2);
   w.addDelivery({ id: 'D1', supplier: 'Net Co', category: 'GEN', list: [
     { sscc: s1, itemNo: 'RTR', batch: 'B1', expiry: '2027-11-01', qty: 8, serials: sns('ASN', 8) },
     { sscc: s2, itemNo: 'RTR', batch: 'B1', expiry: '2027-11-01', qty: 8, serials: sns('BAD', 3) },

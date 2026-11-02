@@ -29,7 +29,7 @@
     const day = (n) => new Date(now + n * DAY).toISOString().slice(0, 10);
     const batchCode = (itemNo, expiry) => `L${expiry.slice(2, 4)}${expiry.slice(5, 7)}${itemNo.slice(-2)}${String.fromCharCode(65 + between(0, 5))}`;
     let serial = 1000;
-    const sscc = () => GS1.makeSscc(0, '8712345', ++serial);
+    const sscc = () => GS1.makeSscc(0, '0614141', ++serial);
 
     // Work out the rows on a scratch copy, so block-lane spots come out the way importStock will stack them.
     const scratch = Warehouse.restore(JSON.parse(JSON.stringify(store.wh)), { clock: () => now });
