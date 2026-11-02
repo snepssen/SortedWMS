@@ -59,6 +59,7 @@ const PERMISSIONS = [
   ['sites.switch', 'Switch the active warehouse'],
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
+  ['intake.write', 'Send orders and ASNs in from another system'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -86,7 +87,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -109,7 +110,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write'],
 };
 
 // null permission means the route is public.
@@ -129,6 +130,7 @@ const RULES = [
   ['POST', '/api/keys', 'users.write'],
   ['POST', '/api/keys/:id/revoke', 'users.write'],
   ['GET', '/api/messages', 'messages.read'],
+  ['POST', '/api/inbox', 'intake.write'],
   ['GET', '/api/journal', 'audit.read'],
   ['POST', '/api/config', 'settings.write'],
   ['POST', '/api/naming', 'settings.write'],

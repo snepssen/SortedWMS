@@ -24,7 +24,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
-    '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/src/messages.js': 'src/messages.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
+    '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/src/messages.js': 'src/messages.js', '/src/intake.js': 'src/intake.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
@@ -200,6 +200,8 @@ function main() {
   const hardware = createHardware({ printers, store });
   const server = createServer({ store, printers, auth, hardware, backups });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
+  // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
+  const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }) });
   const port = Number(process.env.PORT || 8080);
   server.listen(port, () => {
     console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin`);
@@ -207,8 +209,9 @@ function main() {
     else if (boot.created && adminPass === 'sorted-admin') console.log(`Administrator ${boot.username} / sorted-admin  (set SORTED_ADMIN_PASSWORD to change it)`);
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
     if (demoUsers.length) console.log(`Sample sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
+    if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
   });
-  const stop = () => { clearInterval(tick); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }
