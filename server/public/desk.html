@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS receiving desk</title>
+<script src="theme.js"></script>
 <style>
   :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --on-acc: #fff }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --on-acc: #08121c } }
+  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --on-acc: #08121c }
   * { box-sizing: border-box; }
   a { color: var(--acc); }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -60,7 +61,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="title">Receiving desk</h1><span class="spacer"></span><a id="office" href="admin">Office</a><select id="pick" aria-label="Receiving desk"></select>
+<header><h1 id="title">Receiving desk</h1><span class="spacer"></span><a id="office" href="admin">Office</a><select id="pick" aria-label="Receiving desk"></select><select data-theme-picker></select>
   <details class="connection" id="connection"><summary>Connection</summary><form id="connectForm"><label>Server token <input id="token" type="password" autocomplete="off"></label><button>Connect</button></form><p id="connectionStatus" role="status" aria-live="polite"></p></details></header>
 <main id="main"></main>
 <script>

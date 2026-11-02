@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Setup · SortedWMS</title>
+<script src="theme.js"></script>
 <style>
-  :root { --bg: #f4f1ea; --card: #fffdf8; --ink: #1c1915; --dim: #5c564c; --line: #e4dccf; --acc: #0f6e56; }
+  :root { --bg: #f4f1ea; --card: #fffdf8; --ink: #1c1915; --dim: #5c564c; --line: #e4dccf; --acc: #0f6e56; --on-acc: #fff; --field: #fff; --soft: #f6f3ec; --good-bg: #e7f6ef; --bad-bg: #fde8e6; --bad: #a3352b; --done: #9cc9b9; --faint: #a39b8e; --fainter: #b5ada0; }
+  :root[data-theme="dark"] { --bg: #14120f; --card: #1d1a16; --ink: #efe9df; --dim: #a8a092; --line: #36302a; --acc: #4fc39f; --on-acc: #0d1a15; --field: #191612; --soft: #24201b; --good-bg: #173026; --bad-bg: #3a1d1a; --bad: #ff7a6b; --done: #2f6a57; --faint: #8b8376; --fainter: #6f685d; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
   header { padding: 16px 20px; background: var(--card); border-bottom: 3px solid var(--acc); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -16,23 +18,23 @@
   h2 { margin: 0 0 6px; font-size: 18px; }
   .hint { color: var(--dim); margin: 0 0 10px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-  .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--field); text-align: left; cursor: pointer; font: inherit; color: inherit; }
   .card.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
   .card b { display: block; margin-bottom: 4px; }
   .examples { display: grid; gap: 8px; }
   .ex { display: grid; grid-template-columns: 180px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .ex code { font: 700 18px ui-monospace, monospace; }
-  button, .btn { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
-  button.primary { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+  button, .btn { font: inherit; color: var(--ink); border: 1px solid var(--line); background: var(--field); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.primary { background: var(--acc); color: var(--on-acc); border-color: var(--acc); font-weight: 700; }
   label { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
   .level { display: grid; grid-template-columns: 110px 90px 140px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
-  input, select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-  .preview { font: 15px/1.5 ui-monospace, monospace; background: #f6f3ec; border-radius: 8px; padding: 10px; min-height: 3em; }
-  .msg { padding: 8px 10px; border-radius: 8px; background: #e7f6ef; }
-  .msg.bad { background: #fde8e6; }
+  input, select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  .preview { font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: 8px; padding: 10px; min-height: 3em; }
+  .msg { padding: 8px 10px; border-radius: 8px; background: var(--good-bg); }
+  .msg.bad { background: var(--bad-bg); }
   .steps { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
   .steps span { flex: 1 1 18px; height: 5px; border-radius: 3px; background: var(--line); }
-  .steps span.done { background: #9cc9b9; }
+  .steps span.done { background: var(--done); }
   .steps span.now { background: var(--acc); }
   .q { min-height: 220px; }
   .q .where { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
@@ -41,21 +43,21 @@
   .ask > label { display: block; margin: 0; font-weight: 600; }
   .ask input { width: 100%; }
   .ask input[name=count] { width: 7em; }
-  .ask input::placeholder { color: #b5ada0; }
-  .eg { color: #a39b8e; font-size: 14px; margin-top: 6px; display: flex; gap: 6px 10px; flex-wrap: wrap; }
-  .eg button { border: 0; background: none; padding: 0; color: #a39b8e; font: 14px ui-monospace, monospace; text-decoration: underline dotted; cursor: pointer; }
+  .ask input::placeholder { color: var(--fainter); }
+  .eg { color: var(--faint); font-size: 14px; margin-top: 6px; display: flex; gap: 6px 10px; flex-wrap: wrap; }
+  .eg button { border: 0; background: none; padding: 0; color: var(--faint); font: 14px ui-monospace, monospace; text-decoration: underline dotted; cursor: pointer; }
   .eg button:hover { color: var(--acc); }
   .gives { font: 14px ui-monospace, monospace; margin-top: 6px; color: var(--acc); }
-  .gives.bad { color: #a3352b; font-family: inherit; }
+  .gives.bad { color: var(--bad); font-family: inherit; }
   .types { display: grid; gap: 8px; }
   .types .row { display: grid; grid-template-columns: 160px 1fr; gap: 10px; align-items: center; }
   .pick { display: flex; gap: 8px; flex-wrap: wrap; }
   .pick button.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); font-weight: 700; }
   .pick small { display: block; color: var(--dim); font-weight: 400; }
   .nav { display: flex; gap: 8px; margin-top: 14px; }
-  .codes { margin-top: 14px; font: 15px/1.5 ui-monospace, monospace; background: #f6f3ec; border-radius: 8px; padding: 10px 12px; }
+  .codes { margin-top: 14px; font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: 8px; padding: 10px 12px; }
   .codes .label { font: 13px system-ui, sans-serif; color: var(--dim); }
-  .codes.bad { background: #fde8e6; font-family: system-ui, sans-serif; }
+  .codes.bad { background: var(--bad-bg); font-family: system-ui, sans-serif; }
   .review { width: 100%; border-collapse: collapse; font-size: 15px; }
   .review th, .review td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .review input { width: 5.5em; }
@@ -69,6 +71,7 @@
   <h1>Setup wizard</h1>
   <span id="who"></span>
   <span style="flex:1"></span>
+  <select data-theme-picker></select>
   <a href="/app">Back to the warehouse</a>
 </header>
 <main>

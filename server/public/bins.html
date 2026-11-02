@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101418">
 <title>SortedWMS bins</title>
+<script src="theme.js"></script>
 <style>
-  :root { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; }
+  /* Dark unless the theme setting says light: easier on the eyes in a cold store and on a battery. */
+  :root, :root[data-theme="dark"] { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; --field: #0b0f12; --chip: #26303a; --on-acc: #04121f; --on-bad: #1a0505; }
+  :root[data-theme="light"] { --bg: #f4f6f8; --card: #fff; --line: #d5dde4; --ink: #17202a; --dim: #5d6b76; --ok: #0f7a45; --bad: #b42318; --warn: #8a5a00; --acc: #1769c2; --field: #fff; --chip: #e6ebef; --on-acc: #fff; --on-bad: #fff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
   button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; cursor: pointer; }
-  button.primary { background: var(--acc); border-color: var(--acc); color: #04121f; font-weight: 700; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 700; }
   button.bad { border-color: var(--bad); color: var(--bad); }
-  input { font: inherit; color: var(--ink); background: #0b0f12; border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
+  input { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
   header b { font-size: 18px; }
   header .who { color: var(--dim); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -43,8 +46,8 @@
   .msg.ok { border-color: var(--ok); color: var(--ok); }
   .msg.bad { border-color: var(--bad); color: var(--bad); }
   #net { padding: 6px 12px; font-size: 14px; border-bottom: 1px solid var(--line); display: none; }
-  #net.off { display: block; background: #2a2210; color: var(--warn); }
-  #net.bad { display: block; background: #2a1414; color: var(--bad); }
+  #net.off { display: block; background: rgba(255, 176, 32, .18); color: var(--warn); }
+  #net.bad { display: block; background: rgba(255, 90, 82, .16); color: var(--bad); }
   #net button { min-height: 32px; padding: 4px 10px; font-size: 14px; margin-left: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -54,7 +57,7 @@
 <script src="src/offline-queue.js"></script>
 </head>
 <body>
-<header><b>Bins</b><span class="who" id="who"></span><a href="app" id="back">App</a></header>
+<header><b>Bins</b><span class="who" id="who"></span><select data-theme-picker></select><a href="app" id="back">App</a></header>
 <div id="net" aria-live="polite"></div>
 <nav class="modes" id="modes"></nav>
 <main>

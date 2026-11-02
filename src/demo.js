@@ -137,6 +137,8 @@
     // Bins: what the small picks take from first.
     const bins = Object.values(wh().locations).filter((l) => l.kind === 'bin').map((l) => l.code).sort();
     const loose = [['F3001', 24], ['F3002', 48], ['F3003', 4], ['T4002', 40], ['F3001', 24], ['F3002', 48], ['T4002', 30], ['F3003', 4]];
+    // One bin of grout close to its best-before: too short to ship, waiting for someone to write it off.
+    x('binPut', { loc: bins[30], itemNo: 'F3003', qty: 2, batch: lotFor('F3003', isoDay(now + 9 * DAY), 25), expiry: isoDay(now + 9 * DAY) });
     loose.forEach(([itemNo, qty], i) => {
       const it = ITEM[itemNo];
       const expiry = it.life ? isoDay(now + (it.minShipDays + 15 + i * 9) * DAY) : null;
@@ -517,6 +519,81 @@
     },
   };
 
+  // ---- What just happened ----
+
+  const WINDOW = 90 * MIN;
+  const tail = (sscc) => `…${String(sscc).slice(-6)}`;
+
+  /**
+   * The things worth pointing at right now, newest first: what the system
+   * just did or is waiting on, which roles it concerns, and which screen
+   * shows it. Read from the warehouse, like everything the bots do. A
+   * `standing` one is a state that holds until someone acts, not an event.
+   */
+  function highlights(wh, now) {
+    const out = [];
+    const recent = (t) => t && now - t <= WINDOW && t <= now;
+    for (const c of Object.values(wh.checks || {})) {
+      if (c.status === 'open') {
+        const short = /Short pick/.test(c.note || '');
+        out.push({ at: c.raisedAt, roles: ['S1', 'P1', 'manager'], kind: 'check', go: 'app.html?as=stock#stockctl',
+          text: short ? `${c.raisedBy} found ${c.loc} short of ${c.itemNo}. The bin is held for check ${c.id}: no picks from it until stock control counts it.` : `${c.loc} is held for stock check ${c.id}: ${c.note}` });
+      } else if (recent(c.closedAt) && c.outcome === 'corrected') {
+        const adj = (wh.adjustments || []).find((a) => a.loc === c.loc && a.itemNo === c.itemNo && a.t <= c.closedAt && a.t >= c.raisedAt);
+        out.push({ at: c.closedAt, roles: ['S1', 'P1', 'manager', 'admin'], kind: 'corrected', go: 'app.html?as=stock#history',
+          text: `${c.closedBy} counted ${c.loc}${adj ? `: ${adj.before} on the books, ${adj.after} in the bin` : ''}. The books are corrected and check ${c.id} is closed; the picks go on from other stock.` });
+      }
+    }
+    for (const d of Object.values(wh.deliveries)) {
+      if (d.status !== 'open') continue;
+      if (d.at === 'desk') {
+        out.push({ at: d.createdAt, roles: ['DESK1', 'office'], kind: 'desk', go: 'desk.html',
+          text: `Delivery ${d.id} from ${d.supplier} came without a pallet list, and its labels have no batch or best-before barcode: the receiving desk types them. ${d.received.length} of ${d.expected} pallets in.` });
+      } else {
+        out.push({ at: d.createdAt, roles: ['R1', 'R2', 'R3', 'office'], kind: 'dock', go: 'app.html?as=office#inbound',
+          text: `Delivery ${d.id} from ${d.supplier} is at the dock with its pallet list: one scan per pallet receives it. ${d.received.length} of ${d.expected} in.` });
+      }
+    }
+    for (const r of Object.values(wh.returns || {})) {
+      const waiting = r.lines.filter((l) => wh._returnLeft(l));
+      if (waiting.length) {
+        out.push({ at: r.receivedAt, roles: ['returns', 'office'], kind: 'return', go: 'app.html?as=office#returns',
+          text: `Return ${r.id} from ${(wh.orders[r.orderId] || {}).customer || r.orderId} (${String(r.reason || '').toLowerCase()}): ${waiting.map((l) => `${wh._returnLeft(l)} × ${l.itemNo}`).join(', ')} waiting to be graded.` });
+        continue;
+      }
+      const last = r.history && r.history[r.history.length - 1];
+      if (last && recent(last.t)) {
+        const how = last.event === 'restock' ? `back into ${last.to}` : last.event === 'quarantine' ? `on hold at ${last.to}` : 'scrapped';
+        out.push({ at: last.t, roles: ['returns', 'admin'], kind: 'graded', go: 'app.html?as=office#returns',
+          text: `Return ${r.id}: ${last.qty} × ${last.itemNo} ${how}${last.event === 'restock' ? ', with the batch it went out with' : ''}.` });
+      }
+    }
+    for (const w of Object.values(wh.waves || {})) {
+      if (!recent(w.createdAt)) continue;
+      const n = (k) => w.tasks.filter((t) => t.kind === k).length;
+      out.push({ at: w.createdAt, roles: ['MU1', 'P1', 'office', 'manager'], kind: 'wave', go: 'app.html?as=office#waves',
+        text: `Wave ${w.id} dropped from the queue: ${w.orders.length} order${w.orders.length === 1 ? '' : 's'}, ${n('case')} box pick${n('case') === 1 ? '' : 's'} for the man-up, ${n('bin')} bin pick${n('bin') === 1 ? '' : 's'}.` });
+    }
+    for (const sh of (wh.shipments || []).slice(-6)) {
+      if (!recent(sh.t)) continue;
+      const what = [sh.pallets.length && `${sh.pallets.length} pallet${sh.pallets.length === 1 ? '' : 's'}`, sh.cartons.length && `${sh.cartons.length} carton${sh.cartons.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
+      const traced = sh.pallets.some((p) => wh.items[p.itemNo] && wh.items[p.itemNo].serialized);
+      out.push({ at: sh.t, roles: ['loader', 'packer', 'office'], kind: 'shipped', go: `app.html?as=office#outbound`,
+        text: `${sh.orderId} left for ${sh.customer}${sh.truck ? ` with ${sh.truck}` : ''}: ${what}.${traced ? ' The drills’ serial numbers went with their pallets, without a scan each.' : ''}` });
+    }
+    const near = wh.bestBeforeWatch({ days: 14 });
+    if (near.length) {
+      const b = near[0];
+      out.push({ at: now, standing: true, roles: ['S1', 'manager'], kind: 'bestbefore', go: 'app.html?as=stock#stockctl',
+        text: `${b.qty} × ${b.itemNo} batch ${b.batch} in ${b.loc} is best before ${b.expiry}: too short to ship to anyone. The waves skip it; write it off on the Stock control screen.` });
+    }
+    for (const t of wh._liveTasks()) {
+      if (t.type === 'SHIFT' && t.reason === 'replenish') continue;
+      if (t.urgent && t.status !== 'done') out.push({ at: t.createdAt, roles: ['R1', 'R2', 'R3', 'manager'], kind: 'urgent', go: 'app.html?as=manager#tasks', text: `Job ${t.id} (${t.type.toLowerCase()}${t.orderId ? ` for ${t.orderId}` : ''}) is marked urgent: the next free truck takes it first.` });
+    }
+    return out.sort((a, b) => b.at - a.at).filter((h, i, all) => all.findIndex((x) => x.text === h.text) === i);
+  }
+
   /** Everyone on the demo floor, in the order the role list shows them. */
   function crew() {
     return [
@@ -579,5 +656,5 @@
     }
   }
 
-  return { SITE, CLIENTS, ITEMS, CUSTOMERS, seed, morning, newOrder, newDelivery, crew, Runner, PACK };
+  return { SITE, CLIENTS, ITEMS, CUSTOMERS, seed, morning, newOrder, newDelivery, crew, Runner, PACK, highlights };
 });

@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS office</title>
+<script src="theme.js"></script>
 <style>
   :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --chip: #eef2f5; --on-acc: #fff }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; --on-acc: #08121c } }
+  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; --on-acc: #08121c }
   * { box-sizing: border-box; }
   a { color: var(--acc); }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -51,8 +52,9 @@
 <header>
   <h1>SortedWMS office</h1>
   <nav id="nav"></nav>
-  <span class="hint">Screens: <a href="station.html">Station</a> · <a href="desk.html">Receiving desk</a> · <a href="card.html">Command card</a> · <a href="kit.html">Demo kit</a></span>
+  <span class="hint">Screens: <a href="station.html">Station</a> · <a href="desk.html">Receiving desk</a> · <a href="card.html">Command card</a></span>
   <span class="hint" id="status"></span>
+  <select data-theme-picker></select>
 </header>
 <main id="main"></main>
 <script>
