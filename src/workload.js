@@ -78,7 +78,7 @@
     let serial = Math.floor(rng() * 900000);
     const newSscc = () => {
       let s;
-      do { s = GS1.makeSscc(4, '8799998', ++serial); } while (taken.has(s));
+      do { s = GS1.makeSscc(4, '0614141', ++serial); } while (taken.has(s));
       taken.add(s);
       return s;
     };

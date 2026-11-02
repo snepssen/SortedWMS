@@ -14,6 +14,8 @@
   const clean = (s) => String(s == null ? '' : s).replace(/[\^~]/g, ' ');
 
   const ddmmyyyy = (iso) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
+  // Batch and best-before, leaving out what a pallet does not have (tools have no best-before).
+  const lotLine = (d) => [d.batch && `Batch ${d.batch}`, d.expiry && `Best before ${ddmmyyyy(d.expiry)}`].filter(Boolean).join('   ');
 
   /**
    * 4×6 inch shipping label at 203 dpi. The top barcode is the shipping
@@ -31,7 +33,7 @@
       '^FO40,220^GB732,3,3^FS',
       `^FO40,250^A0N,44,44^FD${clean(d.itemName)}^FS`,
       `^FO40,305^A0N,34,34^FDItem ${clean(d.itemNo)}   Qty ${clean(d.qty)}^FS`,
-      `^FO40,350^A0N,34,34^FDBatch ${clean(d.batch)}   Best before ${clean(ddmmyyyy(d.expiry))}^FS`,
+      `^FO40,350^A0N,34,34^FD${clean(lotLine(d))}^FS`,
       '^FO40,400^GB732,3,3^FS',
       `^FO40,430^A0N,30,30^FDLabel ${clean(d.labelCode)}^FS`,
       `^FO40,470^BY3^BCN,140,N,N,N^FD${clean(d.labelCode)}^FS`,
@@ -52,7 +54,7 @@
       '^PW812^LL1218',
       `^FO40,40^A0N,64,64^FD${clean(d.itemName)}^FS`,
       `^FO40,120^A0N,34,34^FDItem ${clean(d.itemNo)}   Qty ${clean(d.qty)}^FS`,
-      `^FO40,170^A0N,34,34^FDBatch ${clean(d.batch)}   Best before ${clean(ddmmyyyy(d.expiry))}^FS`,
+      `^FO40,170^A0N,34,34^FD${clean(lotLine(d))}^FS`,
       `^FO40,260^BY3^BCN,220,N,N,N^FD>;>800${clean(d.sscc)}^FS`,
       `^FO40,500^A0N,40,40^FD${clean(GS1.hri({ sscc: d.sscc }))}^FS`,
       ...(d.client ? [`^FO40,560^A0N,30,30^FDClient ${clean(d.client)}^FS`] : []),

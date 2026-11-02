@@ -342,7 +342,7 @@ test('3-barcode supplier label: scan all three in any order, no typing', () => {
   const { wh } = setup();
   wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', pallets: 1 });
   wh.addTruck('RT1');
-  const sscc = GS1.makeSscc(3, '8712345', 991);
+  const sscc = GS1.makeSscc(3, '0614141', 991);
   assert.ok(wh.scan('RT1', `15261031${'10'}L77`).ok, 'middle: best-before + batch');
   assert.ok(wh.scan('RT1', `00${sscc}`).ok, 'bottom: SSCC');
   const r = wh.scan('RT1', `02${GS1.gtin14(wh.items.Y1.gtin)}3796`);
@@ -353,8 +353,8 @@ test('3-barcode supplier label: scan all three in any order, no typing', () => {
 
 test('with a delivery list, the bottom barcode (SSCC) alone registers the pallet', () => {
   const { wh } = setup();
-  const s1 = GS1.makeSscc(3, '8712345', 1);
-  const s2 = GS1.makeSscc(3, '8712345', 2);
+  const s1 = GS1.makeSscc(3, '0614141', 1);
+  const s2 = GS1.makeSscc(3, '0614141', 2);
   wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', list: [
     { sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 },
     { sscc: s2, itemNo: 'Y2', batch: 'Q1', expiry: '2026-11-03', qty: 120 },
@@ -367,7 +367,7 @@ test('with a delivery list, the bottom barcode (SSCC) alone registers the pallet
 
 test('label and delivery list disagreeing is caught', () => {
   const { wh } = setup();
-  const s1 = GS1.makeSscc(3, '8712345', 5);
+  const s1 = GS1.makeSscc(3, '0614141', 5);
   wh.addDelivery({ id: 'D1', supplier: 'Brightwall Paints', category: 'GEN', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
   wh.addTruck('RT1');
   wh.scan('RT1', `15261101${'10'}WRONG`);

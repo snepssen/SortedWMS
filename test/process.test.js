@@ -145,7 +145,7 @@ test('receiving desk: the screen calls out BATCH, PALLET, GS1; the keyboard fill
   assert.equal(wh.deskCallout('DESK1').word, 'BATCH');
   assert.match(wh.scan('DESK1', 'K77').text, /Call out PALLET/);
   assert.equal(wh.deskCallout('DESK1').word, 'PALLET');
-  const sscc = GS1.makeSscc(3, '8712345', 77);
+  const sscc = GS1.makeSscc(3, '0614141', 77);
   assert.ok(wh.scan('DESK1', `00${sscc}`).ok);
   assert.equal(wh.deskCallout('DESK1').word, 'GS1');
   assert.ok(wh.scan('DESK1', `02${GS1.gtin14(wh.items.C1.gtin)}15270101`).ok, 'item + date, no count on this label');

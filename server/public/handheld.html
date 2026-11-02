@@ -117,6 +117,9 @@
     set(k, v) { try { localStorage.setItem('hh.' + k, v); } catch (e) { /* private mode */ } },
   };
   let deviceId = store.get('device'), operator = store.get('operator') || '', token = store.get('token') || '';
+  // In the browser demo each reach truck has its own page: ?device=R1 picks the truck without setup.
+  const fixed = window.SortedLocal && new URLSearchParams(location.search).get('device');
+  if (fixed) { deviceId = fixed.toUpperCase(); operator = deviceId; }
   let view = null, localError = null, busy = false, keyboard = false, typedQty = '', summary = null;
 
   // No answer within the time limit, or no network at all: worth sending again (err.network).
@@ -212,8 +215,7 @@
         if (!devices.some((d) => d.id === deviceId)) await api('POST', '/api/devices', { id: deviceId, categories });
         // A new operator on this truck: their categories. A first set-up with nothing ticked keeps what the truck has.
         else if (view || picked.length) await api('POST', `/api/devices/${encodeURIComponent(deviceId)}/categories`, { categories });
-        store.set('device', deviceId);
-        store.set('operator', operator);
+        if (!fixed) { store.set('device', deviceId); store.set('operator', operator); }
         refresh();
       } catch (e) { renderSetup(e.message); }
     };

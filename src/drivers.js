@@ -86,7 +86,7 @@
     }
     if (!d.sscc) {
       let sscc;
-      do { sscc = GS1.makeSscc(5, '8799997', Math.floor(rand() * 9e8)); } while (wh.pallets[sscc]);
+      do { sscc = GS1.makeSscc(5, '0614141', Math.floor(rand() * 9e8)); } while (wh.pallets[sscc]);
       return { code: `00${sscc}`, what: `receive: pallet label ${ins.delivery.received.length + 1}`, ms: jitter(6 * SEC) };
     }
     return null;

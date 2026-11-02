@@ -27,12 +27,14 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.
 - A load test (`npm run load-test`); everyday work does not slow down as history grows, and an import of 1,000 orders takes milliseconds.
 - Categories added one by one, like items; a new building starts with one, General.
+- Items without a best-before (tools, hardware), received without one even where lots and expiry are on.
+- The demo on GitHub Pages: a distribution centre for four clients worked by bots on the real screens, on a clock you can pause or speed up; take over any role and work it yourself.
 
 ## Next
 
 In order of priority:
 
-1. **A demo built on the full WMS.** The old simulation and its scripted scenarios were built around one kind of warehouse and are gone. A new demo should run on the real screens: a sample warehouse, worked through by role, that shows what SortedWMS does end to end.
+1. **A fuller demo.** The demo runs a made-up distribution centre on the real screens with bots in every floor role. Still to come: bots for stock checks, replenishing the bins, returns and the receiving desk, and cards that point at what just happened (a short pick, a batch near its best-before).
 2. **Connections.** Orders in from a shop or ERP (file drop or API), ASNs in from suppliers, and goods received and shipped back out. Today orders and ASNs come in by CSV import or the API.
 3. **Check on real devices.** The bin handheld opened with no connection at all on a phone, and the camera scanner with a real camera. Both are tested in a browser only.
 4. **A4 documents as PDF.** Delivery notes, packing slips and loading lists print from the browser today.

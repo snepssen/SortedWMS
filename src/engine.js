@@ -529,7 +529,7 @@
      * numbers that mean this item, such as a supplier's article number,
      * printed as "(91)40012009" on the label.
      */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false, bestBefore = true }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
@@ -559,6 +559,8 @@
         barcodes: barcodeList,
         flags: { food: Boolean(food), frozen: Boolean(frozen), highValue: Boolean(highValue) },
       };
+      // Goods that never go off (tools, hardware) are received without a best-before date.
+      if (bestBefore === false || bestBefore === 'false') this.items[itemNo].bestBefore = false;
       this.log(`Item ${itemNo} added by ${this._actor || 'unknown'}`, { by: this._actor || 'unknown' });
       return this.items[itemNo];
     }
@@ -1392,9 +1394,15 @@
       return this._confirmQty(truck, task, qty);
     }
 
+    /** What a pallet still needs before it is received: every field, less best-before for an item without one. */
+    _receiveNeeds(d) {
+      const item = d.item && this.items[d.item];
+      return item && item.bestBefore === false ? RECEIVE_FIELDS.filter((f) => f !== 'expiry') : RECEIVE_FIELDS;
+    }
+
     _confirmQty(truck, task, qty) {
       const d = task.draft;
-      const missing = RECEIVE_FIELDS.filter((f) => f !== 'qty' && !d[f]);
+      const missing = this._receiveNeeds(d).filter((f) => f !== 'qty' && !d[f]);
       if (missing.length) return this._say(truck, false, `Scan the ${FIELD_LABELS[missing[0]].toLowerCase()} first`);
       const n = qty == null ? this.items[d.item].palletQty : Number(qty);
       if (!Number.isInteger(n) || n < 1) return this._say(truck, false, 'Quantity must be a whole number above 0');
@@ -1911,7 +1919,7 @@
       }
       const task = this.tasks[truck.taskId];
       if (task.type === 'RECEIVE') {
-        const field = RECEIVE_FIELDS.find((f) => !task.draft[f]);
+        const field = this._receiveNeeds(task.draft).find((f) => !task.draft[f]);
         const delivery = this.deliveries[task.deliveryId];
         return { kind: 'receive', task, delivery, field, draft: task.draft, item: task.draft.item ? this.items[task.draft.item] : null };
       }
@@ -2650,7 +2658,8 @@
       const desk = this.desks[deskId];
       const task = desk && desk.taskId && this.tasks[desk.taskId];
       if (!task) return null;
-      const c = DESK_CALLOUTS.find((x) => x.fields.some((f) => !task.draft[f]));
+      const needs = this._receiveNeeds(task.draft);
+      const c = DESK_CALLOUTS.find((x) => x.fields.some((f) => needs.includes(f) && !task.draft[f]));
       return c || null;
     }
 
@@ -3179,7 +3188,7 @@
         if (!d.sscc && /^\d{18}$/.test(plain) && GS1.isValidSscc(plain)) fields.sscc = plain;
         else if (!d.item && asItem) fields.item = asItem.itemNo;
         else {
-          const field = RECEIVE_FIELDS.find((f) => !d[f]);
+          const field = this._receiveNeeds(d).find((f) => !d[f]);
           if (field === 'batch') {
             if (input.length > 20) return this._fail(truck, 'That is too long for a batch number');
             const place = this.locations[this.resolve(input)];
@@ -3233,11 +3242,12 @@
         const shown = f === 'expiry' ? dmy(fields[f]) : f === 'batch' || f === 'qty' ? fields[f] : null;
         got.push(`${FIELD_LABELS[f].toLowerCase()}${shown != null ? ` ${shown}` : ''}`);
       }
-      if (RECEIVE_FIELDS.every((f) => d[f])) return this._registerReceived(truck, task);
-      const next = RECEIVE_FIELDS.find((f) => !d[f]);
+      const needs = this._receiveNeeds(d);
+      if (needs.every((f) => d[f])) return this._registerReceived(truck, task);
+      const next = needs.find((f) => !d[f]);
       if (truck.kind === 'desk') {
         const c = this.deskCallout(truck.id);
-        return this._say(truck, true, `Got ${got.join(', ')}. ${c.word === 'GS1' && d.item && d.expiry ? 'Type the quantity' : `Call out ${c.word}`}`);
+        return this._say(truck, true, `Got ${got.join(', ')}. ${c.word === 'GS1' && d.item && (d.expiry || !needs.includes('expiry')) ? 'Type the quantity' : `Call out ${c.word}`}`);
       }
       return this._say(truck, true, `Got ${got.join(', ')}. ${next === 'qty' ? 'Confirm the quantity' : `Next: ${FIELD_LABELS[next].toLowerCase()}`}`);
     }
@@ -3256,7 +3266,7 @@
       const status = daysLeft < 0 ? 'blocked' : 'available';
       const blockReason = daysLeft < 0 ? 'Expired on arrival' : null;
       const pallet = this.stockPallet('DOCK-IN', {
-        sscc: d.sscc, itemNo: item.itemNo, batch: d.batch, expiry: d.expiry, qty: d.qty, status, blockReason,
+        sscc: d.sscc, itemNo: item.itemNo, batch: d.batch, expiry: d.expiry || null, qty: d.qty, status, blockReason,
       });
       const delivery = this.deliveries[task.deliveryId];
       delivery.received.push(pallet.sscc);

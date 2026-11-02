@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A made-up distribution centre run on SortedWMS in your browser: bots work every role, and you can take over any of them.">
+<title>SortedWMS demo</title>
+<style>
+  :root { --bg: #f3f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #5d6b76; --acc: #1769c2; --ok: #0f7a45; --bad: #b42318; --you: #9a3412; --chip: #eef2f5; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #11161c; --card: #19212a; --line: #2a3540; --ink: #e8edf2; --dim: #9aa8b4; --acc: #7aa7f0; --ok: #4cc38a; --bad: #f97066; --you: #f59e6b; --chip: #222c36; color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 17px; margin: 0; }
+  header h1 a { color: inherit; text-decoration: none; }
+  .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 17px; }
+  .speed { display: flex; gap: 4px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+  button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  .grow { flex: 1; }
+  .dim { color: var(--dim); }
+  .wrap { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 14px; padding: 14px 16px; max-width: 1500px; margin: 0 auto; }
+  aside, .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  aside { padding: 8px; align-self: start; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 10px 8px 4px; }
+  .role { display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 10px; padding: 7px 9px; }
+  .role.on { border-color: var(--acc); background: var(--chip); }
+  .role b { display: flex; gap: 6px; align-items: center; }
+  .role small { display: block; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 6px; background: var(--chip); color: var(--dim); }
+  .tag.you { background: var(--you); color: #fff; }
+  .tag.bot { color: var(--ok); }
+  .main { display: grid; gap: 14px; min-width: 0; }
+  .card { padding: 12px 16px; }
+  .card h2 { margin: 0 0 4px; font-size: 18px; }
+  .card p { margin: 6px 0; }
+  .next { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--chip); }
+  .next span { flex: 1; min-width: 200px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--dim); font-size: 14px; }
+  .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .try { margin: 6px 0 0; padding-left: 18px; }
+  .try a { color: var(--acc); }
+  iframe { width: 100%; height: 72vh; min-height: 480px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .feed { font-size: 13px; max-height: 190px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .feed li { padding: 2px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  .feed time { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .feed .err { color: var(--bad); }
+  .note { color: var(--bad); }
+  code { font: 13px ui-monospace, monospace; background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 1px 4px; user-select: all; }
+  select { font: inherit; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; display: none; }
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: 1fr; padding: 12px 16px; }
+    aside { display: none; }
+    select { display: block; }
+    header { position: static; }
+    iframe { height: 80vh; min-height: 420px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="../">SortedWMS</a> demo</h1>
+  <span class="clock" id="clock">–</span>
+  <span class="speed" id="speed" role="group" aria-label="Warehouse clock speed">
+    <button data-speed="0">Pause</button><button data-speed="1">1×</button><button data-speed="10">10×</button><button data-speed="60">60×</button>
+  </span>
+  <span class="grow"></span>
+  <span class="dim" id="lead"></span>
+  <button id="restart" title="Start the demo warehouse again from this morning">Restart</button>
+</header>
+<div class="wrap">
+  <aside id="roles" aria-label="Roles"></aside>
+  <div class="main">
+    <select id="rolePick" aria-label="Role"></select>
+    <div class="card" id="card"></div>
+    <iframe id="screen" title="The screen for this role"></iframe>
+    <div class="card"><div class="stats" id="stats"></div><ul class="feed" id="feed" aria-live="off"></ul></div>
+  </div>
+</div>
+<!-- WMS -->
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const Demo = window.SortedDemo;
+  const KEY = window.SortedLocal.key;
+  const ME = Math.random().toString(36).slice(2);
+  const runner = new Demo.Runner();
+  const feed = [];
+  let store = null, view = null;
+
+  // What each role is, and what to try in it. Bots have the same ids as the crew.
+  const ROLES = [
+    { group: 'Worked by bots', id: 'office', title: 'Office', screen: 'app.html?as=office#floor',
+      about: 'Takes in customer orders and books a delivery with the supplier when an item runs low. Orders for whole pallets go to the reach trucks; orders for pieces wait in the pick queue for the next wave.',
+      tries: [['Outbound', 'app.html?as=office#outbound', 'add an order of your own'], ['Inbound', 'app.html?as=office#inbound', 'announce a delivery'], ['Pick waves', 'app.html?as=office#waves', 'see the queue and the waves it built'], ['Tariff', 'app.html?as=office#tariff', 'look at what each client is charged']] },
+    { id: 'R1', title: 'Reach truck R1', screen: 'handheld.html?device=R1',
+      about: 'A reach truck on Auto: the handheld picks the next job (receive at the dock, put away, pick a pallet to its lane, check and label it, shift stock) and says what to scan.',
+      tries: [] },
+    { id: 'R2', title: 'Reach truck R2', screen: 'handheld.html?device=R2', about: 'The second reach truck for general stock and small parts.', tries: [] },
+    { id: 'R3', title: 'Reach truck R3', screen: 'handheld.html?device=R3', about: 'Works the bulk aisle and the block-stack lanes, where crate pallets stand on the floor, deepest first.', tries: [] },
+    { id: 'MU1', title: 'Man-up MU1', screen: 'app.html?as=picker#cases',
+      about: 'An order picker that rides up to the pallet: whole boxes off rack pallets, or pieces from a box already opened. Everything goes to the packing bench.', tries: [] },
+    { id: 'P1', title: 'Bin picker P1', screen: 'bins.html?as=P1',
+      about: 'On foot with a phone at the bin wall: small picks, earliest best-before first, dropped at the packing bench.', tries: [] },
+    { id: 'packer', title: 'Packing bench', screen: 'app.html?as=office#pack',
+      about: 'Packs what was picked into OUT cartons, records size and weight, and prints the packing slip.', tries: [] },
+    { id: 'loader', title: 'Loading', screen: 'app.html?as=office#pack',
+      about: 'Stages each finished order on its lane, scans every pallet and carton onto the carrier, and dispatches it with a delivery note.', tries: [] },
+    { group: 'Look around', id: 'manager', title: 'Floor manager', screen: 'app.html?as=manager#floor',
+      about: 'The whole floor at a glance: every truck, its job and its queue. Nobody works here; it watches.',
+      tries: [['Tasks', 'app.html?as=manager#tasks', 'every open job and who has it'], ['Exceptions', 'app.html?as=manager#exceptions', 'what needs a person'], ['Pick waves', 'app.html?as=manager#waves', 'waves and their picks']] },
+    { id: 'stock', title: 'Stock control', screen: 'app.html?as=stock#stockctl',
+      about: 'Stock checks, corrections, the near best-before list and recalls. The bots leave this to you.',
+      tries: [['Stock control', 'app.html?as=stock#stockctl', 'write off a batch near its best-before'], ['Bins', 'app.html?as=stock#bins', 'count a bin'], ['History', 'app.html?as=stock#history', 'follow one pallet from dock to truck']] },
+    { id: 'returns', title: 'Returns', screen: 'app.html?as=office#returns',
+      about: 'A customer sends something back: book it against what shipped, then grade it restock, hold or scrap.',
+      tries: [['Returns', 'app.html?as=office#returns', 'book a return for a shipped order']] },
+    { id: 'admin', title: 'Administrator', screen: 'app.html?as=administrator#master',
+      about: 'Users, roles and permissions, settings and the audit trail: every command the bots sent is in it, with who and when.',
+      tries: [['Audit', 'app.html?as=administrator#audit', 'the journal, command by command'], ['Settings', 'app.html?as=administrator#settings', 'switch parts of the WMS on or off']] },
+  ];
+  const BOTS = new Set(runner.bots.map((b) => b.id));
+  let current = ROLES[0].id;
+  try { const saved = sessionStorage.getItem('demo.role'); if (ROLES.some((r) => r.id === saved)) current = saved; } catch (e) { /* storage optional */ }
+
+  // Roles a person has taken over, shared with other tabs.
+  const YOU = `${KEY}.you`;
+  const LEAD = `${KEY}.lead`;
+  const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
+  const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage off */ } };
+  const you = () => new Set(read(YOU, []));
+
+  // One tab runs the bots and the clock; another tab open on the demo only watches.
+  function leading() {
+    const l = read(LEAD, null);
+    if (l && l.id !== ME && Date.now() - l.at < 3000) return false;
+    write(LEAD, { id: ME, at: Date.now() });
+    return true;
+  }
+
+  const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = (t) => new Date(t).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+
+  function exec(op, args, by) { return store.exec(op, args, by); }
+
+  function step() {
+    if (!store) return;
+    store.sync();
+    if (!leading()) { $('lead').textContent = 'Bots run in your other demo tab'; return; }
+    $('lead').textContent = '';
+    const clock = window.SortedLocal.clock;
+    const now = clock.beat();
+    if (!clock.speed) return;
+    for (const d of runner.step(store.wh, now, exec, you())) {
+      feed.unshift({ t: now, bot: d.bot, what: d.what, error: d.error });
+      if (feed.length > 60) feed.pop();
+    }
+  }
+
+  /** The next step for a role a person has taken over, done for them on a click. */
+  function doNext(id) {
+    const bot = runner.bots.find((b) => b.id === id);
+    const act = bot && bot.next(store.wh, window.SortedLocal.clock.now(), Math.random);
+    if (!act || act.wait) return;
+    let error = null;
+    try { const r = exec(act.op, act.args, id); if (r && r.ok === false && r.text) error = r.text; } catch (e) { error = e.message; }
+    feed.unshift({ t: window.SortedLocal.clock.now(), bot: `${id} (you)`, what: act.what, error });
+    refreshScreen();
+    draw();
+  }
+
+  function refreshScreen() {
+    const w = $('screen').contentWindow;
+    try { if (w && w.hhRefresh) w.hhRefresh(); else if (w) w.dispatchEvent(new HashChangeEvent('hashchange')); } catch (e) { /* another origin: leave it */ }
+  }
+
+  function show(id, url) {
+    current = id;
+    try { sessionStorage.setItem('demo.role', id); } catch (e) { /* storage optional */ }
+    const role = ROLES.find((r) => r.id === id);
+    $('screen').src = url || role.screen;
+    view = url || role.screen;
+    draw();
+  }
+
+  function stats() {
+    const wh = store.wh;
+    const orders = Object.values(wh.orders);
+    const shipped = orders.filter((o) => o.status === 'shipped').length;
+    const pallets = wh._livePallets().filter((p) => p.loc).length;
+    const open = Object.values(wh.deliveries).filter((d) => d.status === 'open');
+    const waves = Object.values(wh.waves || {}).length;
+    const kb = Math.round(store.size() / 1024);
+    return `<span>Orders open <b>${orders.length - shipped}</b></span><span>Shipped <b>${shipped}</b></span><span>Pallets in stock <b>${pallets}</b></span><span>Deliveries at the dock <b>${open.length}</b></span><span>Pick waves <b>${waves}</b></span><span>Journal <b>${store.data.rows.length}</b> commands, ${kb} KB</span>${kb > 3500 ? '<span class="note">Browser storage is nearly full: Restart to begin a new day.</span>' : ''}`;
+  }
+
+  function draw() {
+    if (!store) return;
+    const clock = window.SortedLocal.clock;
+    const now = clock.now();
+    $('clock').textContent = `${day(now)} ${fmt(now)}`;
+    document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === clock.speed));
+    const mine = you();
+    const status = Object.fromEntries(runner.status(mine).map((s) => [s.id, s]));
+    let group = '';
+    $('roles').innerHTML = ROLES.map((r) => {
+      const head = r.group && r.group !== group ? `<h2>${esc((group = r.group))}</h2>` : '';
+      const s = status[r.id];
+      const tag = !BOTS.has(r.id) ? '' : mine.has(r.id) ? '<span class="tag you">You</span>' : '<span class="tag bot">Bot</span>';
+      const sub = !BOTS.has(r.id) ? '' : mine.has(r.id) ? 'Waiting for you' : (s && s.doing) || 'Nothing to do';
+      return `${head}<button class="role${r.id === current ? ' on' : ''}" data-role="${esc(r.id)}"><b>${esc(r.title)} ${tag}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+    }).join('');
+    $('rolePick').innerHTML = ROLES.map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.title)}${BOTS.has(r.id) ? (mine.has(r.id) ? ' (you)' : ' (bot)') : ''}</option>`).join('');
+
+    const role = ROLES.find((r) => r.id === current);
+    let next = '';
+    if (BOTS.has(role.id)) {
+      if (mine.has(role.id)) {
+        const bot = runner.bots.find((b) => b.id === role.id);
+        let act = null;
+        try { act = bot.next(store.wh, now, () => 0.5); } catch (e) { act = null; }
+        const code = act && act.args && (act.args.code || act.args.scan);
+        next = `<div class="next"><span>${act && !act.wait ? `Next: <b>${esc(act.what)}</b>${code ? ` (scan <code>${esc(code)}</code>)` : ''}. Do it on the screen below, or let the button do it.` : 'Nothing to do right now.'}</span>${act && !act.wait ? `<button class="primary" data-do="${esc(role.id)}">Do this step</button>` : ''}<button data-give="${esc(role.id)}">Give back to the bot</button></div>`;
+      } else {
+        const s = status[role.id];
+        next = `<div class="next"><span>${s && s.doing ? (s.wait ? `The bot is <b>${esc(s.doing)}</b>${s.at ? `, until ${fmt(s.at)}` : ''}.` : `Next the bot will <b>${esc(s.doing)}</b>${s.at ? `, at ${fmt(s.at)}` : ''}.`) : 'The bot has nothing to do right now.'}</span><button class="primary" data-take="${esc(role.id)}">Take over</button></div>`;
+      }
+    }
+    const tries = role.tries.length ? `<ul class="try">${role.tries.map(([label, url, what]) => `<li><a href="${esc(url)}" data-go="${esc(url)}">${esc(label)}</a>: ${esc(what)}</li>`).join('')}</ul>` : '';
+    $('card').innerHTML = `<h2>${esc(role.title)}</h2><p>${esc(role.about)}</p>${tries}${next}`;
+    $('stats').innerHTML = stats();
+    $('feed').innerHTML = feed.slice(0, 30).map((f) => `<li><time>${fmt(f.t)}</time><b>${esc(f.bot)}</b><span class="${f.error ? 'err' : ''}">${esc(f.what)}${f.error ? `: ${esc(f.error)}` : ''}</span></li>`).join('');
+  }
+
+  document.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-role]');
+    if (r) return show(r.dataset.role);
+    const go = e.target.closest('[data-go]');
+    if (go) { e.preventDefault(); return show(current, go.dataset.go); }
+    const take = e.target.closest('[data-take]');
+    if (take) { write(YOU, [...you(), take.dataset.take]); return draw(); }
+    const give = e.target.closest('[data-give]');
+    if (give) { write(YOU, [...you()].filter((x) => x !== give.dataset.give)); return draw(); }
+    const d = e.target.closest('[data-do]');
+    if (d) return doNext(d.dataset.do);
+    const sp = e.target.closest('[data-speed]');
+    if (sp) { window.SortedLocal.clock.beat(Number(sp.dataset.speed)); return draw(); }
+  });
+  $('rolePick').onchange = (e) => show(e.target.value);
+  $('restart').onclick = async () => {
+    if (!confirm('Start the demo again from this morning? Everything done so far is cleared.')) return;
+    write(YOU, []);
+    feed.length = 0;
+    await window.SortedLocal.reset();
+    show(current);
+  };
+
+  window.SortedLocal.ready.then(async () => {
+    store = await window.SortedLocal.store();
+    show(current);
+    setInterval(step, 500);
+    setInterval(draw, 1000);
+  }).catch((e) => { $('card').innerHTML = `<p class="note">The demo could not start: ${esc(e.message)}</p>`; });
+})();
+</script>
+</body>
+</html>

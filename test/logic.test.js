@@ -30,7 +30,7 @@ test('count mode never sends a third truck into an aisle', () => {
 
 test('receiving: a location label is not a batch number, and CANCEL starts the pallet again', () => {
   const wh = setup();
-  const s1 = GS1.makeSscc(3, '8712345', 5);
+  const s1 = GS1.makeSscc(3, '0614141', 5);
   wh.addDelivery({ id: 'D1', supplier: 'Brightwall', category: 'GEN', list: [{ sscc: s1, itemNo: 'Y1', batch: 'B1', expiry: '2026-11-01', qty: 96 }] });
   wh.addTruck('RT1');
   const r = wh.scan('RT1', 'DOCK-IN');
