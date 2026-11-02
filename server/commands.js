@@ -196,6 +196,7 @@
     binPut: (wh, a, by) => wh.binPut({ ...a, loc: req(a.loc, 'loc'), by }),
     binTake: (wh, a, by) => wh.binTake({ ...a, loc: req(a.loc, 'loc'), by }),
     binMove: (wh, a, by) => wh.binMove({ ...a, from: req(a.from, 'from'), to: req(a.to, 'to'), by }),
+    binRefill: (wh, a, by) => wh.binRefill({ ...a, loc: req(a.loc, 'loc'), sscc: req(a.sscc, 'sscc'), by }),
     binCount: (wh, a, by) => wh.binCount({ ...a, loc: req(a.loc, 'loc'), by }),
     planWave: (wh, a, by) => wh.planWave({ id: a.id || null, orders: a.orders || null, by }),
     confirmWaveTask: (wh, a, by) => wh.confirmWaveTask({ task: req(a.task, 'task'), scan: a.scan, serials: a.serials || null, by }),

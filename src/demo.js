@@ -33,6 +33,7 @@
     // Aisles AA and AB hold general stock, AC small parts, AD bulk.
     templates: [{ from: 'AA01A1', to: 'AB12D2', category: 'GEN' }, { from: 'AC01A1', to: 'AC12D2', category: 'SMALL' }, { from: 'AD01A1', to: 'AD12D2', category: 'BULK' }],
     config: { aisleCap: 2 },
+    desks: [{ id: 'DESK1', name: 'Receiving desk' }],
   };
 
   const CLIENTS = [
@@ -66,6 +67,8 @@
   const CUSTOMERS = ['Harbour Hardware', 'Main Street DIY', 'Corner Builders', 'Hillside Hotel', 'Riverside School', 'Northgate Garage', 'Old Town Florist', 'Bayview Homes', 'Site Office North', 'Greenway Nursery'];
   const SUPPLIERS = { 'CL-PAINT': 'Brightwall factory', 'CL-GARDEN': 'Fieldstone yard', 'CL-FIX': 'Fixwell plant', 'CL-VOLT': 'Voltline import' };
   const LANES = ['OUT-01', 'OUT-02', 'OUT-03', 'OUT-04'];
+  const DESK_CLIENTS = ['CL-FIX'];
+  const RETURN_REASONS = ['Ordered too many', 'Damaged in transit', 'Wrong item sent', 'Ordered too many'];
   const PACK = 'PACK';
 
   function mulberry32(a) {
@@ -152,6 +155,9 @@
     x('addOrder', newOrder(wh(), 0, now));
     x('addOrder', newOrder(wh(), 1, now));
     x('addOrder', newOrder(wh(), 2, now));
+    // Fixwell's supplier is at the dock already, without a pallet list: the receiving desk takes it.
+    const glue = newDelivery(wh(), 0, ITEM.F3001, now);
+    if (glue) x('addDelivery', { ...glue, pallets: Math.min(glue.pallets, 4) });
     return `${rows.length + 14} pallets in stock for ${CLIENTS.length} clients, ${ITEMS.length} items, ${bins.length} bins`;
   }
 
@@ -210,7 +216,11 @@
     return { id: `SO-${id}`, customer: pick(CUSTOMERS), lane: pick(LANES), clientId, lines };
   }
 
-  /** A delivery for one client's category, with the supplier's pallet list (and serials for traced items). */
+  /**
+   * A delivery for one client's category, with the supplier's pallet list (and
+   * serials for traced items). Fixwell's supplier sends no list, and its labels
+   * carry no batch or best-before barcode: those go to the receiving desk.
+   */
   function newDelivery(wh, k, it, now) {
     const rng = mulberry32(104729 * (k + 1));
     const between = (a, b) => a + Math.floor(rng() * (b - a + 1));
@@ -231,7 +241,20 @@
       if (item.serialized) row.serials = serialsFor(item.itemNo, sscc, item.palletQty);
       list.push(row);
     }
-    return { id: `IN-${String(k + 1).padStart(4, '0')}`, supplier: SUPPLIERS[it.clientId], category: it.category, clientId: it.clientId, pallets: list.length, list, at: 'dock' };
+    const id = `IN-${String(k + 1).padStart(4, '0')}`;
+    if (DESK_CLIENTS.includes(it.clientId)) return { id, supplier: SUPPLIERS[it.clientId], category: it.category, clientId: it.clientId, pallets: list.length, list: null, at: 'desk' };
+    return { id, supplier: SUPPLIERS[it.clientId], category: it.category, clientId: it.clientId, pallets: list.length, list, at: 'dock' };
+  }
+
+  /** Pallet `i` of a delivery that came without a list: what is physically on the dock. */
+  function deskPallet(delivery, i) {
+    const seed = [...delivery.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) + i * 7919;
+    const rng = mulberry32(seed);
+    const items = ITEMS.filter((x) => x.clientId === delivery.clientId && x.category === delivery.category && x.storage === 'rack');
+    const item = items[i % 3 === 2 ? 1 % items.length : 0];
+    const expiry = item.life ? isoDay(delivery.createdAt + (item.life - 10 - Math.floor(rng() * 30)) * DAY) : null;
+    const sscc = GS1.makeSscc(2, '0614141', 300000 + (Math.abs(seed) % 600000));
+    return { sscc, item, qty: item.palletQty, batch: lotFor(item.itemNo, expiry, Number(delivery.id.slice(-2)) || 0), expiry };
   }
 
   // ---- The bots ----
@@ -290,9 +313,20 @@
         if (!t) return null;
         if (t.claimedBy !== id) return { op: 'claimWaveTask', args: { task: t.id }, ms: jitter(rand, 10 * SEC), what: `take task ${t.id}`, key: `claim:${t.id}` };
         const walk = t.kind === 'bin' ? 40 * SEC : 90 * SEC;
+        // Now and then a bin holds less than the system thinks: report it, and stock control counts it.
+        if (t.kind === 'bin' && t.qty >= 2 && shortAt(t.id)) {
+          const found = t.qty - 1 - (shortAt(t.id) % 2);
+          return { op: 'shortWaveTask', args: { task: t.id, found }, ms: jitter(rand, walk), what: `report a short pick: only ${found} of ${t.qty} × ${t.itemNo} at ${wh.label(t.loc)}`, key: `short:${t.id}` };
+        }
         return { op: 'confirmWaveTask', args: { task: t.id, scan: t.sscc || t.loc }, ms: jitter(rand, walk + 5 * SEC * Math.min(t.qty, 12)), what: `pick ${t.qty} × ${t.itemNo} at ${wh.label(t.loc)}`, key: `pick:${t.id}` };
       },
     };
+  }
+
+  /** About one bin pick in five comes up short: the same picks every time. */
+  function shortAt(taskId) {
+    const h = [...String(taskId)].reduce((a, c) => (a * 33 + c.charCodeAt(0)) >>> 0, 5381);
+    return h % 5 === 1 ? 1 + (h % 2) : 0;
   }
 
   const cartonsOf = (wh, orderId) => Object.values(wh.holders || {}).filter((h) => h.orderId === orderId && h.series === 'OUT' && h.cartonStatus);
@@ -341,6 +375,148 @@
     },
   };
 
+  /** The receiving desk: two people, one scanning, one typing what the labels lack. */
+  const desk = {
+    id: 'DESK1', name: 'Receiving desk', screen: 'desk.html', card: 'deskCard',
+    next(wh, now, rand) {
+      const d = wh.desks.DESK1;
+      if (!d) return null;
+      const task = d.taskId && wh.tasks[d.taskId];
+      if (!task) {
+        const waiting = wh._liveTasks().find((t) => t.type === 'RECEIVE' && t.status === 'open' && t.deskOnly);
+        if (!waiting) return null;
+        return { op: 'deskStart', args: { id: 'DESK1', deliveryId: waiting.deliveryId }, ms: jitter(rand, 3 * MIN), what: `take delivery ${waiting.deliveryId} to the desk`, key: `desk:${waiting.deliveryId}` };
+      }
+      const delivery = wh.deliveries[task.deliveryId];
+      const n = delivery.received.length;
+      const p = deskPallet(delivery, n);
+      const draft = task.draft || {};
+      const key = (f) => `${delivery.id}:${n}:${f}`;
+      const what = (x) => `pallet ${n + 1} of ${delivery.expected}: ${x}`;
+      if (!draft.batch) return { op: 'deskEnter', args: { id: 'DESK1', field: 'batch', value: p.batch }, ms: jitter(rand, 25 * SEC), what: what(`type batch ${p.batch}`), key: key('batch') };
+      if (!draft.sscc) return { op: 'scan', args: { id: 'DESK1', code: `00${p.sscc}` }, ms: jitter(rand, 15 * SEC), what: what('scan the pallet label'), key: key('sscc') };
+      if (!draft.item) return { op: 'scan', args: { id: 'DESK1', code: `(02)${GS1.gtin14(p.item.gtin)}(37)${p.qty}` }, ms: jitter(rand, 10 * SEC), what: what('scan the item and count'), key: key('item') };
+      if (p.expiry && !draft.expiry) return { op: 'deskEnter', args: { id: 'DESK1', field: 'expiry', value: `${p.expiry.slice(8, 10)}-${p.expiry.slice(5, 7)}-${p.expiry.slice(0, 4)}` }, ms: jitter(rand, 20 * SEC), what: what('type the best-before'), key: key('expiry') };
+      if (!draft.qty) return { op: 'deskEnter', args: { id: 'DESK1', field: 'qty', value: String(p.qty) }, ms: jitter(rand, 10 * SEC), what: what('type the quantity'), key: key('qty') };
+      return null;
+    },
+  };
+
+  /** When the demo day began: the first orders go in with the stock. */
+  const dayStart = (wh) => Object.values(wh.orders).reduce((t, o) => Math.min(t, o.createdAt || t), Infinity);
+
+  /** What a bin is short of, as found by the picker: "only 3 of 5" in the check's note. */
+  function missingFor(check) {
+    const m = /only (\d+) of (\d+)/.exec(check.note || '');
+    return m ? Number(m[2]) - Number(m[1]) : 0;
+  }
+
+  /** Free rack pallets of an item for refilling bins, earliest best-before first. */
+  function refillSource(wh, itemNo) {
+    const waved = new Set(wh._openWaveTasks().map((t) => t.sscc).filter(Boolean));
+    return wh._livePallets()
+      .filter((p) => p.itemNo === itemNo && p.loc && wh.locations[p.loc] && wh.locations[p.loc].kind === 'rack' && !wh.locations[p.loc].checkHold
+        && !p.orderId && !wh._liveTaskFor(p.sscc) && !waved.has(p.sscc) && wh.shipState(p) === 'ok')
+      .sort((a, b) => String(a.expiry || '9999').localeCompare(String(b.expiry || '9999')) || a.qty - b.qty)[0] || null;
+  }
+
+  /** A bin with room for `kg` more of this item: one that already holds it, else an empty one. */
+  function binFor(wh, item, kg) {
+    const bins = Object.values(wh.locations).filter((l) => l.kind === 'bin' && !l.checkHold).sort((a, b) => a.code.localeCompare(b.code));
+    const room = (l) => ((l.capacity && l.capacity.maxWeightKg) || 25) - wh._binWeight(l.code);
+    const holds = (l) => (wh.binStock[l.code] || []).some((x) => x.itemNo === item.itemNo);
+    const empty = (l) => !(wh.binStock[l.code] || []).length;
+    return bins.find((l) => holds(l) && room(l) >= kg) || bins.find((l) => empty(l) && room(l) >= kg) || null;
+  }
+
+  /** Stock control: clears stock checks, keeps the bins filled from rack pallets, counts a bin now and then. */
+  const stock = {
+    id: 'S1', name: 'Stock control S1', screen: 'app.html?as=stock#stockctl', card: 'stockCard',
+    next(wh, now, rand) {
+      // 1. A check: count what is there, put the books right, close it.
+      for (const c of wh.openChecks()) {
+        const place = wh.locations[c.loc];
+        if (place && place.kind === 'bin' && c.itemNo && !(place.lastCount >= c.raisedAt)) {
+          const before = (wh.binStock[c.loc] || []).filter((l) => l.itemNo === c.itemNo).reduce((n, l) => n + l.qty, 0);
+          const counted = Math.max(0, before - missingFor(c));
+          return { op: 'binCount', args: { loc: c.loc, itemNo: c.itemNo, counted, reason: 'recount' }, ms: jitter(rand, 3 * MIN), what: `count ${c.itemNo} in ${c.loc} for check ${c.id}`, key: `count:${c.id}` };
+        }
+        const corrected = place && place.kind === 'bin' && missingFor(c) > 0;
+        return { op: 'closeCheck', args: { id: c.id, outcome: corrected ? 'corrected' : 'ok', note: corrected ? `Bin was ${missingFor(c)} short; count corrected` : 'Counted, stock is right' }, ms: jitter(rand, 40 * SEC), what: `close check ${c.id}`, key: `close:${c.id}` };
+      }
+      // 2. Bins running low: boxes off a rack pallet into a bin.
+      for (const item of ITEMS.filter((i) => i.sells === 'units' && !i.serialized)) {
+        const per = item.packs[0] ? item.packs[0].per : 1;
+        const inBins = Object.values(wh.binStock || {}).reduce((n, lines) => n + lines.filter((l) => l.itemNo === item.itemNo).reduce((m, l) => m + l.qty, 0), 0);
+        if (inBins >= 2 * per) continue;
+        const source = refillSource(wh, item.itemNo);
+        if (!source) continue;
+        const boxes = Math.min(3, Math.floor(source.qty / per), Math.max(1, Math.floor(20 / (per * item.kg))));
+        if (boxes < 1) continue;
+        const qty = boxes * per;
+        const bin = binFor(wh, item, qty * item.kg + 0.01);
+        if (!bin) continue;
+        return { op: 'binRefill', args: { loc: bin.code, sscc: source.sscc, qty }, ms: jitter(rand, 4 * MIN), what: `refill ${bin.code} with ${boxes} box${boxes === 1 ? '' : 'es'} of ${item.itemNo} from ${wh.label(source.loc)}`, key: `refill:${item.itemNo}:${source.sscc}:${bin.code}` };
+      }
+      // 3. A cycle count every 45 minutes: the bin counted longest ago.
+      const stocked = Object.keys(wh.binStock || {}).filter((code) => (wh.binStock[code] || []).length && !wh.locations[code].checkHold).map((code) => wh.locations[code]);
+      const lastAny = stocked.reduce((t, l) => Math.max(t, l.lastCount || 0), 0);
+      const due = (lastAny || dayStart(wh)) + 45 * MIN;
+      if (!stocked.length) return null;
+      if (now < due) return { wait: true, what: 'walking the bins until the next cycle count', ms: due - now, key: `cycle-wait:${lastAny}` };
+      const bin = stocked.sort((a, b) => (a.lastCount || 0) - (b.lastCount || 0) || a.code.localeCompare(b.code))[0];
+      const line = wh.binStock[bin.code][0];
+      const counted = wh.binStock[bin.code].filter((l) => l.itemNo === line.itemNo).reduce((n, l) => n + l.qty, 0);
+      return { op: 'binCount', args: { loc: bin.code, itemNo: line.itemNo, counted, reason: 'recount' }, ms: jitter(rand, 3 * MIN), what: `cycle count ${line.itemNo} in ${bin.code}`, key: `cycle:${bin.code}:${lastAny}` };
+    },
+  };
+
+  /** What went out on an order, per item: the batch and best-before packed, so a restock keeps them. */
+  function packedLot(wh, orderId, itemNo) {
+    for (const h of Object.values(wh.holders || {})) {
+      if (h.orderId !== orderId || !h.packed) continue;
+      const row = h.packed.find((p) => p.itemNo === itemNo);
+      if (row) return { batch: row.batch || null, expiry: row.expiry || null };
+    }
+    return { batch: null, expiry: null };
+  }
+
+  /** Returns: a customer sends something back now and then; it is booked, then graded. */
+  const returns = {
+    id: 'returns', name: 'Returns', screen: 'app.html?as=office#returns', card: 'returnsCard',
+    next(wh, now, rand) {
+      const all = Object.values(wh.returns || {});
+      // Grade what waits: damaged goes to scrap, a wrong item on hold, the rest back into a bin.
+      for (const rma of all) {
+        const line = rma.lines.find((l) => wh._returnLeft(l));
+        if (!line) continue;
+        const qty = wh._returnLeft(line);
+        const item = wh.items[line.itemNo];
+        if (/Damaged/.test(rma.reason || '')) return { op: 'gradeReturn', args: { id: rma.id, itemNo: line.itemNo, grade: 'scrap', qty }, ms: jitter(rand, 2 * MIN), what: `scrap ${qty} × ${line.itemNo} from ${rma.id}`, key: `grade:${rma.id}:${line.itemNo}` };
+        if (/Wrong/.test(rma.reason || '')) return { op: 'gradeReturn', args: { id: rma.id, itemNo: line.itemNo, grade: 'quarantine', qty }, ms: jitter(rand, 2 * MIN), what: `hold ${qty} × ${line.itemNo} from ${rma.id} for a look`, key: `grade:${rma.id}:${line.itemNo}` };
+        const kg = (ITEM[line.itemNo] || { kg: 1 }).kg * qty + 0.01;
+        const bin = binFor(wh, item, kg);
+        if (!bin) return { op: 'gradeReturn', args: { id: rma.id, itemNo: line.itemNo, grade: 'quarantine', qty }, ms: jitter(rand, 2 * MIN), what: `hold ${qty} × ${line.itemNo} from ${rma.id}: no bin free`, key: `grade:${rma.id}:${line.itemNo}` };
+        const lot = packedLot(wh, rma.orderId, line.itemNo);
+        return { op: 'gradeReturn', args: { id: rma.id, itemNo: line.itemNo, grade: 'restock', qty, to: bin.code, batch: lot.batch, expiry: lot.expiry }, ms: jitter(rand, 3 * MIN), what: `restock ${qty} × ${line.itemNo} from ${rma.id} into ${bin.code}`, key: `grade:${rma.id}:${line.itemNo}` };
+      }
+      // A new return about every hour and a half, against a piece order shipped a while ago.
+      const k = all.length;
+      const last = all.reduce((t, r) => Math.max(t, r.receivedAt || 0), dayStart(wh));
+      const due = last + (60 + Math.floor(mulberry32(97 * (k + 1))() * 60)) * MIN;
+      if (now < due) return { wait: true, what: 'waiting for a customer to send something back', ms: due - now, key: `rwait:${k}` };
+      const shipped = Object.values(wh.orders).filter((o) => o.status === 'shipped' && o.shippedAt < now - 30 * MIN && o.lines.every((l) => l.kind === 'each') && !all.some((r) => r.orderId === o.id));
+      if (!shipped.length) return { wait: true, what: 'waiting for a customer to send something back', ms: 15 * MIN, key: `rnone:${k}` };
+      const pickOne = mulberry32(131 * (k + 1));
+      const order = shipped[Math.floor(pickOne() * shipped.length)];
+      const line = wh.returnable(order.id).lines.find((l) => l.left > 0 && !l.serialized);
+      if (!line) return null;
+      const qty = Math.min(line.left, 1 + Math.floor(pickOne() * 3));
+      const reason = RETURN_REASONS[k % RETURN_REASONS.length];
+      return { op: 'receiveReturn', args: { orderId: order.id, itemNo: line.itemNo, qty, reason }, ms: jitter(rand, 3 * MIN), what: `book a return from ${order.customer}: ${qty} × ${line.itemNo} (${reason.toLowerCase()})`, key: `return:${order.id}` };
+    },
+  };
+
   /** Everyone on the demo floor, in the order the role list shows them. */
   function crew() {
     return [
@@ -352,6 +528,9 @@
       picker('P1', 'Bin picker P1', ['bin'], 'bins.html?as=P1'),
       packer,
       loader,
+      desk,
+      stock,
+      returns,
     ];
   }
 
