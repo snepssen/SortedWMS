@@ -32,14 +32,18 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - The demo on GitHub Pages: a distribution centre for four clients worked by bots in every role on the real screens, on a clock you can pause or speed up. Each role's card points at what just happened that concerns it; take over any role and work it yourself.
 - One light/dark setting (Auto, Light or Dark) for every screen, kept in the browser; Auto follows the device.
 
+**Connections** ([CONNECTIONS.md](CONNECTIONS.md))
+- API keys per system, with a role, for one client or all; revoked at once.
+- Orders and ASNs in: one intake, JSON or CSV, safe to send twice, the sender's reference carried through; and a drop folder.
+- Confirmations out: goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments, in a numbered log a system reads from where it left off, or pushed to it by signed webhooks or an outbox folder.
+
 ## Next
 
 In order of priority:
 
-1. **Connections.** Done: API keys per system; a numbered log of confirmations (goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments) that a system reads from where it left off; one intake for orders and ASNs, JSON or CSV, that is safe to send twice, and a drop folder ([CONNECTIONS.md](CONNECTIONS.md)). Next: webhooks and an outbox folder, so messages are pushed out as they happen.
-2. **Check on real devices.** The bin handheld opened with no connection at all on a phone, and the camera scanner with a real camera. Both are tested in a browser only.
-3. **A4 documents as PDF.** Delivery notes, packing slips and loading lists print from the browser today.
-4. **Smaller snapshots.** History stays in the saved state; with a year of it a snapshot takes about 0.16 s to write, every 200 changes. Old history could move out of the snapshot into its own table.
+1. **Check on real devices.** The bin handheld opened with no connection at all on a phone, and the camera scanner with a real camera. Both are tested in a browser only.
+2. **A4 documents as PDF.** Delivery notes, packing slips and loading lists print from the browser today.
+3. **Smaller snapshots.** History stays in the saved state; with a year of it a snapshot takes about 0.16 s to write, every 200 changes. Old history could move out of the snapshot into its own table.
 
 ## Later
 
