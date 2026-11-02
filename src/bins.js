@@ -244,6 +244,45 @@
       return { loc: bin.code, itemNo: item.itemNo, qty: amount, taken, orderId: order ? order.id : null, serials: sns || null, contents: this.binContents(bin.code) };
     };
 
+    /**
+     * Refill a bin from a rack pallet: boxes or pieces off the pallet into the
+     * bin, keeping the pallet's batch and best-before. The pallet stays in its
+     * slot; when it runs empty it is gone.
+     */
+    proto.binRefill = function ({ loc, sscc, qty, by } = {}) {
+      const bin = this._bin(loc);
+      const key = String(sscc || '').trim().replace(/^\(00\)|^00(?=\d{18}$)/, '');
+      const pallet = this.pallets[key];
+      if (!pallet || pallet.status === 'shipped' || !pallet.loc) throw new Error(`No pallet ${sscc} in stock`);
+      const tail = `…${pallet.sscc.slice(-6)}`;
+      if (!this.locations[pallet.loc] || this.locations[pallet.loc].kind !== 'rack') throw new Error(`Pallet ${tail} is not in a rack`);
+      if (pallet.orderId) throw new Error(`Pallet ${tail} is picked for order ${pallet.orderId}`);
+      if (this._liveTaskFor(pallet.sscc)) throw new Error(`A truck has a job for pallet ${tail}`);
+      if (this._openWaveTasks().some((t) => t.sscc === pallet.sscc)) throw new Error(`Pallet ${tail} has picks waiting in a wave`);
+      if (this._assertNotHeld) this._assertNotHeld(pallet.loc);
+      if (this.shipState(pallet) === 'blocked') throw new Error(`Pallet ${tail} is on hold`);
+      const item = this.items[pallet.itemNo];
+      if (item.serialized) throw new Error(`${item.itemNo} is traced by serial number: put it in the bin with its serials instead`);
+      const amount = whole(qty, 'Quantity');
+      if (amount > pallet.qty) throw new Error(`Pallet ${tail} has only ${pallet.qty}`);
+      this._assertBinTakes(bin, item, amount);
+      const actor = by || this._actor || 'operator';
+      const from = pallet.loc;
+      pallet.qty -= amount;
+      if (pallet.openBox) pallet.openBox = Math.min(pallet.openBox, pallet.qty);
+      this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from, to: bin.code, qty: amount, event: 'moved', by: actor, note: `${item.itemNo} into bin ${bin.code}` });
+      if (pallet.qty === 0) {
+        this._remove(pallet);
+        pallet.status = 'shipped';
+        pallet.removed = 'emptied';
+        pallet.goneAt = this.now();
+        pallet.openBox = 0;
+      }
+      this.binPut({ loc: bin.code, itemNo: item.itemNo, qty: amount, batch: pallet.batch, expiry: pallet.expiry, by: actor, event: 'moved', note: `${item.itemNo} from pallet ${tail}` });
+      this.log(`${bin.code} refilled with ${amount} ${item.itemNo} from pallet ${tail} at ${from}${pallet.qty ? '' : ', now empty'}`);
+      return { loc: bin.code, sscc: pallet.sscc, itemNo: item.itemNo, qty: amount, left: pallet.qty, contents: this.binContents(bin.code) };
+    };
+
     /** Move loose stock from one bin to another, keeping batch and expiry. */
     proto.binMove = function ({ from, to, itemNo = null, code = null, qty = 1, unit = null, batch = null, serials = null, by } = {}) {
       const source = this._bin(from);

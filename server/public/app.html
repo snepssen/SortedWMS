@@ -331,6 +331,8 @@
         <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" required></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><label>Mode<select name="mode"><option value="units">units to max</option><option value="pallet">whole pallet</option></select></label><button>Save min / max</button></form>
         <form class="form" data-act="plan-replen"><button class="primary">Queue replenishment</button></form>
         <form class="form" data-act="replenish"><label>Item<input name="itemNo" required></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
+        <h3>Refill a bin from a pallet</h3><p class="hint">Boxes or pieces off a rack pallet into a bin. The bin gets the pallet's batch and best-before; the pallet stays in its slot.</p>
+        <form class="form" data-act="bin-refill"><label>Pallet SSCC<input name="sscc" required autocomplete="off"></label><label>Bin<input name="loc" required></label><label>Qty<input name="qty" type="number" min="1" value="12" required></label><button>Refill the bin</button></form>
         <form class="form" data-act="consolidate"><label>PAL plates<textarea name="pals" placeholder="PAL0000001 PAL0000002"></textarea></label><label>At<input name="at" value="CONSO00"></label><label>Keep MASTER<input name="master" placeholder="blank = earliest"></label><button>Consolidate</button></form>
         <p class="hint">The earliest MASTER survives unless you name another MASTER already on these pallets. The other MASTER plates are retired and their numbers are not reused.</p></section>`;
     },
@@ -1055,6 +1057,7 @@
     if (name === 'issue-plates') return api('POST', '/api/holders/issue', { sscc: data.sscc });
     if (name === 'issue-series') return api('POST', '/api/holders/series', { series: data.series, itemNo: data.itemNo, qty: Number(data.qty), loc: data.loc });
     if (name === 'replenish') return api('POST', '/api/replenish', data);
+    if (name === 'bin-refill') return api('POST', '/api/bins/refill', { sscc: data.sscc, loc: data.loc, qty: Number(data.qty) });
     if (name === 'consolidate') return api('POST', '/api/consolidate', { pals: String(data.pals || '').split(/\s+/).filter(Boolean), at: data.at, master: data.master || null });
     if (name === 'val-start') return api('POST', '/api/val/start', { stationId: data.stationId, workOrderId: data.workOrderId || null });
     if (name === 'val-scan') return api('POST', '/api/val/scan', data);

@@ -34,9 +34,19 @@ test('demo: a shift worked by the bots ships orders, takes in deliveries, and ev
   assert.ok(orders.filter((o) => o.status === 'shipped').length >= 40, 'orders go all the way out');
   assert.ok(orders.some((o) => o.lines.some((l) => l.pallets)) && orders.some((o) => o.lines.some((l) => l.kind === 'each')), 'whole-pallet and piece orders');
   const by = new Set(done.map((d) => d.bot));
-  for (const id of ['office', 'R1', 'R2', 'R3', 'MU1', 'P1', 'packer', 'loader']) assert.ok(by.has(id), `${id} worked`);
+  for (const id of ['office', 'R1', 'R2', 'R3', 'MU1', 'P1', 'packer', 'loader', 'DESK1', 'S1', 'returns']) assert.ok(by.has(id), `${id} worked`);
   const deliveries = Object.values(wh.deliveries);
   assert.ok(deliveries.length >= 3 && deliveries.filter((d) => d.status === 'received').length >= deliveries.length - 1, 'deliveries are booked and received');
+  // Short picks at a bin are counted, corrected and closed by stock control.
+  const checks = Object.values(wh.checks || {});
+  assert.ok(checks.length >= 1, 'short picks raise checks');
+  assert.ok(checks.some((c) => c.outcome === 'corrected'), 'a short bin is corrected');
+  assert.ok((wh.adjustments || []).some((a) => a.reason === 'recount' && a.after < a.before), 'the count takes the missing pieces off the books');
+  // Bins are refilled from rack pallets; the desk receives a delivery without a list; returns are graded.
+  assert.ok(done.some((d) => d.op === 'binRefill'));
+  assert.ok(deliveries.some((d) => d.at === 'desk' && d.status === 'received'), 'the receiving desk took a delivery in');
+  const rmas = Object.values(wh.returns || {});
+  assert.ok(rmas.length >= 2 && rmas.some((r) => r.status === 'done'), 'returns are booked and graded');
   assert.ok(Object.values(wh.serials || {}).some((s) => s.status === 'shipped' || s.orderId), 'traced drills ship with their serial numbers');
 
   // The journal is the warehouse: replaying it gives the same state.
@@ -91,4 +101,30 @@ test('the Pages build has the demo: its own journal and clock, the demo warehous
   assert.match(hub, /<!-- WMS -->/);
   assert.match(hub, /data-take/);
   assert.match(hub, /Do this step/);
+});
+
+test('a bin is refilled from a rack pallet, with the pallet\'s batch and best-before', () => {
+  const t = Date.UTC(2026, 10, 2, 8);
+  const wh = Site.buildWarehouse(Demo.SITE, () => t);
+  wh.addItem({ itemNo: 'GLUE', name: 'Glue', category: 'SMALL', palletQty: 48 });
+  wh.addItem({ itemNo: 'DRILL', name: 'Drill', category: 'SMALL', palletQty: 4, bestBefore: false });
+  wh.setItemSerials('DRILL', true);
+  wh.generateGuided({ sections: { count: 1, name: 'Pick' }, layouts: [{ type: 'shelf', aisles: { count: 1 }, bays: { count: 1, name: 'Shelf 1' }, positions: { count: 2, name: 'Bin 1' }, levels: { count: 1 } }] });
+  const bins = Object.values(wh.locations).filter((l) => l.kind === 'bin').map((l) => l.code).sort();
+  const GS1 = require('../src/gs1');
+  const a = GS1.makeSscc(0, '0614141', 501);
+  const b = GS1.makeSscc(0, '0614141', 502);
+  wh.stockPallet(wh.resolve('AC01A1'), { sscc: a, itemNo: 'GLUE', qty: 48, batch: 'G7', expiry: '2027-06-01' });
+  wh.stockPallet(wh.resolve('AC01A2'), { sscc: b, itemNo: 'DRILL', qty: 4, batch: 'D1' });
+  const r = wh.binRefill({ loc: bins[0], sscc: a, qty: 12, by: 'S1' });
+  assert.equal(r.left, 36);
+  assert.deepEqual(wh.binStock[bins[0]].map((l) => [l.itemNo, l.qty, l.batch, l.expiry]), [['GLUE', 12, 'G7', '2027-06-01']]);
+  assert.throws(() => wh.binRefill({ loc: bins[0], sscc: a, qty: 99 }), /has only 36/);
+  assert.throws(() => wh.binRefill({ loc: bins[1], sscc: b, qty: 1 }), /traced by serial number/);
+  wh.raiseCheck({ loc: 'AC01A1', note: 'looks short' });
+  assert.throws(() => wh.binRefill({ loc: bins[0], sscc: a, qty: 12 }), /held for stock check/);
+  wh.closeCheck({ id: Object.keys(wh.checks)[0] });
+  wh.binRefill({ loc: bins[0], sscc: a, qty: 36 });
+  assert.equal(wh.pallets[a].status, 'shipped', 'an emptied pallet is gone');
+  assert.ok(!wh.locations[wh.resolve('AC01A1')].sscc, 'and its slot is free');
 });
