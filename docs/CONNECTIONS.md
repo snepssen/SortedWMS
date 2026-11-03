@@ -216,6 +216,48 @@ For a system that can only write files: put a `.json` or `.csv` file in the serv
 - **CSV files:** the file name says what it holds: `orders-….csv` or `asn-….csv`.
 - **Fixing a failed file:** fix it and drop it again. Documents it already took in answer `duplicate`.
 
-### Still to come
+## Pushed out: webhooks and the outbox folder
 
-Webhooks and an outbox folder: messages pushed to another system as they happen, not only read.
+A system that would rather be told than ask gets the same messages pushed to it.
+
+### Webhooks
+
+An administrator adds a webhook under **Connections**, or with `POST /api/webhooks`:
+
+```json
+{ "url": "https://erp.example/sortedwms", "types": ["order.shipped", "delivery.received"], "clientId": "CL-PAINT" }
+```
+
+- **What it gets:** leave out `types` for every message, and `clientId` for every client's.
+- **From when:** a new webhook starts with the next message. Add `"fromStart": true` to send every message still in the log.
+- **How it arrives:** new messages are POSTed in order, a batch at a time:
+
+  ```json
+  { "webhook": 3, "messages": [ { "seq": 128, "type": "order.shipped", … }, … ], "gap": false }
+  ```
+
+  - **`X-Sorted-Signature`:** `sha256=` and the HMAC-SHA256 of the raw body, keyed with the webhook's secret. The secret is shown once, when the webhook is added.
+  - **`X-Sorted-Delivery`:** names the batch (`webhook-first-last`), so a receiver can tell a batch it has already handled.
+- **Only a 2xx answer moves it on.** Anything else, or no answer within 10 seconds, is tried again later. The wait grows from 5 seconds to 15 minutes, so nothing is skipped while the other side is down. **Try now** on the Connections screen (`POST /api/webhooks/:id/retry`) skips the wait.
+- **After a restart:** where each webhook has got to is kept in the database, so it carries on from there.
+- **On screen:** the Connections screen shows each webhook's position, how many messages wait, and its last error.
+
+Checking the signature, in Node:
+
+```js
+const { createHmac, timingSafeEqual } = require('crypto');
+const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
+const ok = timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers['x-sorted-signature']));
+```
+
+A batch can arrive twice: the receiver answered, but the answer was lost on the way back. Use `seq` to skip messages you have already handled.
+
+Adding and removing webhooks is recorded in the sign-in audit log. A webhook URL is reached from the server, so only an administrator can add one.
+
+### The outbox folder
+
+Set `SORTED_OUTBOX` to a folder, and every message is written there as a file of its own: `000128-order.shipped.json`.
+
+- **Whole files only:** each file is written under a temporary name first, so a reader never sees half of one.
+- **After a restart:** the server remembers where it got to and carries on.
+- **Housekeeping:** the reading system moves or deletes the files it has handled.

@@ -407,6 +407,7 @@
       const roles = ['manager', 'office', 'inbound', 'picker', 'stock', 'client'];
       const local = Boolean(window.SORTED_DEMO);
       const keys = local ? [] : (await api('GET', '/api/keys')).keys;
+      const hooks = local ? null : await api('GET', '/api/webhooks').catch(() => null);
       const log = await api('GET', '/api/messages?limit=1000');
       const recent = log.messages.slice(-15).reverse();
       const sum = (m) => {
@@ -422,9 +423,13 @@
         <form class="form" data-act="key-create"><label>Name<input name="name" required placeholder="e.g. webshop"></label><label>Role<select name="role">${roles.map((r) => `<option ${r === 'office' ? 'selected' : ''}>${r}</option>`).join('')}</select></label><label>Client (for a client key)<input name="clientId" placeholder="e.g. CL-ACME"></label><button class="primary">Make a key</button></form>
         <div id="keyOut"></div>
         ${table(['Name', 'Role', 'Client', 'Made', 'Last used', ''], keys.map((k) => `<tr><td>${esc(k.name)}</td><td>${esc(k.roleLabel)}</td><td>${esc(k.clientId || '')}</td><td>${new Date(k.createdAt).toLocaleDateString()}${k.createdBy ? ` by ${esc(k.createdBy)}` : ''}</td><td>${k.lastUsed ? new Date(k.lastUsed).toLocaleString() : 'never'}</td><td>${k.revokedAt ? 'revoked' : `<button type="button" data-act="key-revoke" data-id="${k.id}">Revoke</button>`}</td></tr>`))}`;
+      const hookPart = !hooks ? '' : `<section><h2>Webhooks</h2><p class="hint">Messages pushed to another system as they happen: POSTed in order, a batch at a time, signed with the webhook's secret (<code>X-Sorted-Signature</code>). Only a 2xx answer moves a webhook on; while the other side is down it is tried again, waiting longer each time, and nothing is skipped.</p>
+        <form class="form" data-act="hook-add"><label>URL<input name="url" required placeholder="https://erp.example/sortedwms" size="34"></label><label>Messages (blank for all)<input name="types" placeholder="order.shipped delivery.received"></label><label>Client (blank for all)<input name="clientId" placeholder="e.g. CL-ACME"></label><button class="primary">Add webhook</button></form>
+        <div id="hookOut"></div>
+        ${table(['URL', 'Messages', 'Client', 'Up to #', 'Waiting', 'State', ''], hooks.webhooks.map((h) => `<tr><td class="wrap">${esc(h.url)}</td><td>${esc((h.types || ['all']).join(', '))}</td><td>${esc(h.clientId || 'all')}</td><td>${h.delivered}</td><td>${h.waiting == null ? '' : h.waiting}</td><td>${h.lastError ? `<span class="tag bad">${esc(h.lastError)}</span><div class="hint">${h.failures} tries, next at ${new Date(h.nextTry).toLocaleTimeString()}</div>` : h.lastOk ? `ok ${new Date(h.lastOk).toLocaleString()}` : 'nothing sent yet'}</td><td>${h.lastError ? `<button type="button" data-act="hook-retry" data-id="${h.id}">Try now</button> ` : ''}<button type="button" data-act="hook-remove" data-id="${h.id}">Remove</button></td></tr>`))}</section>`;
       return `<section><h2>Connections</h2><p class="hint">Other systems (a webshop, an ERP, a carrier) sign in with an API key: <code>Authorization: Bearer swk_…</code>. A key works with one role; a client key only sees that client's orders, stock and messages. It cannot be an administrator. See docs/CONNECTIONS.md.</p>${keyPart}</section>
         <section><h2>Messages out</h2><p class="hint">What the warehouse confirms to other systems, numbered: a connection reads <code>GET /api/messages?after=N</code> from the last number it took. ${log.last} so far.</p>
-        ${table(['#', 'When', 'Message', 'Client', 'What'], recent.map((m) => `<tr><td>${m.seq}</td><td>${esc(new Date(m.t).toLocaleString())}</td><td><code>${esc(m.type)}</code></td><td>${esc(m.clientId || '')}</td><td>${esc(sum(m))}</td></tr>`))}</section>`;
+        ${table(['#', 'When', 'Message', 'Client', 'What'], recent.map((m) => `<tr><td>${m.seq}</td><td>${esc(new Date(m.t).toLocaleString())}</td><td><code>${esc(m.type)}</code></td><td>${esc(m.clientId || '')}</td><td>${esc(sum(m))}</td></tr>`))}</section>${hookPart}`;
     },
     async roles() {
       const cat = await api('GET', '/api/roles');
@@ -824,6 +829,8 @@
         $('#main').insertAdjacentHTML('afterbegin', msg(`Temporary password for ${reset.username}: ${reset.temporaryPassword}. They must change it at the next sign-in.`, true));
         return;
       }
+      if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
+      if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
@@ -937,6 +944,13 @@
       document.getElementById('paSscc').value = s.sscc;
       document.getElementById('paTo').value = s.to || '';
       document.getElementById('paOut').innerHTML = s.to ? msg(`…${s.sscc.slice(-6)} ${s.itemNo} goes to ${s.to}`, true) : msg('No free slot of its category. Name one, or free one first', false);
+      return;
+    }
+    if (form.dataset.act === 'hook-add') {
+      const r = await api('POST', '/api/webhooks', { url: data.url, types: data.types || null, clientId: data.clientId || null });
+      await draw();
+      const out = document.getElementById('hookOut');
+      if (out) out.innerHTML = `<div class="msg ok">Webhook ${esc(r.url)} added; it gets messages from #${r.delivered + 1} on. Its secret: <code style="user-select:all">${esc(r.secret)}</code><br>Give it to that system to check <code>X-Sorted-Signature</code> (HMAC-SHA256 of the body). It is not shown again.</div>`;
       return;
     }
     if (form.dataset.act === 'key-create') {

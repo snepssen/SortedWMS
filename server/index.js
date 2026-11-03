@@ -19,7 +19,7 @@ const { permissionFor } = require('./permissions');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
@@ -161,6 +161,20 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && req.method === 'POST' && url.pathname === '/api/keys') {
         try { return send(200, auth.createApiKey(body, by)); } catch (e) { return send(400, { error: e.message }); }
       }
+      // Webhooks: messages pushed to another system as they happen (server/outbox.js).
+      if (outbox && req.method === 'GET' && url.pathname === '/api/webhooks') return send(200, { webhooks: outbox.list(), types: outbox.TYPES });
+      if (outbox && req.method === 'POST' && url.pathname === '/api/webhooks') {
+        try { const made = outbox.add(body, by); if (auth) auth.record('webhook-added', by, { url: made.url }); return send(200, made); } catch (e) { return send(400, { error: e.message }); }
+      }
+      const hookAct = url.pathname.match(/^\/api\/webhooks\/(\d+)\/(remove|retry)$/);
+      if (outbox && req.method === 'POST' && hookAct) {
+        try {
+          if (hookAct[2] === 'retry') return send(200, outbox.retry(hookAct[1]));
+          const gone = outbox.remove(hookAct[1]);
+          if (auth) auth.record('webhook-removed', by, { id: gone.removed });
+          return send(200, gone);
+        } catch (e) { return send(400, { error: e.message }); }
+      }
       const keyRevoke = url.pathname.match(/^\/api\/keys\/(\d+)\/revoke$/);
       if (auth && req.method === 'POST' && keyRevoke) {
         try { return send(200, auth.revokeApiKey(keyRevoke[1], by)); } catch (e) { return send(400, { error: e.message }); }
@@ -198,7 +212,10 @@ function main() {
   // A copy of the database a day, the newest 14 kept. SORTED_BACKUPS=0 turns it off.
   const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups'), { keep: Number(process.env.SORTED_BACKUP_KEEP) || 14 });
   const hardware = createHardware({ printers, store });
-  const server = createServer({ store, printers, auth, hardware, backups });
+  // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
+  const outbox = require('./outbox').createOutbox({ store });
+  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }) });
@@ -210,8 +227,9 @@ function main() {
     else if (boot.created) console.log(`Administrator ${boot.username} created from SORTED_ADMIN_PASSWORD`);
     if (demoUsers.length) console.log(`Sample sign-in (password sorted-<role>): ${demoUsers.join(', ')}`);
     if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
+    if (process.env.SORTED_OUTBOX) console.log(`Outbox folder for messages: ${process.env.SORTED_OUTBOX}`);
   });
-  const stop = () => { clearInterval(tick); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); stopOutbox(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }
