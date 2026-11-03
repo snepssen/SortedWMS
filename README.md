@@ -10,7 +10,7 @@ Every screen has a **Theme** picker: Auto (follows the device), Light or Dark. T
 
 A fresh warehouse has temperature zones, lot and expiry, FEFO and high-value PAL/MASTER plates turned off, and one category, General. A preset turns on what that kind of building uses; anything can be switched later.
 
-Other systems connect with an API key and read what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log: see [docs/CONNECTIONS.md](docs/CONNECTIONS.md).
+Other systems connect with an API key: they send orders and ASNs in (JSON, CSV, or files in a drop folder; safe to send twice) and read what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log. See [docs/CONNECTIONS.md](docs/CONNECTIONS.md).
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -297,7 +297,7 @@ Settings, through environment variables:
 | `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page, the real screens running in the browser, and the demo in `demo/` (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What is done, and what could come next. |
-| `docs/CONNECTIONS.md`, `src/messages.js` | Connections: API keys, and the message log other systems read. |
+| `docs/CONNECTIONS.md`, `src/messages.js`, `src/intake.js`, `server/inbox.js` | Connections: API keys, the message log other systems read, the intake for orders and ASNs, and the drop folder. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
 ## Two names per location

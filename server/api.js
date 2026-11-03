@@ -10,6 +10,7 @@
   'use strict';
   // The same routes run in the browser on Pages, where there is no require: use the globals the modules set there.
   const presetsLib = () => (typeof require === 'function' ? require('../src/presets') : globalThis.SortedPresets);
+  const Intake = () => (typeof require === 'function' ? require('../src/intake') : globalThis.SortedIntake);
   const locationsLib = () => (typeof require === 'function' ? require('../src/locations') : globalThis.SortedLocations);
   const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, SCAN_COMMANDS, COMMAND_PREFIX } = Engine;
 
@@ -161,6 +162,28 @@
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
     // Confirmations for other systems, read from where the reader left off (docs/CONNECTIONS.md).
+    // Orders and ASNs from other systems: one document, { documents: [...] }, or { type, csv }. Each is
+    // taken in on its own, so one bad document does not hold up the rest; a resend answers "duplicate".
+    on('POST', '/api/inbox', (_, q, b, by) => {
+      const own = ownClient();
+      let docs;
+      try {
+        docs = b.csv != null ? Intake().fromCsv(b.type, b.csv) : Array.isArray(b.documents) ? b.documents : [b];
+      } catch (e) { return { status: 400, error: e.message }; }
+      if (!docs.length) return { status: 400, error: 'Nothing to take in' };
+      if (docs.length > 500) return { status: 400, error: 'At most 500 documents a call' };
+      const results = docs.map((doc) => {
+        try {
+          if (own && doc.clientId && String(doc.clientId).trim().toUpperCase() !== own) throw new Error('That belongs to another client');
+          return run('intake', { doc: own ? { ...doc, clientId: own } : doc }, by);
+        } catch (e) { return { status: 'refused', type: doc && doc.type, ref: doc && doc.ref, error: e.message }; }
+      });
+      const refused = results.filter((r) => r.status === 'refused').length;
+      const single = b.csv == null && !Array.isArray(b.documents);
+      if (single && refused) return { status: /sent before with other content/.test(results[0].error) ? 409 : 400, error: results[0].error };
+      if (single) return results[0];
+      return { taken: results.length - refused, refused, results };
+    });
     on('GET', '/api/messages', (_, q) => wh().messageLog({ after: q.after, limit: q.limit, type: q.type || null, clientId: ownClient() }));
     on('GET', '/api/devices', () => [...Object.keys(wh().trucks), ...Object.keys(wh().desks)].map((id) => deviceView(wh(), id)));
     on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));

@@ -65,6 +65,8 @@
     releaseTrailerHold: (wh, a, by) => wh.releaseTrailerHold(String(req(a.id, 'id')), req(a.reason, 'reason'), by),
     scanLoading: (wh, a, by) => wh.scanLoading(String(req(a.id, 'id')), req(a.device, 'device'), req(a.code, 'code'), a.unload === undefined ? false : a.unload, by),
     shipOrder: (wh, a, by) => wh.shipOrder(String(req(a.id, 'id')), { seal: a.seal }, by),
+    // An order or ASN from another system, safe to send twice (src/intake.js).
+    intake: (wh, a) => wh.intake(a.doc || a),
     addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock', asn: a.asn || null, clientId: a.clientId || null, expectedAt: a.expectedAt || null }),
 
     // Master data and imports

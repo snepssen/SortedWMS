@@ -36,7 +36,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 
 In order of priority:
 
-1. **Connections.** Done: API keys per system, and a numbered log of confirmations (goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments) that a system reads from where it left off ([CONNECTIONS.md](CONNECTIONS.md)). Next: one intake for orders and ASNs that is safe to send twice, a drop folder, and webhooks.
+1. **Connections.** Done: API keys per system; a numbered log of confirmations (goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments) that a system reads from where it left off; one intake for orders and ASNs, JSON or CSV, that is safe to send twice, and a drop folder ([CONNECTIONS.md](CONNECTIONS.md)). Next: webhooks and an outbox folder, so messages are pushed out as they happen.
 2. **Check on real devices.** The bin handheld opened with no connection at all on a phone, and the camera scanner with a real camera. Both are tested in a browser only.
 3. **A4 documents as PDF.** Delivery notes, packing slips and loading lists print from the browser today.
 4. **Smaller snapshots.** History stays in the saved state; with a year of it a snapshot takes about 0.16 s to write, every 200 changes. Old history could move out of the snapshot into its own table.

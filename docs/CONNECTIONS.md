@@ -126,16 +126,96 @@ Stock changed outside the flow of orders and deliveries, for example a count, a 
 { "loc": "Pick-Shelf1-Bin3-High", "sscc": null, "itemNo": "F3002", "batch": null, "before": 30, "after": 29, "change": -1, "reason": "recount", "by": "S1" }
 ```
 
-## Into the warehouse
+## Into the warehouse: orders and ASNs
 
-Today orders and deliveries come in through the API, with the same key:
+Another system sends orders and ASNs (a supplier's advance shipping notice) to one intake:
 
-- `POST /api/orders`
-- `POST /api/deliveries`, carrying the supplier's pallet list
-- the CSV imports: `POST /api/import/orders`, `/api/import/items`, `/api/import/stock`
+```
+POST /api/inbox
+```
 
-These are next:
+This needs the `intake.write` permission, which the office and client roles have.
 
-- **One intake for orders and ASNs:** JSON or CSV, safe to send twice, with the other system's own reference carried through to the messages.
-- **A drop folder on the server** that feeds the same intake.
-- **Webhooks and an outbox folder:** messages pushed out, not only read.
+Every document carries **the sender's own reference, `ref`**. That makes sending safe to repeat:
+
+- **The same document again** is recognised. The answer is `"status": "duplicate"`, with the order or delivery it made the first time. A system that isn't sure its last call arrived just sends it again.
+- **The same ref with other content** is refused (HTTP 409). Nothing is booked twice or quietly changed. Change it in the warehouse, or send it under a new ref.
+- **The ref comes back** on the order's or delivery's messages (`"ref"` in `order.shipped`, `delivery.received` and returns).
+
+Items are found by item number or GTIN (`itemNo`, `gtin`, `ean` or `sku`).
+
+### An order
+
+```json
+{
+  "type": "order", "ref": "WEB-1001", "clientId": "CL-FIX", "customer": "Harbour Hardware",
+  "lines": [ { "itemNo": "F3001", "units": 6 }, { "gtin": "6141410000113", "units": 24 } ]
+}
+```
+
+- **Lines:** each is in `units` (picked in the waves) or whole `pallets`.
+- **`lane`:** optional. Without one, the order goes to the shipping lane with the fewest open orders.
+- **`minDays`:** optional. The fewest days of best-before this customer accepts.
+- **Order number:** the ref, when it can be one. Otherwise the client and the ref, or a number.
+
+The answer:
+
+```json
+{ "status": "created", "type": "order", "ref": "WEB-1001", "id": "WEB-1001" }
+```
+
+### An ASN
+
+```json
+{
+  "type": "asn", "ref": "ASN-55", "clientId": "CL-PAINT", "supplier": "Brightwall factory", "expectedAt": "2026-11-03",
+  "pallets": [
+    { "sscc": "706141410000000011", "itemNo": "W1001", "qty": 60, "batch": "B7", "expiry": "2028-01-31" },
+    { "sscc": "706141410000000028", "itemNo": "T4001", "qty": 40, "batch": "L9", "serials": ["T4001-0001", "…"] }
+  ]
+}
+```
+
+- **What it books:** a delivery with the supplier's pallet list. At the dock, one scan of a pallet's SSCC receives it with everything on the list: item, quantity, batch, best-before and serials.
+- **Quantity:** a pallet without `qty` is a full pallet of its item.
+- **Category:** an ASN is for one category. It comes from the pallets, or you name it with `category`.
+- **Labels without a list:** `"at": "desk"` sends it to the receiving desk instead.
+
+### Several at once, and CSV
+
+Send a batch as `{ "documents": [ … ] }`, up to 500 a call. Each document is taken in on its own, so one bad document doesn't hold up the rest. The answer lists each one:
+
+```json
+{ "taken": 2, "refused": 1, "results": [ { "status": "created", … }, { "status": "refused", "ref": "WEB-2", "error": "Line 1: unknown item NOPE" }, { "status": "duplicate", … } ] }
+```
+
+Send CSV as `{ "type": "order", "csv": "…" }` or `{ "type": "asn", "csv": "…" }`:
+
+- **Format:** a header row, comma or semicolon. Rows with the same ref make one document.
+- **Order columns:** `ref, customer, client, lane, item (or gtin), units or pallets, minDays`.
+- **ASN columns:** `ref, supplier, client, category, expected, sscc, item (or gtin), qty, batch, expiry, serials`.
+
+```
+ref,customer,client,item,units
+WEB-7,Corner Builders,CL-FIX,F3001,6
+WEB-7,Corner Builders,CL-FIX,F3002,24
+```
+
+### A client's key
+
+A key with the client role takes in documents for its own client only. A document naming another client is refused.
+
+### The drop folder
+
+For a system that can only write files: put a `.json` or `.csv` file in the server's inbox folder.
+
+- **Where:** `data/inbox` by default. `SORTED_INBOX` sets another folder, and `SORTED_INBOX=0` turns it off.
+- **When:** every few seconds, each file that has stopped changing is taken in like `POST /api/inbox`.
+- **After:** the file moves to `done/` when every document in it was taken in, or to `failed/` when any was refused. A `.result.json` beside it says what became of each document.
+- **JSON files:** one document, a list, or `{ "documents": [ … ] }`.
+- **CSV files:** the file name says what it holds: `orders-….csv` or `asn-….csv`.
+- **Fixing a failed file:** fix it and drop it again. Documents it already took in answer `duplicate`.
+
+### Still to come
+
+Webhooks and an outbox folder: messages pushed to another system as they happen, not only read.

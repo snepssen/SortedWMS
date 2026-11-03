@@ -1271,6 +1271,13 @@
       return globalThis.SortedSerials;
     }
 
+    function loadIntake() {
+      if (typeof require === 'function') {
+        try { return require('./intake'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedIntake;
+    }
+
     function loadMessages() {
       if (typeof require === 'function') {
         try { return require('./messages'); } catch (e) { /* browser */ }
@@ -1466,6 +1473,8 @@
     if (returns && returns.install) returns.install(Warehouse, deps);
     const messages = loadMessages();
     if (messages && messages.install) messages.install(Warehouse, deps);
+    const intake = loadIntake();
+    if (intake && intake.install) intake.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

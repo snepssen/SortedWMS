@@ -15,9 +15,9 @@ const root = path.join(__dirname, '..');
 const out = path.join(root, '_site');
 const REPO = 'https://github.com/snepssen/SortedWMS';
 
-const SRC = ['demo.js', 'gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'messages.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'workload.js', 'drivers.js'];
+const SRC = ['demo.js', 'gs1.js', 'labels.js', 'locations.js', 'presets.js', 'operations.js', 'bins.js', 'waves.js', 'corrections.js', 'sheets.js', 'renames.js', 'serials.js', 'returns.js', 'messages.js', 'intake.js', 'offline-queue.js', 'foundation.js', 'engine.js', 'barcode.js', 'workload.js', 'drivers.js'];
 // The WMS screens with the in-browser backend loaded before their own script.
-const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/messages.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/api.js', 'server/local.js'];
+const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/messages.js', 'src/intake.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/api.js', 'server/local.js'];
 const SCREENS = ['app.html', 'setup.html', 'bins.html', 'handheld.html', 'admin.html', 'loading.html', 'station.html', 'desk.html'];
 
 fs.rmSync(out, { recursive: true, force: true });
