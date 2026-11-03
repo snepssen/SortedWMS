@@ -150,6 +150,7 @@
         this._serialsSet(l.serials, l.itemNo, { status: 'returned', loc: place.code, orderId: order.id, event: 'returned', by: actor, note: `return ${rid}` });
       }
       this.log(`Return ${rid} for order ${order.id} at ${place.code}: ${rma.lines.map((l) => `${l.itemNo} × ${l.qty}`).join(', ')}`);
+      if (this._emit) this._emit('return.received', { returnId: rid, orderId: order.id, ref: order.ref || null, customer: order.customer, reason: rma.reason || null, lines: rma.lines.map((l) => ({ itemNo: l.itemNo, qty: l.qty, ...(l.serials && l.serials.length ? { serials: [...l.serials] } : {}) })) }, order.clientId);
       return rma;
     };
 
@@ -250,6 +251,10 @@
       rma.status = this._returnStatus(rma);
       if (holder) rma.holderId = holder.id;
       this.log(`Return ${rma.id}: ${item.itemNo} × ${amount} ${grade === 'restock' ? `restocked at ${dest}` : grade === 'quarantine' ? `on hold at ${dest}` : 'scrapped'}`);
+      if (this._emit) {
+        const order = this.orders[rma.orderId] || {};
+        this._emit('return.graded', { returnId: rma.id, orderId: rma.orderId, ref: order.ref || null, itemNo: item.itemNo, grade, qty: amount, to: dest, ...(sns.length ? { serials: sns } : {}) }, order.clientId || null);
+      }
       return rma;
     };
 

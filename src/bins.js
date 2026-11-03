@@ -338,6 +338,7 @@
         }
         this.adjustments = this.adjustments || [];
         this.adjustments.unshift({ t: this.now(), loc: bin.code, itemNo: found.itemNo, batch: lot ? lot.batch : undefined, before, after: target, reason, by: actor });
+        if (this._emitAdjusted) this._emitAdjusted(this.adjustments[0]);
         if (this.adjustments.length > 5000) this.adjustments.length = 5000;
         this.recordMovement({ from: bin.code, to: bin.code, qty: target - before, event: 'counted', by: actor, note: `${found.itemNo}${lot ? ` (${lotText(lot)})` : ''} ${before} → ${target}` });
       }

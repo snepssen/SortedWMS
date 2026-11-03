@@ -1036,6 +1036,7 @@
       const entry = { t: this.now(), loc: pallet.loc, sscc, itemNo: pallet.itemNo, batch: pallet.batch, before, after: next, reason, by: by || 'office' };
       this.adjustments = this.adjustments || [];
       this.adjustments.unshift(entry);
+      if (this._emitAdjusted) this._emitAdjusted(this.adjustments[0]);
       if (this.adjustments.length > 5000) this.adjustments.length = 5000;
       this.log(`Adjusted …${sscc.slice(-6)} from ${before} to ${next}: ${reason}`);
       return entry;
@@ -1219,6 +1220,7 @@
       const actor = by || this._actor || 'stock';
       this.adjustments = this.adjustments || [];
       this.adjustments.unshift({ t: this.now(), loc: pallet.loc, sscc: pallet.sscc, itemNo, batch, before: 0, after: amount, reason, by: actor });
+      if (this._emitAdjusted) this._emitAdjusted(this.adjustments[0]);
       this.recordMovement({ sscc: pallet.sscc, from: null, to: pallet.loc, qty: amount, event: 'created', by: actor, note: reason });
       this.log(`Stock created: …${pallet.sscc.slice(-6)} ${itemNo} × ${amount} at ${pallet.loc} (${reason})`);
       return pallet;
@@ -1238,6 +1240,7 @@
       this._remove(pallet);
       this.adjustments = this.adjustments || [];
       this.adjustments.unshift({ t: this.now(), loc: from, sscc: pallet.sscc, itemNo: pallet.itemNo, batch: pallet.batch, before: pallet.qty, after: 0, reason, by: actor });
+      if (this._emitAdjusted) this._emitAdjusted(this.adjustments[0]);
       // Gone from stock like a shipped pallet, so every stock rule treats it that way.
       pallet.status = 'shipped';
       pallet.removed = 'deleted';
@@ -1266,6 +1269,13 @@
         try { return require('./serials'); } catch (e) { /* browser */ }
       }
       return globalThis.SortedSerials;
+    }
+
+    function loadMessages() {
+      if (typeof require === 'function') {
+        try { return require('./messages'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedMessages;
     }
 
     function loadReturns() {
@@ -1454,6 +1464,8 @@
     if (serials && serials.install) serials.install(Warehouse, deps);
     const returns = loadReturns();
     if (returns && returns.install) returns.install(Warehouse, deps);
+    const messages = loadMessages();
+    if (messages && messages.install) messages.install(Warehouse, deps);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

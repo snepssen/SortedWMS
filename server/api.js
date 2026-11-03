@@ -160,6 +160,8 @@
 
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
+    // Confirmations for other systems, read from where the reader left off (docs/CONNECTIONS.md).
+    on('GET', '/api/messages', (_, q) => wh().messageLog({ after: q.after, limit: q.limit, type: q.type || null, clientId: ownClient() }));
     on('GET', '/api/devices', () => [...Object.keys(wh().trucks), ...Object.keys(wh().desks)].map((id) => deviceView(wh(), id)));
     on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });

@@ -1349,6 +1349,7 @@
       }
       (this.shipments = this.shipments || []).push({ orderId: id, customer: order.customer, t: this.now(), pallets: shipped, ...(order.loading ? { trailer: order.loading.trailer, seal: order.loading.seal, loadingHistory: order.loading.history.map((e) => ({ ...e })) } : {}),
         ...(order.loading?.inspectionPolicy ? { trailerInspection: { ...this.trailerReadiness(id).latest }, inspectionPolicy: { ...order.loading.inspectionPolicy } } : {}) });
+      if (this._emitShipped) this._emitShipped(order, this.shipments[this.shipments.length - 1]);
       this.log(`Order ${id} loaded and shipped`);
     }
 
@@ -3297,6 +3298,7 @@
     _closeDelivery(truck, task) {
       const delivery = this.deliveries[task.deliveryId];
       delivery.status = 'received';
+      if (this._emitReceived) this._emitReceived(delivery);
       const short = delivery.expected - delivery.received.length;
       this._finish(truck, task);
       if (short > 0) this.log(`Delivery ${delivery.id} closed ${short} pallet(s) short`);

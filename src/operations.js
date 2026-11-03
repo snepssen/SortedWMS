@@ -773,6 +773,7 @@
         order.status = 'shipped';
         order.shippedAt = this.now();
         (this.shipments = this.shipments || []).push({ orderId: order.id, customer: order.customer, t: this.now(), cartons: boxes.map((b) => b.id), pallets: [] });
+        if (this._emitShipped) this._emitShipped(order, this.shipments[this.shipments.length - 1]);
       }
       this.log(`Dispatched ${boxes.length} carton(s) for order ${order.id}`);
       return { order, cartons: boxes };
@@ -1022,6 +1023,7 @@
       order.shippedAt = this.now();
       const record = { orderId: order.id, customer: order.customer, t: this.now(), lane: ship.lane, truck: ship.truck, pallets: shippedPallets, cartons: shippedCartons, status: 'dispatched' };
       (this.shipments = this.shipments || []).push(record);
+      if (this._emitShipped) this._emitShipped(order, record);
       this.log(`Order ${order.id} dispatched as one shipment`);
       return ship;
     };

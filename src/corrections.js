@@ -99,6 +99,7 @@
     proto._adjust = function (entry) {
       this.adjustments = this.adjustments || [];
       this.adjustments.unshift({ t: this.now(), ...entry });
+      if (this._emitAdjusted) this._emitAdjusted(this.adjustments[0]);
       if (this.adjustments.length > 5000) this.adjustments.length = 5000;
     };
 
