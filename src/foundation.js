@@ -1278,6 +1278,13 @@
       return globalThis.SortedSerials;
     }
 
+    function loadAbc() {
+      if (typeof require === 'function') {
+        try { return require('./abc'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedAbc;
+    }
+
     function loadIntake() {
       if (typeof require === 'function') {
         try { return require('./intake'); } catch (e) { /* browser */ }
@@ -1550,6 +1557,8 @@
     if (messages && messages.install) messages.install(Warehouse, deps);
     const intake = loadIntake();
     if (intake && intake.install) intake.install(Warehouse, deps);
+    const abc = loadAbc();
+    if (abc && abc.install) abc.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

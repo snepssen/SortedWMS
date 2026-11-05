@@ -56,6 +56,13 @@
     // Free play: hundreds of random picks and inbound pallets at once. The seed is journaled, so replay gives the same work.
     dropWorkload: (wh, a) => Workload.drop(wh, { seed: req(a.seed, 'seed'), picks: a.picks, inbound: a.inbound }),
     planCounts: (wh, a) => wh.planCounts({ codes: a.from ? wh.selectLocations(a.from, a.to || a.from) : null, limit: a.limit }),
+    setAbc: (wh, a) => wh.setAbc(a.settings || a),
+    setAbcClass: (wh, a) => wh.setAbcClass(req(a.itemNo, 'itemNo'), a.class),
+    planAbc: (wh) => wh.planAbcDay({}),
+    submitAbc: (wh, a, by) => wh.submitAbc({ id: req(a.id, 'id'), qty: a.qty, reason: a.reason || null, by }),
+    recountAbc: (wh, a, by) => wh.recountAbc({ id: req(a.id, 'id'), qty: a.qty, reason: a.reason || null, by }),
+    approveAbc: (wh, a, by) => wh.approveAbc({ id: req(a.id, 'id'), by }),
+    rejectAbc: (wh, a, by) => wh.rejectAbc({ id: req(a.id, 'id'), reason: req(a.reason, 'reason'), by }),
     startProcess: (wh, a) => wh.startProcess(req(a.sscc, 'sscc'), req(a.route, 'route')),
 
     // Orders and deliveries

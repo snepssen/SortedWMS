@@ -478,7 +478,27 @@
 
   // ---- Count (blind) -----------------------------------------------------------
   const count = {
-    start() {
+    async start() {
+      if (modOn('abc')) {
+        try {
+          const mine = await api('GET', '/api/abc/mine');
+          if (mine.line) {
+            st = { step: 'abc', line: mine.line };
+            $('job').innerHTML = `<div class="kicker">Cycle count · class ${esc(mine.line.class)}</div><div class="big">${esc(mine.line.loc)}</div><div class="mid">${esc(mine.line.itemNo)}</div><div class="dim">${esc(mine.line.name || '')}. ${mine.line.status === 'recount' ? 'Recount.' : 'Blind count.'} The booked quantity is not shown. Scan the location, then enter how many.</div><p><input id="abcQty" inputmode="numeric" placeholder="Quantity" style="font-size:20px;padding:10px;width:8em"></p><p><button type="button" class="primary" id="abcSave">${mine.line.status === 'recount' ? 'Submit recount' : 'Submit count'}</button></p>`;
+            $('extra').innerHTML = '';
+            $('abcSave').onclick = async () => {
+              const raw = ($('#abcQty') || {}).value;
+              if (raw === '') return say('Enter the count', false);
+              const path = mine.line.status === 'recount' ? 'recount' : 'count';
+              const out = await write('POST', '/api/abc/' + encodeURIComponent(mine.line.id) + '/' + path, { qty: Number(raw), reason: Number(raw) === 0 ? 'missing' : null });
+              if (out.queued) return say('Count saved on this phone until the connection returns');
+              say(out.status === 'recount' ? 'Over the threshold. Someone else recounts it before stock changes.' : out.status === 'approval' ? 'Recount saved. A supervisor approves it before stock changes.' : 'Count accepted.');
+              count.start();
+            };
+            return;
+          }
+        } catch (e) { /* no list yet: the ordinary bin count */ }
+      }
       st = { step: 'bin' };
       $('job').innerHTML = '<div class="kicker">Count</div><div class="mid">Scan the bin</div><div class="dim">You count first; the screen does not say what should be there.</div>';
       $('extra').innerHTML = '';
@@ -496,6 +516,13 @@
       st.redraw = count.draw;
     },
     async scan(code) {
+      if (st.step === 'abc') {
+        if (code !== st.line.loc) return say(`This count is at ${st.line.loc}`, false);
+        say(`${code} confirmed. Enter the quantity.`);
+        const q = $('#abcQty');
+        if (q) q.focus();
+        return;
+      }
       if (st.step === 'bin') {
         const bin = await binOf(code);
         if (!bin) return say(`${code} is not a bin`, false);

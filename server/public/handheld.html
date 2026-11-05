@@ -260,6 +260,9 @@
       case 'drop': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Drop at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${I.targetCheck ? '<div class="sub">Label won\'t scan? Type its check digit</div>' : ''}${custHtml(I)}${palletHtml(I.pallet)}</div>`;
       case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}</div>`;
       case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
+      case 'abc': return `<div class="card"><div class="kicker">Cycle count · class ${esc(I.abc.class)}</div><div class="sub">${I.abc.status === 'recount' ? 'Recount' : 'Blind count'} at</div><div class="big">${locBig(I.abc.loc)}</div><div class="mid">${esc(I.abc.itemNo)}</div><div class="sub">${esc(I.abc.name || '')}. The booked quantity is not on this screen.</div>
+        <div class="row" style="margin-top:10px"><input id="abcQty" inputmode="numeric" placeholder="Quantity"><button class="primary" id="abcSave">${I.abc.status === 'recount' ? 'Submit recount' : 'Submit count'}</button></div>
+        <div class="row"><select id="abcReason"><option value="">Reason if it differs</option><option>recount</option><option>damage</option><option>found</option><option>missing</option><option>wrong-item</option><option>other</option></select></div></div>`;
       case 'count': return I.step
         ? `<div class="card"><div class="kicker">${job}</div><div class="mid">Scan the pallet in ${esc(I.targetName)}</div><div class="sub">Empty? Scan the location label again.</div></div>`
         : `<div class="card"><div class="kicker">${job}</div><div class="sub">Count at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">Scan the location label, then whatever is in it. The system checks it against what it expects.</div></div>`;
@@ -297,6 +300,7 @@
         ${I.armed ? `<div class="card armed"><div class="kicker" style="color:var(--warn)">Confirm</div><div class="mid">${esc(I.armed.label)}?</div>
           <div class="sub">Scan <b>${esc(I.armed.cmd)}</b> again to confirm. Any other scan cancels.</div></div>` : ''}
         ${I.pending ? heldHtml(I.pending) : ''}
+        ${v.abc ? instructionHtml({ kind: 'abc', abc: v.abc, task: null }) : ''}
         ${instructionHtml(I)}
         ${localError ? `<div class="msg bad">${esc(localError)}</div>`
           : v.message && !I.armed && !(I.pending && v.message.ok) ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
@@ -321,6 +325,13 @@
     document.querySelectorAll('[data-pending]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/pending`, { action: b.dataset.pending })));
     // Same as scanning the command card: reports ask to be tapped (or scanned) again instead of a pop-up.
     document.querySelectorAll('[data-cmd]').forEach((b) => (b.onclick = () => act('POST', `/api/devices/${deviceId}/scan`, { code: b.dataset.cmd })));
+    const abcSave = $('#abcSave');
+    if (abcSave && view.abc) abcSave.onclick = () => {
+      const qty = ($('#abcQty') || {}).value;
+      const reason = ($('#abcReason') || {}).value || null;
+      const path = view.abc.status === 'recount' ? 'recount' : 'count';
+      act('POST', `/api/abc/${encodeURIComponent(view.abc.id)}/${path}`, { qty: Number(qty), reason });
+    };
     document.querySelectorAll('[data-qty]').forEach((b) => (b.onclick = () => {
       const qty = b.dataset.qty === 'typed' ? Number($('#qtyIn').value) : Number(b.dataset.qty);
       if (!qty) return;

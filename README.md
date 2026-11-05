@@ -265,6 +265,8 @@ Settings, through environment variables:
 
 **Modules.** Each feature in `modules/` names itself: what it is, what it needs, the routes and menu entries it owns, and its own data upgrades. A warehouse switches them on or off. Add a third-party module by pointing `SORTED_MODULES` at a folder of the same files. Nothing is downloaded. See [docs/MODULES.md](docs/MODULES.md).
 
+**Cycle counts.** ABC cycle counts class items or locations from pick velocity or value, give each class a frequency, and build one list per warehouse per local day. The counter does not see the booked quantity. A variance over the quantity or percent threshold is recounted by someone else and approved before stock changes. The list is under Cycle counts, and on the truck and bin handhelds when that mode is Count.
+
 **Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
 
 ## Files

@@ -73,6 +73,7 @@
       id, kind: d.kind || 'truck', mode: d.mode, operator: d.operator || null, duty: d.duty || null, equipment: d.equipment || null, modes: Object.entries(TRUCK_MODES).filter(([k]) => !hiddenModes(wh).has(k)).map(([k, v]) => ({ id: k, label: v.label })),
       categories: d.categories, message: d.message ? { ok: d.message.ok, text: wh.display(d.message.text) } : null, stats: d.stats,
       instruction: { kind: ins.kind, task: taskView(wh, task) },
+      abc: d.mode === 'count' && typeof wh.abcMine === 'function' && wh.module('abc') ? wh.abcMine(d.operator || id) : null,
     };
     const I = out.instruction;
     if (ins.target) {
@@ -250,6 +251,18 @@
     }));
     on('GET', '/api/lost', () => wh().lostPallets().map((p) => ({ ...palletView(wh(), p), missingFrom: p.missingFrom, missingFromName: placeName(wh(), p.missingFrom) })));
     // Stock counts: the open count jobs, the latest results, and how often the system was right.
+    const abcReveal = () => Boolean(currentActor && currentActor.permissions && currentActor.permissions.includes('counts.approve'));
+    on('GET', '/api/abc', (_, q) => wh().abcBoard({ reveal: abcReveal(), status: q.status || null, cls: q.class || null }));
+    on('GET', '/api/abc/mine', (_, q, b, by) => ({ line: wh().abcMine(by) }));
+    on('GET', '/api/abc/classes', () => wh().abcClasses());
+    on('GET', '/api/abc.csv', () => ({ contentType: 'text/csv; charset=utf-8', raw: wh().abcCsv({ reveal: abcReveal() }) }));
+    on('POST', '/api/abc/settings', (_, q, b, by) => run('setAbc', { settings: b }, by));
+    on('POST', '/api/abc/class', (_, q, b, by) => run('setAbcClass', b, by));
+    on('POST', '/api/abc/plan', (_, q, b, by) => run('planAbc', {}, by));
+    on('POST', '/api/abc/:id/count', ({ id }, q, b, by) => run('submitAbc', { id: decodeURIComponent(id), qty: b.qty, reason: b.reason || null }, by));
+    on('POST', '/api/abc/:id/recount', ({ id }, q, b, by) => run('recountAbc', { id: decodeURIComponent(id), qty: b.qty, reason: b.reason || null }, by));
+    on('POST', '/api/abc/:id/approve', ({ id }, q, b, by) => run('approveAbc', { id: decodeURIComponent(id) }, by));
+    on('POST', '/api/abc/:id/reject', ({ id }, q, b, by) => run('rejectAbc', { id: decodeURIComponent(id), reason: b.reason }, by));
     on('GET', '/api/counts', () => {
       const counts = (wh().counts || []).slice(0, 200);
       const open = Object.values(wh().tasks).filter((t) => t.type === 'COUNT' && ['open', 'active', 'held'].includes(t.status));
