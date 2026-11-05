@@ -87,12 +87,12 @@
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    stock: [['stockctl', 'Stock control'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
+    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
     client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
@@ -583,6 +583,31 @@
         <form class="form" data-act="pack"><label>Order<input name="id" required></label><label>Packing note<input name="note" placeholder="Wrapped, labels on the long side"></label><button>Record packing</button></form>
         ${table(['Order', 'Customer', 'Client', 'Status', 'Lane'], orders.map((o) => `<tr><td>${esc(o.id)}</td><td>${esc(o.customer)}</td><td>${esc(o.clientId || '')}</td><td>${esc(o.status)}</td><td>${esc(o.lane)}</td></tr>`))}
         <p class="dim">Check &amp; label and trailer loading stay on the floor and loading screens. Ship from the floor office once the load is sealed.</p></section>`;
+    },
+    async abc() {
+      const [board, classes] = await Promise.all([api('GET', '/api/abc'), api('GET', '/api/abc/classes')]);
+      const st = board.settings;
+      const approve = can('counts.approve');
+      const reason = '<option value="">reason if it differs</option><option>recount</option><option>damage</option><option>found</option><option>missing</option><option>wrong-item</option><option>expiry</option><option>other</option>';
+      const rows = board.lines.map((line) => {
+        const last = line.counts[line.counts.length - 1];
+        const act = line.status === 'approval' && approve
+          ? `<form class="form" data-act="abc-approve"><input type="hidden" name="id" value="${esc(line.id)}"><button class="primary">Approve</button></form><form class="form" data-act="abc-reject"><input type="hidden" name="id" value="${esc(line.id)}"><input name="reason" placeholder="Why not" required><button>Reject</button></form>`
+          : line.status === 'open' && can('counts.execute')
+            ? `<form class="form" data-act="abc-count"><input type="hidden" name="id" value="${esc(line.id)}"><input name="qty" type="number" min="0" required placeholder="qty" style="width:5em"><select name="reason">${reason}</select><button class="primary">Count</button></form>`
+            : line.status === 'recount' && can('counts.execute')
+              ? `<form class="form" data-act="abc-recount"><input type="hidden" name="id" value="${esc(line.id)}"><input name="qty" type="number" min="0" required placeholder="qty" style="width:5em"><select name="reason">${reason}</select><button class="primary">Recount</button></form>`
+              : '';
+        return `<tr><td>${esc(line.class)}</td><td>${esc(line.loc)}</td><td>${esc(line.itemNo)} <span class="dim">${esc(line.name)}</span></td><td>${esc(line.status)}</td><td>${line.blind ? 'hidden' : esc(line.expected)}</td><td>${last ? `${esc(last.kind)} ${esc(last.qty)} ${esc(last.reason || '')} <span class="dim">${esc(last.by)}</span>` : ''}</td><td>${act}</td></tr>`;
+      });
+      const classRows = Object.values(classes.items).slice(0, 12).map((row) => `<tr><td>${esc(row.class)}</td><td>${esc(row.itemNo)}</td><td>${esc(row.name)}</td><td>${esc(row.score)}</td><td>${row.fixed ? 'set' : ''}</td></tr>`);
+      return `<section><h2>Cycle counts · ${esc(board.day)}</h2>
+        <p class="hint">One list for this warehouse, dated in ${esc(board.timeZone)}. A counter does not see the booked quantity. A variance over ${esc(st.thresholdQty)} or ${esc(st.thresholdPercent)}% is recounted by someone else, then approved, before stock changes. ${board.approval} waiting for approval.</p>
+        <p><a href="/api/abc.csv">Count list CSV</a></p>
+        ${can('counts.execute') ? '<form class="form" data-act="abc-plan"><button class="primary">Build today\'s list</button></form>' : ''}
+        ${approve ? `<form class="form" data-act="abc-settings"><label>Window (days)<input name="windowDays" type="number" min="1" value="${esc(st.windowDays)}"></label><label>Basis<select name="basis"><option ${st.basis === 'velocity' ? 'selected' : ''}>velocity</option><option ${st.basis === 'value' ? 'selected' : ''}>value</option></select></label><label>Of<select name="classify"><option ${st.classify === 'item' ? 'selected' : ''}>item</option><option ${st.classify === 'location' ? 'selected' : ''}>location</option></select></label><label>Qty over<input name="thresholdQty" type="number" min="0" value="${esc(st.thresholdQty)}"></label><label>% over<input name="thresholdPercent" type="number" min="0" max="100" value="${esc(st.thresholdPercent)}"></label><label>A days<input name="a" type="number" min="1" value="${esc(st.frequency.A)}"></label><label>B days<input name="b" type="number" min="1" value="${esc(st.frequency.B)}"></label><label>C days<input name="c" type="number" min="1" value="${esc(st.frequency.C)}"></label><button>Save</button></form>` : ''}
+        ${table(['Class', 'Location', 'Item', 'Status', 'Booked', 'Counts', ''], rows)}</section>
+        <section><h2>Classes</h2><p class="hint">${esc(classes.basis)} over ${esc(classes.windowDays)} days, by ${esc(classes.classify)}. A is the first 80% of that score, B the next 15%, C the rest.</p>${table(['Class', 'Item', 'Name', 'Score', ''], classRows)}</section>`;
     },
     async reports() {
       const [stock, expiry] = await Promise.all([api('GET', '/api/reports/stock'), api('GET', '/api/reports/expiry?days=45')]);
@@ -1154,6 +1179,12 @@
     if (name === 'stock-adjust') return api('POST', '/api/stock/adjust', { sscc: data.sscc, qty: Number(data.qty), reason: data.reason });
     if (name === 'stock-transfer') return api('POST', '/api/transfer', { sscc: data.sscc, to: data.to });
     if (name === 'plan-counts-stock') return api('POST', '/api/plan/counts', { limit: Number(data.limit || 5) });
+    if (name === 'abc-plan') return api('POST', '/api/abc/plan', {});
+    if (name === 'abc-settings') return api('POST', '/api/abc/settings', { windowDays: Number(data.windowDays), basis: data.basis, classify: data.classify, thresholdQty: Number(data.thresholdQty), thresholdPercent: Number(data.thresholdPercent), frequency: { A: Number(data.a), B: Number(data.b), C: Number(data.c) } });
+    if (name === 'abc-count') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/count', { qty: Number(data.qty), reason: data.reason || null });
+    if (name === 'abc-recount') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/recount', { qty: Number(data.qty), reason: data.reason || null });
+    if (name === 'abc-approve') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/approve', {});
+    if (name === 'abc-reject') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/reject', { reason: data.reason });
     if (name === 'client-add') return api('POST', '/api/clients', data);
     if (name === 'item-add') return api('POST', '/api/items', { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: Number(data.palletQty || 1), lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), clientId: data.clientId || null, gtin: data.gtin || null });
     if (name === 'asn') return api('POST', '/api/deliveries', { ...data, pallets: Number(data.pallets || 1), clientId: data.clientId || null });
