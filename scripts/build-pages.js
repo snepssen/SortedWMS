@@ -32,6 +32,10 @@ fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out,
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'camera.js')); // scanning with the camera
 fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'theme.js')); // one light/dark setting for every screen
+fs.copyFileSync(path.join(root, 'src', 'i18n.js'), path.join(out, 'src', 'i18n.js'));
+fs.copyFileSync(path.join(root, 'server', 'public', 'i18n-boot.js'), path.join(out, 'i18n-boot.js'));
+fs.mkdirSync(path.join(out, 'locales'), { recursive: true });
+for (const name of ['en.js', 'nl.js']) fs.copyFileSync(path.join(root, 'locales', name), path.join(out, 'locales', name));
 
 const moduleTags = MODULES.map((f) => `<script src="modules/${f}"></script>`).join('\n');
 const tags = `${moduleTags}\n${LOCAL.map((f) => `<script src="${f}"></script>`).join('\n')}`;

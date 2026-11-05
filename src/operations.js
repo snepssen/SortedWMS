@@ -933,6 +933,16 @@
       return { holder, itemNo, qty: amount, batch, expiry, clientId, fromSite };
     };
 
+    function apiNumber(lang, value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value == null ? '' : String(value);
+      try {
+        const api = typeof require === 'function' ? require('./i18n') : (typeof globalThis !== 'undefined' ? globalThis.SortedI18n : null);
+        if (api) return api.formatNumber(lang, n);
+      } catch (e) { /* plain number */ }
+      return String(n);
+    }
+
     function htmlEscape(value) {
       return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
@@ -1365,19 +1375,31 @@
 
     proto.invoiceHtml = function (opts) {
       const inv = this.invoice(opts);
-      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(l.qty)}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.tier || '')}</td><td>${htmlEscape(l.season || '')}</td><td>${htmlEscape(l.version || '')}</td><td>${htmlEscape(l.amount)}</td></tr>`).join('');
-      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} to ${htmlEscape(inv.periodTo || '…')} (${htmlEscape(inv.timeZone || '')})` : 'Open period, up to the current time';
-      return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${htmlEscape(inv.clientId)}</title>
+      const lang = (opts && opts.language) || (this.config && this.config.language) || 'en';
+      let tr = (key) => key;
+      try {
+        const api = typeof require === 'function' ? require('./i18n') : (typeof globalThis !== 'undefined' ? globalThis.SortedI18n : null);
+        if (api) tr = (key) => api.t(lang, key);
+      } catch (e) { /* English headings */ }
+      const rows = inv.lines.map((l) => `<tr><td>${htmlEscape(l.label)}</td><td>${htmlEscape(apiNumber(lang, l.qty))}</td><td>${htmlEscape(l.rate)}</td><td>${htmlEscape(l.tier || '')}</td><td>${htmlEscape(l.season || '')}</td><td>${htmlEscape(l.version || '')}</td><td>${htmlEscape(apiNumber(lang, l.amount))}</td></tr>`).join('');
+      const period = inv.periodFrom || inv.periodTo ? `${htmlEscape(inv.periodFrom || '…')} ${htmlEscape(tr('to'))} ${htmlEscape(inv.periodTo || '…')} (${htmlEscape(inv.timeZone || '')})` : htmlEscape(tr('Open period, up to the current time'));
+      return `<!doctype html><html lang="${lang === 'nl' ? 'nl' : 'en'}"><head><meta charset="utf-8"><title>${htmlEscape(tr('Invoice'))} ${htmlEscape(inv.clientId)}</title>
         <style>body{font:15px/1.4 system-ui,sans-serif;margin:24px;color:#17202a}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border-bottom:1px solid #dde3e8;text-align:left;padding:6px 8px;vertical-align:top}th{color:#5d6b76}.total{font-size:18px;font-weight:700}.note{color:#5d6b76;font-size:13px;max-width:46rem}@media print{body{margin:12px}}</style></head>
-        <body><h1>Invoice ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p><p>${period}</p>
-        <table><tr><th>Charge</th><th>Qty</th><th>Rate</th><th>Tier</th><th>Season</th><th>Version</th><th>Amount</th></tr>${rows}</table>
-        <p>Subtotal ${htmlEscape(inv.subtotal)}. Minimum ${htmlEscape(inv.minimum)}${inv.minimumVersion ? ` (${htmlEscape(inv.minimumVersion)})` : ''}.</p><p class="total">Total ${htmlEscape(inv.total)}</p>
+        <body><h1>${htmlEscape(tr('Invoice'))} ${htmlEscape(inv.clientId)}</h1><p>${htmlEscape(inv.name)}</p><p>${period}</p>
+        <table><tr><th>${htmlEscape(tr('Charge'))}</th><th>${htmlEscape(tr('Qty'))}</th><th>${htmlEscape(tr('Rate'))}</th><th>${htmlEscape(tr('Tier'))}</th><th>${htmlEscape(tr('Season'))}</th><th>${htmlEscape(tr('Version'))}</th><th>${htmlEscape(tr('Amount'))}</th></tr>${rows}</table>
+        <p>${htmlEscape(tr('Subtotal'))} ${htmlEscape(apiNumber(lang, inv.subtotal))}. ${htmlEscape(tr('Minimum'))} ${htmlEscape(apiNumber(lang, inv.minimum))}${inv.minimumVersion ? ` (${htmlEscape(inv.minimumVersion)})` : ''}.</p><p class="total">${htmlEscape(tr('Total'))} ${htmlEscape(apiNumber(lang, inv.total))}</p>
         <p class="note">Dates are local midnights in ${htmlEscape(inv.timeZone || 'the warehouse timezone')}. Storage that crosses a season or a new rate card is split there. An inbound, outbound or kitting event uses the card in effect at its own time. The monthly minimum is taken from the card in effect on the last day.</p></body></html>`;
     };
 
     proto.invoiceCsv = function (opts) {
       const inv = this.invoice(opts);
-      const rows = [['charge', 'label', 'qty', 'rate', 'amount', 'tier', 'season', 'version']];
+      const lang = (opts && opts.language) || (this.config && this.config.language) || 'en';
+      let head = ['charge', 'label', 'qty', 'rate', 'amount', 'tier', 'season', 'version'];
+      try {
+        const api = typeof require === 'function' ? require('./i18n') : null;
+        if (api && lang !== 'en') head = head.map((cell) => api.t(lang, cell));
+      } catch (e) { /* English headers */ }
+      const rows = [head];
       for (const l of inv.lines) rows.push([l.code, l.label, l.qty, l.rate, l.amount, l.tier || '', l.season || '', l.version || '']);
       return rows.map((r) => r.map(csvCell).join(',')).join('\n');
     };

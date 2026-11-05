@@ -65,6 +65,9 @@
   @media (max-width: 720px) { main { padding: 10px; } header h1 { font-size: 16px; } .job { font-size: 18px; } }
 </style>
 <script src="camera.js"></script>
+<script src="/locales/en.js"></script>
+<script src="/locales/nl.js"></script>
+<script src="/src/i18n.js"></script>
 </head>
 <body>
 <header>
@@ -76,6 +79,7 @@
   <a class="btn" href="/admin" id="floorLink">Floor</a>
   <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
   <select data-theme-picker></select>
+  <label class="who">Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
   <button id="out" type="button">Sign out</button>
 </header>
 <main id="main"></main>
@@ -409,7 +413,7 @@
       const roles = ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock', 'client'];
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
       return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
-        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
+        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Language<select name="language"><option value="">Warehouse default</option><option value="en">English</option><option value="nl">Dutch</option></select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
@@ -487,6 +491,7 @@
         <h3>Country and timezone</h3>
         <p class="hint">Billing days, seasons, rate-card dates and the journal use this warehouse's local midnight. Daylight saving is included.</p>
         <form class="form" data-act="approval"><label><input type="checkbox" name="itemApproval" ${summary.config.itemApproval ? 'checked' : ''}> Client items need warehouse approval</label><button>Save approval</button></form>
+        <form class="form" data-act="warehouse-language"><label>Warehouse language<select name="language"><option value="en" ${(summary.config.language || 'en') === 'en' ? 'selected' : ''}>English</option><option value="nl" ${summary.config.language === 'nl' ? 'selected' : ''}>Dutch</option></select></label><button>Save language</button></form>
         <form class="form" data-act="place" id="placeForm"><label>Country<select name="country" id="countryPick">${[['BE','Belgium','Europe/Brussels'],['NL','Netherlands','Europe/Amsterdam'],['DE','Germany','Europe/Berlin'],['FR','France','Europe/Paris'],['GB','United Kingdom','Europe/London'],['IE','Ireland','Europe/Dublin'],['ES','Spain','Europe/Madrid'],['IT','Italy','Europe/Rome'],['PL','Poland','Europe/Warsaw'],['SE','Sweden','Europe/Stockholm'],['CH','Switzerland','Europe/Zurich'],['US','United States','America/New_York'],['CA','Canada','America/Toronto'],['BR','Brazil','America/Sao_Paulo'],['ZA','South Africa','Africa/Johannesburg'],['AE','United Arab Emirates','Asia/Dubai'],['SG','Singapore','Asia/Singapore'],['JP','Japan','Asia/Tokyo'],['AU','Australia','Australia/Sydney'],['NZ','New Zealand','Pacific/Auckland']].map(([code, name, zone]) => `<option value="${code}" data-zone="${zone}" ${summary.config.country === code ? 'selected' : ''}>${code} ${name}</option>`).join('')}</select></label><label>Timezone<input name="timeZone" id="timeZone" value="${esc(summary.config.timeZone || 'Europe/Brussels')}" list="zones"></label><datalist id="zones">${['Europe/Brussels','Europe/Amsterdam','Europe/Berlin','Europe/Paris','Europe/London','Europe/Dublin','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Toronto','America/Sao_Paulo','Africa/Johannesburg','Asia/Dubai','Asia/Singapore','Asia/Tokyo','Australia/Sydney','Pacific/Auckland','UTC'].map((z) => `<option value="${z}">`).join('')}</datalist><button class="primary">Save place</button></form>
         <form class="form" data-act="hw-mode"><label>Scanner<select name="scanner">${hw.modes.scanner.map((m) => `<option ${m === hw.settings.scanner ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label>Printer<select name="printer">${hw.modes.printer.map((m) => `<option ${m === hw.settings.printer ? 'selected' : ''}>${m}</option>`).join('')}</select></label><button class="primary">Save devices</button></form>
@@ -1160,9 +1165,10 @@
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
+    if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
     if (name === 'client-item') return api('POST', '/api/items', { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' });
-    if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null });
+    if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null, language: data.language || null });
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') {
       const opt = document.querySelector(`[data-act=assign] option[value="${CSS.escape(data.operator || '')}"]`);
@@ -1366,6 +1372,15 @@
     me.features = session.features || {};
     me.categories = session.categories || {};
     me.itemApproval = Boolean(session.itemApproval);
+    me.language = session.language || 'en';
+    const langPick = document.getElementById('langPick');
+    if (langPick) {
+      langPick.value = me.language;
+      langPick.onchange = async () => {
+        await api('POST', '/api/language', { language: langPick.value });
+        location.reload();
+      };
+    }
     if (me.mustChangePassword) {
       document.body.dataset.role = me.role;
       $('#title').textContent = 'Change password';
@@ -1402,5 +1417,6 @@
   window.addEventListener('hashchange', () => { panel = location.hash.slice(1).split('?')[0]; if (me) draw(); });
 })();
 </script>
+<script src="/i18n-boot.js"></script>
 </body>
 </html>

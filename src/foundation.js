@@ -1021,7 +1021,7 @@
         d.location ? ['Location', d.location] : null,
         d.orderId ? ['Order', d.orderId] : null,
       ].filter(Boolean);
-      const html = Labels.labelHtml({ ...d, lines: lines.filter(([, v]) => v), barcodeSvg: d.plate ? barcodeSvg(d.plate, false) : barcodeSvg(`00${d.sscc}`, true) });
+      const html = Labels.labelHtml({ ...d, lang: (this.config && this.config.language) || 'en', lines: lines.filter(([, v]) => v), barcodeSvg: d.plate ? barcodeSvg(d.plate, false) : barcodeSvg(`00${d.sscc}`, true) });
       return { ...record, html };
     };
 

@@ -30,7 +30,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/i18n.js': 'src/i18n.js', '/locales/en.js': 'locales/en.js', '/locales/nl.js': 'locales/nl.js', '/i18n-boot.js': 'server/public/i18n-boot.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
     '/app.html': 'server/public/app.html',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -80,10 +80,25 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         return send(200, { ok: true }, 'application/json; charset=utf-8', { 'set-cookie': auth.clearCookie() });
       }
       if (access.public && req.method === 'GET' && url.pathname === '/api/health') return send(200, { ok: true, auth: Boolean(auth) });
-      if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') return send(200, { demoUsers: auth.hasDemoUsers() });
+      if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') {
+        const i18n = require('../src/i18n');
+        const warehouseLanguage = store.wh && store.wh.config && store.wh.config.language;
+        return send(200, { demoUsers: auth.hasDemoUsers(), language: i18n.choose(null, warehouseLanguage) });
+      }
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
-        return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, categories: (store.wh && store.wh.categories) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
+        const site = store.wh;
+        const i18n = require('../src/i18n');
+        const language = i18n.choose(sessionUser.language, site && site.config && site.config.language);
+        return send(200, {
+          user: sessionUser,
+          features: (site && site.features) || {},
+          categories: (site && site.categories) || {},
+          itemApproval: Boolean(site && site.config && site.config.itemApproval),
+          language,
+          timeZone: (site && site.config && site.config.timeZone) || 'Europe/Brussels',
+          currency: (site && site.config && site.config.currency) || 'EUR',
+        });
       }
 
       let by;
@@ -130,6 +145,14 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
       if (auth && actor && !auth.canAccessSite(actor, requestedSite)) return send(403, { error: `No access to warehouse ${requestedSite}` });
       store.siteId = requestedSite;
+      if (auth && req.method === 'POST' && url.pathname === '/api/language') {
+        if (!actor || actor.id == null) return send(401, { error: 'Sign in required' });
+        try {
+          const user = auth.updateUser(actor.id, { language: body.language, by: actor.username });
+          const i18n = require('../src/i18n');
+          return send(200, { user, language: i18n.choose(user.language, store.wh && store.wh.config && store.wh.config.language) });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
       if (auth && req.method === 'POST' && url.pathname === '/api/password') {
         try { return send(200, { user: auth.changePassword(actor.id, body) }); } catch (e) { return send(400, { error: e.message }); }
       }
@@ -150,7 +173,8 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && req.method === 'GET' && url.pathname === '/api/users') return send(200, { users: auth.listUsers() });
       if (auth && req.method === 'POST' && url.pathname === '/api/users') {
         try {
-          const user = auth.insertUser(body);
+          let user = auth.insertUser(body);
+          if (body.language) user = auth.updateUser(user.id, { language: body.language, by });
           auth.record('user-created', by, { username: user.username, role: user.role });
           return send(200, { user });
         } catch (e) { return send(400, { error: e.message }); }

@@ -22,6 +22,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - Guided location setup, presets, and switchable modules with simple screens.
 - Clients, items, orders, ASNs, cartons and packing slips, delivery notes, kits, replenishment, more warehouses per install with transfers, available-to-sell, 3PL rate cards and invoices, client logins.
 - Accounts with roles and editable permissions, TOTP, lockout, session timeouts, and the starting admin password changed at the first sign-in.
+- English and Dutch. A person chooses a language; otherwise the warehouse default is used. Numbers, dates and money follow it, in the warehouse timezone. See [I18N.md](I18N.md).
 
 **Running it**
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.

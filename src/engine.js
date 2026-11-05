@@ -1034,6 +1034,11 @@
         if (!/^[A-Z]{2}$/.test(country)) throw new Error('Country is a two-letter code');
         patch = { ...patch, country };
       }
+      if (patch.language !== undefined) {
+        const language = String(patch.language || '').trim().toLowerCase();
+        if (language && !/^[a-z]{2}$/.test(language)) throw new Error('Language is a two-letter code, such as en or nl');
+        patch = { ...patch, language: language || 'en' };
+      }
       if (patch.itemApproval !== undefined) patch = { ...patch, itemApproval: Boolean(patch.itemApproval) };
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {
         throw new Error('Trucks per aisle must be a whole number of 1 or more');
