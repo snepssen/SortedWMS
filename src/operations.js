@@ -858,6 +858,20 @@
       return created;
     };
 
+    /** Where the remainder of a split plate should stand. The slot it came from, if that is free, otherwise a normal put-away slot. */
+    proto._returnSlot = function (pallet, home) {
+      const loc = home && this.locations[home];
+      const taken = loc && (loc.sscc || (loc.pallets || []).some((id) => id !== pallet.sscc));
+      if (loc && !loc.blocked && !taken) return home;
+      if (typeof this._findSlot === 'function') {
+        try {
+          const slot = this._findSlot(pallet, null, {});
+          if (slot && slot.code) return slot.code;
+        } catch (e) { /* the home slot is still the instruction */ }
+      }
+      return home;
+    };
+
     proto.applySplitDrop = function (truck, task) {
       const pallet = this.pallets[truck.load];
       const qty = Number(task.splitQty);
@@ -866,22 +880,46 @@
       if (to && to.reservedBy === task.id) to.reservedBy = null;
       const fromLoc = task.from;
       pallet.qty -= qty;
-      this._place(pallet, fromLoc);
+      const explicit = typeof this.module === 'function' && this.module('return-move');
+      if (!explicit) this._place(pallet, fromLoc);
       const minted = this.allocatePlate('ST');
       const holder = this._makePlate(minted, {
         type: 'st', loc: task.to, clientId: pallet.clientId || null,
         contents: [{ itemNo: pallet.itemNo, qty, batch: pallet.batch, expiry: pallet.expiry, clientId: pallet.clientId || null }],
       });
       const actor = this._actor || truck.id;
-      this.recordMovement({ sscc: pallet.sscc, holder: pallet.holderId || null, from: fromLoc, to: fromLoc, qty: pallet.qty, event: 'moved', by: actor, note: `Split ${qty} onto ${holder.id}` });
+      this.recordMovement({ sscc: pallet.sscc, holder: pallet.holderId || null, from: fromLoc, to: explicit ? null : fromLoc, qty: pallet.qty, event: 'moved', by: actor, note: `Split ${qty} onto ${holder.id}` });
       this.recordMovement({ holder: holder.id, from: fromLoc, to: task.to, qty, event: 'moved', by: actor, note: 'replenishment' });
-      truck.load = null;
-      truck.position = task.to;
       task.alert = null;
-      this._finish(truck, task);
-      this.log(`Top-up ${qty} of ${pallet.itemNo} at ${task.to} on ${holder.id}`);
+      let returnTask = null;
+      if (explicit) {
+        const suggested = this._returnSlot(pallet, fromLoc);
+        returnTask = this._newTask({
+          type: 'SHIFT', reason: 'return-split', sscc: pallet.sscc, from: task.to, to: suggested,
+          category: this.items[pallet.itemNo].category,
+        });
+        this._finish(truck, task);
+        returnTask.status = 'active';
+        returnTask.step = 1;
+        returnTask.truckId = truck.id;
+        truck.taskId = returnTask.id;
+        truck.load = pallet.sscc;
+        truck.position = task.to;
+        const live = this.trucks && this.trucks[truck.id];
+        if (live && live !== truck) {
+          live.taskId = returnTask.id;
+          live.load = pallet.sscc;
+          live.position = task.to;
+        }
+        this.log(`Return …${pallet.sscc.slice(-6)} (${pallet.qty} left) from ${task.to} to ${suggested}`, { taskId: returnTask.id });
+      } else {
+        truck.load = null;
+        truck.position = task.to;
+        this._finish(truck, task);
+        this.log(`Top-up ${qty} of ${pallet.itemNo} at ${task.to} on ${holder.id}`);
+      }
       this.dispatch();
-      return { task, holder, source: pallet };
+      return { task, holder, source: pallet, returnTask };
     };
 
     proto.exportStock = function ({ itemNo, qty, toSite, fromSite = null, by } = {}) {

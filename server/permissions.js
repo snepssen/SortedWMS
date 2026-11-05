@@ -112,7 +112,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read'],
 };
 
 // null permission means the route is public.
@@ -290,6 +290,9 @@ const RULES = [
   ['POST', '/api/totp/disable', 'wms.read'],
   ['POST', '/api/login/totp', null],
   ['POST', '/api/users/:id/reset-password', 'users.write'],
+  ['GET', '/api/reports/area', 'reports.read'],
+  ['GET', '/api/reports/area/:name', 'reports.read'],
+  ['GET', '/api/reports/area/:name.csv', 'reports.read'],
   ['GET', '/api/reports/stock', 'reports.read'],
   ['GET', '/api/reports/expiry', 'reports.read'],
   ['GET', '/api/reports/orders', 'reports.read'],

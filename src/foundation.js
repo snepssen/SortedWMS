@@ -1278,6 +1278,13 @@
       return globalThis.SortedSerials;
     }
 
+    function loadReports() {
+      if (typeof require === 'function') {
+        try { return require('./reports'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedReports;
+    }
+
     function loadAbc() {
       if (typeof require === 'function') {
         try { return require('./abc'); } catch (e) { /* browser */ }
@@ -1559,6 +1566,8 @@
     if (intake && intake.install) intake.install(Warehouse, deps);
     const abc = loadAbc();
     if (abc && abc.install) abc.install(Warehouse);
+    const reports = loadReports();
+    if (reports && reports.install) reports.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();
