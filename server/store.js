@@ -6,18 +6,21 @@
  * it is replayed with the original times, which rebuilds the exact state.
  * The journal doubles as the audit trail: who did what, when.
  */
+const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { Warehouse } = require('../src/engine');
 const { buildWarehouse } = require('./site');
 const { COMMANDS } = require('./commands');
+const { upgradeDatabase } = require('./upgrades');
 
 const SNAPSHOT_EVERY = 200;
 
 class Store {
-  constructor({ file = ':memory:', site, now = () => Date.now() } = {}) {
+  constructor({ file = ':memory:', site, now = () => Date.now(), backupDir = null, moduleUpgrades = null } = {}) {
     this.site = site;
     this.siteId = 'MAIN';
     this._extra = null;
+    this.file = file;
     this.now = now;
     this.replayT = null; // during a command or replay, the engine's clock is pinned to the command's time
     this.clock = () => (this.replayT == null ? this.now() : this.replayT);
@@ -31,7 +34,29 @@ class Store {
       CREATE TABLE IF NOT EXISTS extra_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, site TEXT NOT NULL, t INTEGER NOT NULL, op TEXT NOT NULL, args TEXT NOT NULL, by TEXT);
     `);
     this._insert = this.db.prepare('INSERT INTO journal (t, op, args, by) VALUES (?, ?, ?, ?)');
+    this.backupDir = backupDir || (file && file !== ':memory:' ? path.join(path.dirname(file), 'backups') : null);
+    this.moduleUpgrades = moduleUpgrades;
+    this.upgradeLines = [];
+    this.upgradeReport = null;
+    this._upgrade();
     this.load();
+  }
+
+  /** Core steps, then each module's steps. Quiet unless the caller prints `upgradeLines`. */
+  _upgrade() {
+    let modules = this.moduleUpgrades;
+    if (!modules) {
+      try { modules = require('../modules/registry').upgradeModules(); } catch (e) { modules = []; }
+    }
+    const report = upgradeDatabase(this.db, {
+      modules,
+      file: this.file,
+      backupDir: this.backupDir,
+      now: this.now,
+    });
+    this.upgradeReport = report;
+    this.upgradeLines.push(...report.lines);
+    return report;
   }
 
   meta(key, value) {
@@ -235,6 +260,8 @@ class Store {
       extra_journal: table('extra_journal'),
       users: table('users'),
       role_permissions: table('role_permissions'),
+      upgrade_log: table('upgrade_log'),
+      module_settings: table('module_settings'),
     };
   }
 
@@ -253,7 +280,7 @@ class Store {
     };
     this.db.exec('BEGIN');
     try {
-      for (const name of ['journal', 'snapshots', 'extra_journal', 'extra_sites', 'sessions', 'role_permissions', 'users', 'meta']) {
+      for (const name of ['journal', 'snapshots', 'extra_journal', 'extra_sites', 'sessions', 'role_permissions', 'users', 'meta', 'upgrade_log', 'module_settings']) {
         const exists = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
         if (exists) this.db.exec(`DELETE FROM ${name}`);
       }
@@ -264,6 +291,8 @@ class Store {
       insert('extra_journal', data.extra_journal);
       insert('users', data.users);
       insert('role_permissions', data.role_permissions);
+      insert('upgrade_log', data.upgrade_log);
+      insert('module_settings', data.module_settings);
       const audit = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_audit'").get();
       if (audit) this.db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(this.now(), 'backup-import', 'backup', JSON.stringify({ journal: data.journal.length }));
       this.db.exec('COMMIT');
@@ -271,8 +300,9 @@ class Store {
       this.db.exec('ROLLBACK');
       throw e;
     }
+    this._upgrade();
     this.load();
-    return { journal: data.journal.length, users: (data.users || []).length };
+    return { journal: data.journal.length, users: (data.users || []).length, schema: this.upgradeReport && this.upgradeReport.to };
   }
 }
 

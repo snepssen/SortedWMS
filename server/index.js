@@ -195,6 +195,7 @@ function main() {
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
   const site = JSON.parse(fs.readFileSync(siteFile, 'utf8'));
   const store = new Store({ file: dbFile, site });
+  for (const line of store.upgradeLines) console.log(line);
   if (store.replayErrors.length) console.warn(`Replay finished with ${store.replayErrors.length} error(s):\n${store.replayErrors.slice(0, 10).join('\n')}`);
   const printers = new Printers(store.siteUsed.printers || {});
   printers.sentUpTo = Math.max(0, ...store.wh.printQueue.map((j) => j.id)); // don't reprint history
