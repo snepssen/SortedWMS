@@ -30,7 +30,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/reports.js': 'src/reports.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/item-value.js': 'src/item-value.js', '/src/reports.js': 'src/reports.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
     '/app.html': 'server/public/app.html',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -83,7 +83,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') return send(200, { demoUsers: auth.hasDemoUsers() });
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
-        return send(200, { user: sessionUser, features: (store.wh && store.wh.features) || {}, categories: (store.wh && store.wh.categories) || {}, itemApproval: Boolean(store.wh && store.wh.config && store.wh.config.itemApproval) });
+        const site = store.wh;
+        const highValue = Boolean(site && site.feature && site.feature('highValueSecurity'));
+        const moduleOn = !site || !site.module || site.module('item-value');
+        const itemValue = Boolean(moduleOn && (!highValue || sessionUser.role === 'administrator' || (sessionUser.permissions || []).includes('items.value')));
+        return send(200, { user: sessionUser, features: (site && site.features) || {}, categories: (site && site.categories) || {}, itemApproval: Boolean(site && site.config && site.config.itemApproval), currency: (site && site.config && site.config.currency) || 'EUR', itemValue });
       }
 
       let by;
