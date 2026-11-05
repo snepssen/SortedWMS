@@ -24,7 +24,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
-    '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html',
+    '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
     '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/src/messages.js': 'src/messages.js', '/src/intake.js': 'src/intake.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
@@ -42,6 +42,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       res.end(type.startsWith('application/json') ? JSON.stringify(body) : body);
     };
     if (req.method === 'GET' && url.pathname === '/') return send(302, '', 'text/plain', { location: '/app' });
+    if (req.method === 'GET' && url.pathname.startsWith('/pair/')) {
+      return send(200, fs.readFileSync(path.join(ROOT, 'server/public/pair.html')), 'text/html; charset=utf-8');
+    }
     if (req.method === 'GET' && pages[url.pathname]) {
       // Someone who must choose a password first gets the screen that asks for it.
       if (auth && /^\/(setup|admin|handheld|bins|kit|station|desk|loading|keys|card)(\.html)?$/.test(url.pathname)) {
@@ -96,9 +99,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       } else if (sessionUser) {
         actor = sessionUser;
         by = sessionUser.username;
-      } else if (token) {
+      } else if (token && !access.public) {
         return send(401, { error: 'Token required' });
-      } else if (auth) {
+      } else if (auth && !access.public) {
         return send(401, { error: 'Sign in required' });
       } else {
         by = legacyBy();
@@ -153,6 +156,61 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
           const user = auth.insertUser(body);
           auth.record('user-created', by, { username: user.username, role: user.role });
           return send(200, { user });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'GET' && url.pathname === '/api/pairing') {
+        if (!actor) return send(401, { error: 'Sign in required' });
+        return send(200, { addresses: require('./pairing').lanAddresses() });
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/pairing') {
+        if (!actor) return send(401, { error: 'Sign in required' });
+        try {
+          const users = auth.listUsers();
+          const target = body.userId ? users.find((u) => u.username === String(body.userId).toLowerCase() || u.id === Number(body.userId)) : actor;
+          if (!target) return send(400, { error: 'Unknown user' });
+          const forSomeoneElse = target.id !== actor.id;
+          if (forSomeoneElse && actor.role !== 'administrator' && !auth.can(actor, 'users.write')) return send(403, { error: 'Missing permission: users.write' });
+          const issued = auth.createPairToken({ userId: target.id, createdBy: actor.id, requireSecret: forSomeoneElse });
+          const { lanAddresses, pairCard } = require('./pairing');
+          const addresses = lanAddresses();
+          const address = addresses.includes(body.address) ? body.address : addresses[0];
+          const listenPort = Number(process.env.PORT || (req.socket && req.socket.localPort) || 8080);
+          const card = pairCard({ address, port: listenPort, token: issued.token, code: issued.code });
+          try { store.exec('deviceEvent', { device: issued.code, text: `pairing code for ${target.username}` }, actor.username); } catch (e) { /* journal after the account record */ }
+          return send(200, { ...card, addresses, expiresAt: issued.expiresAt, username: target.username, requireSecret: forSomeoneElse });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/pairing/claim') {
+        try {
+          const ip = String(req.socket && req.socket.remoteAddress || '');
+          if (!require('./pairing').privateAddress(ip) && process.env.SORTED_PAIR_PUBLIC !== '1') return send(403, { error: 'Pairing is only accepted from the local network' });
+          const claimed = auth.claimPair({ token: body.token, code: body.code, secret: body.secret, userAgent: req.headers['user-agent'], ip });
+          try { store.exec('deviceEvent', { device: claimed.deviceId, text: `${claimed.user.username} paired a device` }, claimed.user.username); } catch (e) { /* account record already written */ }
+          const cookies = [
+            auth.sessionCookie(claimed.token, claimed.maxAge),
+            `sorted_device=${encodeURIComponent(claimed.deviceId)}; Path=/; SameSite=Lax; Max-Age=${claimed.maxAge}`,
+          ];
+          return send(200, { user: claimed.user, deviceId: claimed.deviceId }, 'application/json; charset=utf-8', { 'set-cookie': cookies });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+      if (auth && req.method === 'GET' && url.pathname === '/api/devices/paired') {
+        if (!actor || !auth.can(actor, 'devices.manage')) return send(403, { error: 'Missing permission: devices.manage' });
+        return send(200, { devices: auth.listDevices() });
+      }
+      if (auth && req.method === 'POST' && url.pathname === '/api/devices/paired/revoke-all') {
+        if (!actor || !auth.can(actor, 'devices.manage')) return send(403, { error: 'Missing permission: devices.manage' });
+        const out = auth.revokeAllDevices(actor.username);
+        try { store.exec('deviceEvent', { text: `all paired devices revoked (${out.revoked})` }, actor.username); } catch (e) { /* audit already written */ }
+        return send(200, out);
+      }
+      const deviceEdit = url.pathname.match(/^\/api\/devices\/paired\/([^/]+)(?:\/(rename|revoke))?$/);
+      if (auth && req.method === 'POST' && deviceEdit) {
+        if (!actor || !auth.can(actor, 'devices.manage')) return send(403, { error: 'Missing permission: devices.manage' });
+        try {
+          const id = decodeURIComponent(deviceEdit[1]);
+          const out = deviceEdit[2] === 'rename' ? auth.renameDevice(id, body.name, actor.username) : auth.revokeDevice(id, actor.username);
+          try { store.exec('deviceEvent', { device: id, text: deviceEdit[2] === 'rename' ? `renamed to ${out.name}` : 'revoked' }, actor.username); } catch (e) { /* audit already written */ }
+          return send(200, out);
         } catch (e) { return send(400, { error: e.message }); }
       }
       const userEdit = url.pathname.match(/^\/api\/users\/(\d+)$/);
