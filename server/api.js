@@ -51,7 +51,7 @@
   function taskView(wh, t) {
     if (!t) return null;
     return {
-      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, sscc: t.sscc,
+      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, reason: t.reason || null, sscc: t.sscc,
       from: t.from, fromName: placeName(wh, t.from), to: t.to, toName: placeName(wh, t.to),
       step: t.step, orderId: t.orderId, deliveryId: t.deliveryId, truckId: t.truckId, urgent: wh.isUrgent(t),
       why: t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note : t.type === 'COUNT' ? 'Nothing else to do: a quick stock count' : t.dispatchReason,
