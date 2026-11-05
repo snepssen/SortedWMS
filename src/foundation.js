@@ -1401,9 +1401,16 @@
       return { id: preset.id, name: preset.name, summary: preset.summary, features: this.features, modules: this.modules || null, locationPlan: preset.locationPlan, virtual: preset.virtual || [], categories: preset.categories };
     };
 
-    /** A module is on unless this warehouse switched it off. */
+    /**
+     * A module is on unless this warehouse switched it off. A module that
+     * says defaultOn: false stays off until someone turns it on.
+     */
     proto.module = function (name) {
-      return !this.modules || this.modules[name] !== false;
+      if (this.modules && Object.prototype.hasOwnProperty.call(this.modules, name)) return this.modules[name] !== false;
+      const reg = loadRegistry();
+      const mod = reg && reg.get && reg.get(name);
+      if (mod && mod.defaultOn === false) return false;
+      return true;
     };
 
     function rememberFeatures(wh, key, names) {

@@ -169,6 +169,10 @@ function createAuth(db, { now = () => Date.now() } = {}) {
   add('users', 'sites', 'TEXT');
   add('users', 'client_id', 'TEXT');
   add('users', 'language', 'TEXT');
+  add('users', 'terminal_pin', 'TEXT');
+  add('users', 'terminal_badge', 'TEXT');
+  add('users', 'terminal_fails', 'INTEGER NOT NULL DEFAULT 0');
+  add('users', 'terminal_locked_until', 'INTEGER');
   add('sessions', 'last_seen', 'INTEGER');
   // The on-foot operator and the machine operator became duties: pickers and inbound.
   for (const [old, next] of [['operator', 'picker'], ['machine', 'inbound']]) {
@@ -469,6 +473,34 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
   }
 
+  function setTerminalSecret(id, column, value, label) {
+    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
+    if (!row) throw new Error('Unknown user');
+    const secret = String(value || '');
+    if (!/^[A-Za-z0-9]{4,32}$/.test(secret)) throw new Error(`${label} is 4 to 32 letters or digits`);
+    db.prepare(`UPDATE users SET ${column} = ? WHERE id = ?`).run(hashPassword(secret), row.id);
+    record(column, row.username, null);
+    return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
+  }
+
+  function checkTerminal(username, secret) {
+    const row = getUser(username);
+    if (!row || !row.active) return null;
+    if (row.terminal_locked_until && row.terminal_locked_until > now()) return { locked: true, until: row.terminal_locked_until };
+    const pinOk = row.terminal_pin && verifyPassword(secret, row.terminal_pin);
+    const badgeOk = row.terminal_badge && verifyPassword(secret, row.terminal_badge);
+    if (!pinOk && !badgeOk) {
+      const fails = Number(row.terminal_fails || 0) + 1;
+      const lockedUntil = fails >= 5 ? now() + 15 * 60 * 1000 : null;
+      db.prepare('UPDATE users SET terminal_fails = ?, terminal_locked_until = ? WHERE id = ?').run(fails, lockedUntil, row.id);
+      record(lockedUntil ? 'terminal-locked' : 'terminal-failed', row.username, lockedUntil ? { until: lockedUntil } : null);
+      return null;
+    }
+    db.prepare('UPDATE users SET terminal_fails = 0, terminal_locked_until = NULL WHERE id = ?').run(row.id);
+    record('terminal-login', row.username, null);
+    return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
+  }
+
   function canAccessSite(user, siteId) {
     if (!user || user.active === false) return false;
     if (user.service || user.role === 'administrator') return true;
@@ -500,6 +532,9 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     enableTotp,
     disableTotp,
     canAccessSite,
+    setTerminalPin: (id, pin) => setTerminalSecret(id, 'terminal_pin', pin, 'The terminal PIN'),
+    setTerminalBadge: (id, badge) => setTerminalSecret(id, 'terminal_badge', badge, 'The badge'),
+    checkTerminal,
     audit,
     createApiKey,
     listApiKeys,

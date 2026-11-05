@@ -269,6 +269,18 @@ function main() {
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
   const port = Number(process.env.PORT || 8080);
+  if (store.wh.module('terminal')) {
+    const term = require('./terminal').serve({
+      store, auth,
+      port: Number(process.env.TERMINAL_PORT || 2323),
+      host: process.env.TERMINAL_HOST || '0.0.0.0',
+      allowList: process.env.TERMINAL_ALLOW || 'lan',
+      idleMs: Number(process.env.TERMINAL_IDLE_MS || 15 * 60 * 1000),
+      maxSessions: Number(process.env.TERMINAL_MAX || 8),
+    });
+    term.on('listening', () => console.log(`Terminal (telnet) on port ${term.address().port}. LAN only, plaintext.`));
+    term.on('error', (err) => console.error('Terminal', err.message));
+  }
   server.listen(port, () => {
     console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin`);
     if (boot.mustChange) console.log(`Administrator ${boot.username} / sorted-admin: sign in and choose a new password`);
