@@ -269,6 +269,8 @@ Settings, through environment variables:
 
 **Reports.** Managers and the office open Reports. A client login opens the same page and sees only their rows. Stock on hand, ageing, movements (with the holder number), inbound and outbound volumes, order cycle time, pick accuracy, count accuracy, location use against capacity, and a best-before outlook when lots are on. Every table has filters and a CSV. Dates are the warehouse's local dates. A report that belongs to a module that is off is not listed.
 
+**Split replenishment.** When a top-up takes only part of a plate, the machine operator gets a task to bring the remainder back to the slot it left, or to another free slot. The task sits in the same queue as other work and shows on the handheld as a drop. Turn the module off and the remainder is recorded back in its slot at the moment of the drop, as before.
+
 **Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
 
 ## Files
