@@ -255,12 +255,15 @@ Settings, through environment variables:
 | `SORTED_ADMIN_USER` | `admin` | Created when there are no users yet. |
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
 | `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, inbound, picker and stock accounts. |
+| `SORTED_MODULES` | none | Folder of extra module files. Same format as `modules/`. Nothing is downloaded. |
 
 **How big it gets.** `npm run load-test` builds a made-up warehouse of 14,000 locations, 2,000 items, 6,000 pallets, 8,000 bin lines and 2,000 orders through the real commands, then times what people wait on (`--scale 2` for twice as much). On a laptop: a bin put-away about 0.3 ms, a new order about 5 ms, a pick wave about 10 ms, the stock screen and the order queue under 50 ms, a restart under 0.1 s. Shipped pallets, finished jobs and shipped orders stay for history without slowing the floor.
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 
 **Data upgrades.** The database keeps a schema version. On start, and again when a backup is imported, any pending upgrade steps run: the core steps first, then one set per module. Each step runs once. The server copies the database into `data/backups` before it changes anything, prints each step, and if a step fails the change is rolled back and that copy is left in place. See [docs/UPGRADES.md](docs/UPGRADES.md).
+
+**Modules.** Each feature in `modules/` names itself: what it is, what it needs, the routes and menu entries it owns, and its own data upgrades. A warehouse switches them on or off. Add a third-party module by pointing `SORTED_MODULES` at a folder of the same files. Nothing is downloaded. See [docs/MODULES.md](docs/MODULES.md).
 
 **Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
 
@@ -287,6 +290,7 @@ Settings, through environment variables:
 | `src/foundation.js` | Clients, items, locations, holders, labels, equipment and adjustments. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
 | `server/upgrades.js` | Schema version and the upgrade steps run on start and on backup import. |
+| `modules/` | One file per feature (billing, bins, kitting, …) and `registry.js`, which loads them and any folder named by `SORTED_MODULES`. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.blank.json` | The empty building a new warehouse starts from. A site file can also carry a layout, block lanes, stations, routes, desks, items and printer addresses (see `test/fixtures/site.json`). |
 | `server/public/` | `app.html` (each role's screens, at `/app`), `setup.html` (the setup wizard), `bins.html` (the bin handheld), `handheld.html` (Android scanners on trucks), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |

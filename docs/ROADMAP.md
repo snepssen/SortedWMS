@@ -26,6 +26,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 **Running it**
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.
 - Versioned data upgrades on start and on backup import: core steps, then each module's own steps, a backup taken first, a log of every step, and a rollback if a step fails. See [UPGRADES.md](UPGRADES.md).
+- A module manifest per feature in `modules/`: id, dependencies, conflicts, permissions, routes, menu entries, settings and its own data upgrades. A third-party folder (`SORTED_MODULES`) is loaded the same way, with no network install. See [MODULES.md](MODULES.md).
 - A load test (`npm run load-test`); everyday work does not slow down as history grows, and an import of 1,000 orders takes milliseconds.
 - Categories added one by one, like items; a new building starts with one, General.
 - Items without a best-before (tools, hardware), received without one even where lots and expiry are on.

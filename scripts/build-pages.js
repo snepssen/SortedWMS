@@ -19,18 +19,22 @@ const SRC = ['demo.js', 'gs1.js', 'labels.js', 'locations.js', 'presets.js', 'op
 // The WMS screens with the in-browser backend loaded before their own script.
 const LOCAL = ['src/gs1.js', 'src/labels.js', 'src/locations.js', 'src/presets.js', 'src/operations.js', 'src/bins.js', 'src/waves.js', 'src/corrections.js', 'src/barcode.js', 'src/sheets.js', 'src/renames.js', 'src/serials.js', 'src/returns.js', 'src/messages.js', 'src/intake.js', 'src/offline-queue.js', 'src/foundation.js', 'src/engine.js', 'src/workload.js', 'src/drivers.js', 'server/commands.js', 'server/site.js', 'server/api.js', 'server/local.js'];
 const SCREENS = ['app.html', 'setup.html', 'bins.html', 'handheld.html', 'admin.html', 'loading.html', 'station.html', 'desk.html'];
+const MODULES = fs.readdirSync(path.join(root, 'modules')).filter((name) => name.endsWith('.js') && name !== 'registry.js').sort().concat('registry.js');
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'src'), { recursive: true });
 fs.mkdirSync(path.join(out, 'server'), { recursive: true });
+fs.mkdirSync(path.join(out, 'modules'), { recursive: true });
 for (const f of SRC) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'src', f));
+for (const f of MODULES) fs.copyFileSync(path.join(root, 'modules', f), path.join(out, 'modules', f));
 for (const f of LOCAL.filter((f) => f.startsWith('server/')).concat('server/site.blank.json')) fs.copyFileSync(path.join(root, f), path.join(out, f));
 fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out, 'card.html')); // needs only src/
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'camera.js')); // scanning with the camera
 fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'theme.js')); // one light/dark setting for every screen
 
-const tags = LOCAL.map((f) => `<script src="${f}"></script>`).join('\n');
+const moduleTags = MODULES.map((f) => `<script src="modules/${f}"></script>`).join('\n');
+const tags = `${moduleTags}\n${LOCAL.map((f) => `<script src="${f}"></script>`).join('\n')}`;
 for (const name of SCREENS) {
   const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="src/');
   const i = src.indexOf('<script>');
@@ -41,7 +45,8 @@ for (const name of SCREENS) {
 
 // The demo: the same screens in demo/, on their own journal and clock, with the demo warehouse and its bots.
 const DEMO_KEY = 'sortedwms.demo.v1';
-const demoTags = [`<script>window.SORTED_LOCAL = { key: '${DEMO_KEY}', demo: true };</script>`]
+const demoModuleTags = MODULES.map((f) => `<script src="../modules/${f}"></script>`);
+const demoTags = [`<script>window.SORTED_LOCAL = { key: '${DEMO_KEY}', demo: true };</script>`].concat(demoModuleTags)
   .concat(LOCAL.slice(0, LOCAL.indexOf('server/commands.js')).concat('src/demo.js', LOCAL.slice(LOCAL.indexOf('server/commands.js'))).map((f) => `<script src="../${f}"></script>`)).join('\n');
 fs.mkdirSync(path.join(out, 'demo'), { recursive: true });
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'demo', 'camera.js'));
