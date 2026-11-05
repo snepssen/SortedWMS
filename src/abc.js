@@ -109,7 +109,7 @@
         const itemNo = itemOfMove(this, move);
         if (!itemNo) continue;
         const qty = Math.abs(Number(move.qty) || 0);
-        const value = Number(this.items[itemNo] && this.items[itemNo].value) || 0;
+        const value = this.module('item-value') ? (Number(this.items[itemNo] && this.items[itemNo].value) || 0) : 0;
         const score = settings.basis === 'value' ? qty * (value || 0) : qty;
         items[itemNo] = (items[itemNo] || 0) + score;
         if (move.from) locations[move.from] = (locations[move.from] || 0) + score;

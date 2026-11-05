@@ -41,6 +41,7 @@
       const key = line.itemNo || line.item || line.gtin || line.ean || line.sku;
       const item = key != null && key !== '' && (this.items[String(key).trim()] || this.findItem(String(key).trim()));
       if (!item) throw new Error(`Line ${n}: unknown item ${key == null || key === '' ? '(none given)' : key}`);
+      if (line && line.value != null && line.value !== '') this.updateItem(item.itemNo, { value: line.value });
       return item;
     };
 
@@ -135,8 +136,8 @@
    * CSV into documents: one row per line, rows with the same ref make one
    * document. Comma or semicolon; a header row names the columns (case and
    * spaces do not matter). Orders: ref, customer, client, lane, item (or
-   * gtin), units or pallets, minDays. ASNs: ref, supplier, client, category,
-   * expected, sscc, item (or gtin), qty, batch, expiry, serials.
+   * gtin), units or pallets, minDays, value. ASNs: ref, supplier, client, category,
+   * expected, sscc, item (or gtin), qty, batch, expiry, serials, value.
    */
   function fromCsv(type, csv) {
     const kind = String(type || '').trim().toLowerCase();
@@ -161,8 +162,9 @@
       const doc = docs.get(ref);
       const item = col(row, 'item', 'itemno', 'sku');
       const gtin = col(row, 'gtin', 'ean');
-      if (kind === 'order') doc.lines.push({ itemNo: item || undefined, gtin: gtin || undefined, units: col(row, 'units', 'qty'), pallets: col(row, 'pallets') });
-      else doc.pallets.push({ sscc: col(row, 'sscc'), itemNo: item || undefined, gtin: gtin || undefined, qty: col(row, 'qty', 'units'), batch: col(row, 'batch', 'lot'), expiry: col(row, 'expiry', 'bestbefore'), serials: col(row, 'serials') });
+      const value = col(row, 'value', 'unitvalue');
+      if (kind === 'order') doc.lines.push({ itemNo: item || undefined, gtin: gtin || undefined, units: col(row, 'units', 'qty'), pallets: col(row, 'pallets'), value: value || undefined });
+      else doc.pallets.push({ sscc: col(row, 'sscc'), itemNo: item || undefined, gtin: gtin || undefined, qty: col(row, 'qty', 'units'), batch: col(row, 'batch', 'lot'), expiry: col(row, 'expiry', 'bestbefore'), serials: col(row, 'serials'), value: value || undefined });
     });
     for (const d of docs.values()) for (const k of Object.keys(d)) if (d[k] == null) delete d[k];
     return [...docs.values()];

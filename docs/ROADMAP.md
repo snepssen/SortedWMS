@@ -21,6 +21,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 **The office and the building**
 - Guided location setup, presets, and switchable modules with simple screens.
 - Clients, items, orders, ASNs, cartons and packing slips, delivery notes, kits, replenishment, more warehouses per install with transfers, available-to-sell, 3PL rate cards and invoices, client logins.
+- Item value in the warehouse currency, on the item form, client entry, imports and intake. ABC by value and the stock-value report use it. With high-value plates on, roles without the permission do not see the amount.
 - Accounts with roles and editable permissions, TOTP, lockout, session timeouts, and the starting admin password changed at the first sign-in.
 
 **Running it**

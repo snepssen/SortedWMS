@@ -6,7 +6,7 @@ Switching a module off hides it. It does not delete anything. Switching it on br
 
 ## Where modules live
 
-Core modules are the files in `modules/`. One file, one module. `modules/registry.js` loads every other file in that folder.
+Core modules are the files in `modules/`. One file, one module. `modules/registry.js` loads every other file in that folder. Item value (`item-value`) keeps a price on each item and the stock-value report; switching it off hides both and leaves the amounts stored.
 
 A third-party module is the same kind of file in a folder you choose. There is no network install and no package to download.
 
