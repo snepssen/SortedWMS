@@ -87,13 +87,13 @@
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
-    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
@@ -610,16 +610,30 @@
         <section><h2>Classes</h2><p class="hint">${esc(classes.basis)} over ${esc(classes.windowDays)} days, by ${esc(classes.classify)}. A is the first 80% of that score, B the next 15%, C the rest.</p>${table(['Class', 'Item', 'Name', 'Score', ''], classRows)}</section>`;
     },
     async reports() {
-      const [stock, expiry] = await Promise.all([api('GET', '/api/reports/stock'), api('GET', '/api/reports/expiry?days=45')]);
-      const [avail, low, billing] = await Promise.all([api('GET', '/api/reports/availability'), api('GET', '/api/alerts/low-stock'), api('GET', '/api/reports/billing')]);
-      return `<section><h2>Reports</h2><p><a href="/api/reports/stock.csv">Stock CSV</a> · <a href="/api/reports/availability.csv">Available to sell CSV</a> · <a href="/api/reports/availability.json">JSON feed</a> · <a href="/api/reports/billing.csv">Billing CSV</a> · <a href="/api/reports/stock-changes.csv">Stock changes CSV</a> (counts, corrections, created and deleted stock)</p>
-        <h3>Available to sell</h3>${table(['SKU', 'On hand', 'Available', 'Reorder', 'Low'], avail.slice(0, 15).map((r) => `<tr><td>${esc(r.sku)} ${esc(r.name)}</td><td>${r.onHand}</td><td>${r.available}</td><td>${esc(r.reorderPoint == null ? '' : r.reorderPoint)}</td><td>${r.low ? 'yes' : ''}</td></tr>`))}
-        <p class="dim">${low.length} low-stock alert(s).</p>
-        <h3>Tariff</h3>
-        <p><a href="#tariff">Rate cards</a> set tiers, seasons and versions. Each client below has its printable invoice and CSV.</p>
-        <h3>3PL charges</h3>${table(['Client', 'Pallet-days', 'Moves', 'Total'], billing.map((r) => `<tr><td>${esc(r.clientId)} ${esc(r.name)} <a href="/api/reports/billing.html?clientId=${encodeURIComponent(r.clientId)}">invoice</a> · <a href="/api/reports/invoice.csv?clientId=${encodeURIComponent(r.clientId)}">CSV</a></td><td>${r.palletDays}</td><td>${r.moves}</td><td>${r.total}</td></tr>`))}
-        <h3>Stock by item</h3>${table(['Item', 'Client', 'Available', 'Short', 'Blocked', 'Next expiry'], stock.slice(0, 20).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${r.available}</td><td>${r.short}</td><td>${r.blocked}</td><td>${esc(r.nextExpiry || '')}</td></tr>`))}
-        <h3>FEFO — expiry inside 45 days</h3>${table(['Pallet', 'Item', 'Batch', 'Expiry', 'Days', 'Where'], expiry.slice(0, 15).map((p) => `<tr><td>…${esc(p.sscc.slice(-6))}</td><td>${esc(p.itemNo)}</td><td>${esc(p.batch)}</td><td>${esc(p.expiry)}</td><td>${esc(p.daysLeft)}</td><td>${esc(p.locName || p.loc || '')}</td></tr>`))}</section>`;
+      const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+      if (me.role === 'client' && me.clientId) params.set('client', me.clientId);
+      const area = await api('GET', '/api/reports/area?' + params.toString());
+      const f = area.filters;
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(f)) if (v) q.set(k, v);
+      const csv = (id) => `/api/reports/area/${id}.csv?${q.toString()}`;
+      const blocks = area.reports.filter((r) => !r.hidden).map((report) => {
+        const heads = report.columns.map((c) => c);
+        const body = report.rows.slice(0, 40).map((row) => `<tr>${report.columns.map((c) => `<td>${esc(row[c])}</td>`).join('')}</tr>`);
+        return `<section><h2>${esc(report.title)}</h2><p><a href="${csv(report.id)}">CSV</a> <span class="dim">${report.rows.length} row${report.rows.length === 1 ? '' : 's'}</span></p>${table(heads, body)}</section>`;
+      }).join('');
+      const clientLock = me.role === 'client';
+      return `<section><h2>Reports</h2><p class="hint">As of ${esc(area.asOf)} (${esc(area.timeZone)}). Filters use that clock. ${clientLock ? 'You see only your own stock and movements.' : ''}</p>
+        <form class="form" data-act="report-filter">
+          ${clientLock ? '' : '<label>Client<input name="client" value="' + esc(f.client || '') + '"></label>'}
+          <label>Item<input name="item" value="${esc(f.item || '')}"></label>
+          <label>Location<input name="loc" value="${esc(f.loc || '')}"></label>
+          <label>User<input name="user" value="${esc(f.user || '')}"></label>
+          <label>From<input name="from" type="date" value="${esc(f.from || '')}"></label>
+          <label>To<input name="to" type="date" value="${esc(f.to || '')}"></label>
+          <label>Best-before within days<input name="within" type="number" min="0" value="${esc(f.within || '')}"></label>
+          <button class="primary">Apply</button>
+        </form></section>${blocks}`;
     },
     async tariff() {
       const clients = await api('GET', '/api/clients?archived=1');
@@ -1185,6 +1199,14 @@
     if (name === 'abc-recount') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/recount', { qty: Number(data.qty), reason: data.reason || null });
     if (name === 'abc-approve') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/approve', {});
     if (name === 'abc-reject') return api('POST', '/api/abc/' + encodeURIComponent(data.id) + '/reject', { reason: data.reason });
+    if (name === 'report-filter') {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(data)) if (v) q.set(k, v);
+      if (me.role === 'client' && me.clientId) q.set('client', me.clientId);
+      history.replaceState(null, '', '#reports?' + q.toString());
+      panel = 'reports';
+      return;
+    }
     if (name === 'client-add') return api('POST', '/api/clients', data);
     if (name === 'item-add') return api('POST', '/api/items', { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: Number(data.palletQty || 1), lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), clientId: data.clientId || null, gtin: data.gtin || null });
     if (name === 'asn') return api('POST', '/api/deliveries', { ...data, pallets: Number(data.pallets || 1), clientId: data.clientId || null });

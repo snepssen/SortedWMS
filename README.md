@@ -267,6 +267,8 @@ Settings, through environment variables:
 
 **Cycle counts.** ABC cycle counts class items or locations from pick velocity or value, give each class a frequency, and build one list per warehouse per local day. The counter does not see the booked quantity. A variance over the quantity or percent threshold is recounted by someone else and approved before stock changes. The list is under Cycle counts, and on the truck and bin handhelds when that mode is Count.
 
+**Reports.** Managers and the office open Reports. A client login opens the same page and sees only their rows. Stock on hand, ageing, movements (with the holder number), inbound and outbound volumes, order cycle time, pick accuracy, count accuracy, location use against capacity, and a best-before outlook when lots are on. Every table has filters and a CSV. Dates are the warehouse's local dates. A report that belongs to a module that is off is not listed.
+
 **Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
 
 ## Files

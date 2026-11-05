@@ -104,7 +104,7 @@ The behaviour (the warehouse methods) can live in `src/`, which is what the core
 
 A warehouse that has never chosen has every module on (`modules[id] !== false`). A preset writes an explicit true or false for each one.
 
-The core set includes ABC cycle counts (`abc`): classes, a daily blind list, recount and approval. Its routes are under `/api/abc`. Turning it off hides Cycle counts and the handheld count card. The history of counts stays.
+The core set includes ABC cycle counts (`abc`) and Reports (`reports`). Reports that belong to another module (best-before needs `lots`, count accuracy needs `abc`) are omitted while that module is off. A client login is scoped to that client.
 
 ## Switching one on or off
 
