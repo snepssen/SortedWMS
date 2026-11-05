@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · SortedWMS</title>
 <script src="theme.js"></script>
+<script src="/locales/en.js"></script>
+<script src="/locales/nl.js"></script>
+<script src="/src/i18n.js"></script>
 <style>
   :root { --bg: #eef2f4; --card: #fff; --ink: #17202a; --dim: #5c6b76; --line: #d5dee6; --acc: #1769c2; --field: #fff; --on-acc: #fff; --bad: #a32620; }
   :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --acc: #59a9ff; --field: #10161b; --on-acc: #0b1620; --bad: #ff6b63; }
@@ -83,8 +86,12 @@
     if (!user || !user.mustChangePassword) return dest;
     return dest === '/app' ? '/app' : '/app?next=' + encodeURIComponent(dest);
   }
-  fetch('/api/login/info').then((r) => r.json()).then((info) => { if (!info.demoUsers) document.getElementById('demo').hidden = true; }).catch(() => {});
+  fetch('/api/login/info').then((r) => r.json()).then((info) => {
+    if (!info.demoUsers) document.getElementById('demo').hidden = true;
+    if (window.sortedLang && info.language) window.sortedLang(info.language);
+  }).catch(() => {});
 })();
 </script>
+<script src="/i18n-boot.js"></script>
 </body>
 </html>

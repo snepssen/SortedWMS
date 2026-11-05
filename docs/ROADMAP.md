@@ -23,6 +23,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - Clients, items, orders, ASNs, cartons and packing slips, delivery notes, kits, replenishment, more warehouses per install with transfers, available-to-sell, 3PL rate cards and invoices, client logins.
 - Item value in the warehouse currency, on the item form, client entry, imports and intake. ABC by value and the stock-value report use it. With high-value plates on, roles without the permission do not see the amount.
 - Accounts with roles and editable permissions, TOTP, lockout, session timeouts, and the starting admin password changed at the first sign-in.
+- English and Dutch. A person chooses a language; otherwise the warehouse default is used. Numbers, dates and money follow it, in the warehouse timezone. See [I18N.md](I18N.md).
 - Cycle-count recount defaults: a new warehouse posts a difference of 2 pieces or 5% or less at once. Each class can set its own numbers. Warehouses still saved at 0 and 0% are moved to those defaults once.
 
 **Running it**

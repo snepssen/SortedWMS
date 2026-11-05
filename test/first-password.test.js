@@ -27,7 +27,7 @@ test('a new warehouse\'s admin must choose its own password before doing anythin
     return { status: res.status, body: json, headers: res.headers };
   };
   try {
-    assert.deepEqual((await call('GET', '/api/login/info')).body, { demoUsers: false }, 'no demo sign-ins on a real warehouse');
+    assert.deepEqual((await call('GET', '/api/login/info')).body, { demoUsers: false, language: 'en' }, 'no demo sign-ins on a real warehouse');
     const signed = await call('POST', '/api/login', { username: 'admin', password: 'sorted-admin' });
     assert.equal(signed.body.user.mustChangePassword, true);
     const cookie = signed.headers.get('set-cookie').split(';')[0];
@@ -44,7 +44,7 @@ test('a new warehouse\'s admin must choose its own password before doing anythin
     assert.equal((await call('GET', '/api/items', null, cookie)).status, 200);
     assert.equal((await call('GET', '/setup', null, cookie)).status, 200);
     auth.ensureDemoUsers();
-    assert.deepEqual((await call('GET', '/api/login/info')).body, { demoUsers: true });
+    assert.deepEqual((await call('GET', '/api/login/info')).body, { demoUsers: true, language: 'en' });
   } finally {
     await new Promise((r) => server.close(r));
     store.close();

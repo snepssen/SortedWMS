@@ -168,6 +168,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
   add('users', 'totp_enabled', 'INTEGER NOT NULL DEFAULT 0');
   add('users', 'sites', 'TEXT');
   add('users', 'client_id', 'TEXT');
+  add('users', 'language', 'TEXT');
   add('users', 'terminal_pin', 'TEXT');
   add('users', 'terminal_badge', 'TEXT');
   add('users', 'terminal_fails', 'INTEGER NOT NULL DEFAULT 0');
@@ -198,6 +199,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
       totpEnabled: Boolean(row.totp_enabled),
       sites: row.sites ? JSON.parse(row.sites) : null,
       clientId: row.client_id || null,
+      language: row.language || null,
       permissions: permissionsFor(row.role),
     };
   }
@@ -396,7 +398,13 @@ function createAuth(db, { now = () => Date.now() } = {}) {
         sites = JSON.stringify([...new Set(patch.sites.map((s) => s.trim().toUpperCase()))]);
       }
     }
-    db.prepare('UPDATE users SET display_name = ?, role = ?, active = ?, password_hash = ?, must_change = ?, sites = ?, client_id = ? WHERE id = ?').run(display, role, active ? 1 : 0, hash, mustChange, sites, clientId, row.id);
+    let language = row.language || null;
+    if ('language' in patch) {
+      const code = String(patch.language || '').trim().toLowerCase();
+      if (code && !/^[a-z]{2}$/.test(code)) throw new Error('Language is a two-letter code, such as en or nl');
+      language = code || null;
+    }
+    db.prepare('UPDATE users SET display_name = ?, role = ?, active = ?, password_hash = ?, must_change = ?, sites = ?, client_id = ?, language = ? WHERE id = ?').run(display, role, active ? 1 : 0, hash, mustChange, sites, clientId, language, row.id);
     if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
     record('user-updated', patch.by || null, { id: row.id, username: row.username, role, active });
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
