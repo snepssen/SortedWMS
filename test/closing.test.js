@@ -53,6 +53,7 @@ test('a mixed order dispatches once, with one note and a load scan for every hol
 
 test('unit replenishment splits the source plate and a pallet face still moves the whole pallet', () => {
   const w = wh();
+  w.setModules({ 'return-move': false });
   const source = w.stockPallet('01-01-0-10', { itemNo: 'SKU1', batch: 'B', expiry: '2027-01-01', qty: 20 });
   w.issueSeries({ series: 'ST', itemNo: 'SKU1', qty: 1, loc: 'MEZZ-A1' });
   w.setPickFace({ code: 'MEZZ-A1', itemNo: 'SKU1', min: 1, max: 5, trigger: 1, mode: 'units' });

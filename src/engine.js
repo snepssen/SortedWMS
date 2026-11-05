@@ -76,6 +76,7 @@
     quarantine: 'Move to quarantine',
     'quarantine-return': 'Return released stock to storage',
     replenish: 'Replenish a pick face',
+    'return-split': 'Return the remainder',
   };
 
   // Receiving asks for these in this order. A GS1 label scan can fill several at once.

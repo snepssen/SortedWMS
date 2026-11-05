@@ -51,7 +51,7 @@
   function taskView(wh, t) {
     if (!t) return null;
     return {
-      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, sscc: t.sscc,
+      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, reason: t.reason || null, sscc: t.sscc,
       from: t.from, fromName: placeName(wh, t.from), to: t.to, toName: placeName(wh, t.to),
       step: t.step, orderId: t.orderId, deliveryId: t.deliveryId, truckId: t.truckId, urgent: wh.isUrgent(t),
       why: t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note : t.type === 'COUNT' ? 'Nothing else to do: a quick stock count' : t.dispatchReason,
@@ -238,6 +238,9 @@
     });
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
+    on('GET', '/api/return-moves', () => ({
+      tasks: Object.values(wh().tasks).filter((t) => t.reason === 'return-split' && ['open', 'active', 'held'].includes(t.status)).map((t) => taskView(wh(), t)),
+    }));
     on('GET', '/api/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ ...o,
       trailerReadiness: wh().trailerReadiness(o.id),
       shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),
@@ -639,6 +642,16 @@
       faults: (wh().faults || []).filter((f) => f.status === 'open'),
       quality: wh()._livePallets().filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
     }));
+    on('GET', '/api/reports/area', (_, q) => wh().reportArea(q, ownClient()));
+    on('GET', '/api/reports/area/:name.csv', ({ name }, q) => {
+      try { return { contentType: 'text/csv; charset=utf-8', raw: wh().reportCsv(decodeURIComponent(name), q, ownClient()) }; }
+      catch (e) { return { status: e.status || 400, error: e.message }; }
+    });
+    on('GET', '/api/reports/area/:name', ({ name }, q) => {
+      const report = wh().reportById(decodeURIComponent(name), q, ownClient());
+      if (report.hidden) return { status: 404, error: report.reason };
+      return report;
+    });
     on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);

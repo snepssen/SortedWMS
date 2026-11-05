@@ -1295,6 +1295,13 @@
       return globalThis.SortedItemValue;
     }
 
+    function loadReports() {
+      if (typeof require === 'function') {
+        try { return require('./reports'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedReports;
+    }
+
     function loadAbc() {
       if (typeof require === 'function') {
         try { return require('./abc'); } catch (e) { /* browser */ }
@@ -1578,6 +1585,8 @@
     if (abc && abc.install) abc.install(Warehouse);
     const itemValue = loadItemValue();
     if (itemValue && itemValue.install) itemValue.install(Warehouse);
+    const reports = loadReports();
+    if (reports && reports.install) reports.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();
