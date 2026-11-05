@@ -10,6 +10,8 @@ const { PERMISSIONS, ALL, ROLES, ROLE_IDS, DEFAULTS, roleLabel } = require('./pe
 const SCRYPT_N = Number(process.env.SORTED_SCRYPT_N) || 16384;
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const IDLE_MS = Number(process.env.SORTED_IDLE_MS) || 30 * 60 * 1000;
+const DEVICE_IDLE_MS = Number(process.env.SORTED_DEVICE_IDLE_MS) || 4 * 60 * 60 * 1000;
+const PAIR_MS = 5 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 const MAX_FAILS = 5;
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -114,7 +116,7 @@ function cookies(req) {
   return out;
 }
 
-function createAuth(db, { now = () => Date.now() } = {}) {
+function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +176,30 @@ function createAuth(db, { now = () => Date.now() } = {}) {
   add('users', 'terminal_fails', 'INTEGER NOT NULL DEFAULT 0');
   add('users', 'terminal_locked_until', 'INTEGER');
   add('sessions', 'last_seen', 'INTEGER');
+  add('sessions', 'device_id', 'TEXT');
+  add('sessions', 'user_agent', 'TEXT');
+  add('sessions', 'ip', 'TEXT');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pair_tokens (
+      token_hash TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      user_id INTEGER NOT NULL,
+      created_by INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      require_secret INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS paired_devices (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL,
+      last_seen INTEGER,
+      last_ip TEXT,
+      revoked_at INTEGER
+    );
+  `);
   // The on-foot operator and the machine operator became duties: pickers and inbound.
   for (const [old, next] of [['operator', 'picker'], ['machine', 'inbound']]) {
     const moved = db.prepare('UPDATE users SET role = ? WHERE role = ?').run(next, old).changes;
@@ -282,18 +308,33 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     return openSession(challenge);
   }
 
-  function userFromToken(token) {
+  function userFromToken(token, req) {
     if (!token) return null;
-    const row = db.prepare('SELECT s.expires_at AS session_expires, s.last_seen AS session_seen, s.created_at AS session_created, u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?').get(tokenHash(token));
+    const row = db.prepare('SELECT s.expires_at AS session_expires, s.last_seen AS session_seen, s.created_at AS session_created, s.device_id AS session_device, s.user_agent AS session_agent, u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?').get(tokenHash(token));
     if (!row) return null;
     const seen = row.session_seen || row.session_created || 0;
-    if (row.session_expires <= now() || now() - seen > IDLE_MS || !row.active) {
+    const idle = row.session_device ? deviceIdleMs : IDLE_MS;
+    if (row.session_device && req) {
+      const presented = devicePresented(req);
+      if (!presented || presented !== row.session_device) {
+        db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+        record('device-mismatch', row.username, { device: row.session_device });
+        return null;
+      }
+    }
+    if (row.session_expires <= now() || now() - seen > idle || !row.active) {
       db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
-      if (now() - seen > IDLE_MS) record('session-timeout', row.username, null);
+      if (now() - seen > idle) record(row.session_device ? 'device-expired' : 'session-timeout', row.username, row.session_device ? { device: row.session_device } : null);
       return null;
     }
     db.prepare('UPDATE sessions SET last_seen = ? WHERE token_hash = ?').run(now(), tokenHash(token));
+    if (row.session_device) db.prepare('UPDATE paired_devices SET last_seen = ? WHERE id = ? AND revoked_at IS NULL').run(now(), row.session_device);
     return rowToUser(row);
+  }
+
+  function devicePresented(req) {
+    const h = (req && req.headers) || {};
+    return cookies(req || {}).sorted_device || h['x-device-id'] || '';
   }
 
   /*
@@ -355,7 +396,7 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     const h = req.headers || {};
     const bearer = /^Bearer\s+(\S+)$/i.exec(String(h.authorization || ''));
     if (bearer || h['x-api-key']) return userFromApiKey(bearer ? bearer[1] : h['x-api-key']);
-    return userFromToken(cookies(req).sorted_session);
+    return userFromToken(cookies(req).sorted_session, req);
   }
 
   function logout(token) {
@@ -508,6 +549,80 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     return user.sites.includes(String(siteId || 'MAIN').toUpperCase());
   }
 
+  function createPairToken({ userId, createdBy, requireSecret = false } = {}) {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(userId));
+    if (!user || !user.active) throw new Error('Unknown user');
+    const token = randomBytes(18).toString('base64url');
+    let code = '';
+    for (let i = 0; i < 8 && !code; i++) {
+      const next = String(Math.floor(100000 + (randomBytes(3).readUIntBE(0, 3) % 900000)));
+      if (!db.prepare('SELECT token_hash FROM pair_tokens WHERE code = ? AND used_at IS NULL').get(next)) code = next;
+    }
+    if (!code) throw new Error('Could not make a pairing code');
+    const expires = now() + PAIR_MS;
+    db.prepare('INSERT INTO pair_tokens (token_hash, code, user_id, created_by, expires_at, require_secret) VALUES (?, ?, ?, ?, ?, ?)').run(tokenHash(token), code, user.id, Number(createdBy) || user.id, expires, requireSecret ? 1 : 0);
+    record('device-pair-issued', user.username, { code, requireSecret: Boolean(requireSecret) });
+    return { token, code, expiresAt: expires, user: rowToUser(user) };
+  }
+
+  function claimPair({ token, code, secret, userAgent, ip } = {}) {
+    const row = token
+      ? db.prepare('SELECT * FROM pair_tokens WHERE token_hash = ?').get(tokenHash(token))
+      : db.prepare('SELECT * FROM pair_tokens WHERE code = ? AND used_at IS NULL ORDER BY expires_at DESC').get(String(code || ''));
+    if (!row) throw new Error('That pairing code is not valid');
+    if (row.used_at) throw new Error('That pairing code was already used');
+    if (row.expires_at <= now()) throw new Error('That pairing code has expired');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    if (!user || !user.active) throw new Error('That user is not active');
+    if (row.require_secret) {
+      const pinOk = user.terminal_pin && verifyPassword(secret, user.terminal_pin);
+      if (!verifyPassword(secret, user.password_hash) && !pinOk) throw new Error('Password or PIN does not match');
+    }
+    db.prepare('UPDATE pair_tokens SET used_at = ? WHERE token_hash = ?').run(now(), row.token_hash);
+    const deviceId = randomBytes(18).toString('base64url');
+    const name = `${user.display_name}'s device`;
+    db.prepare('INSERT INTO paired_devices (id, user_id, name, user_agent, created_at, last_seen, last_ip) VALUES (?, ?, ?, ?, ?, ?, ?)').run(deviceId, user.id, name, String(userAgent || '').slice(0, 200), now(), now(), ip || null);
+    const sessionToken = randomBytes(32).toString('base64url');
+    const t = now();
+    db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen, device_id, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(tokenHash(sessionToken), user.id, t, t + SESSION_MS, t, deviceId, String(userAgent || '').slice(0, 200), ip || null);
+    record('device-paired', user.username, { device: deviceId, ip: ip || null });
+    return { token: sessionToken, deviceId, user: rowToUser(user), maxAge: Math.floor(deviceIdleMs / 1000) };
+  }
+
+  function deviceRow(row) {
+    const user = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(row.user_id);
+    return { id: row.id, name: row.name, username: user ? user.username : null, displayName: user ? user.display_name : null, userAgent: row.user_agent || '', createdAt: row.created_at, lastSeen: row.last_seen || null, ip: row.last_ip || null, revokedAt: row.revoked_at || null };
+  }
+
+  function listDevices() {
+    return db.prepare('SELECT * FROM paired_devices ORDER BY revoked_at IS NOT NULL, last_seen DESC').all().map(deviceRow);
+  }
+
+  function renameDevice(id, name, by) {
+    const row = db.prepare('SELECT * FROM paired_devices WHERE id = ?').get(String(id));
+    if (!row) throw new Error('Unknown device');
+    const label = String(name || '').trim().slice(0, 40);
+    if (!label) throw new Error('A device needs a name');
+    db.prepare('UPDATE paired_devices SET name = ? WHERE id = ?').run(label, row.id);
+    record('device-renamed', by || null, { device: row.id, name: label });
+    return deviceRow(db.prepare('SELECT * FROM paired_devices WHERE id = ?').get(row.id));
+  }
+
+  function revokeDevice(id, by) {
+    const row = db.prepare('SELECT * FROM paired_devices WHERE id = ?').get(String(id));
+    if (!row) throw new Error('Unknown device');
+    db.prepare('UPDATE paired_devices SET revoked_at = ? WHERE id = ?').run(now(), row.id);
+    db.prepare('DELETE FROM sessions WHERE device_id = ?').run(row.id);
+    record('device-revoked', by || null, { device: row.id });
+    return deviceRow(db.prepare('SELECT * FROM paired_devices WHERE id = ?').get(row.id));
+  }
+
+  function revokeAllDevices(by) {
+    const rows = db.prepare('SELECT id FROM paired_devices WHERE revoked_at IS NULL').all();
+    for (const row of rows) revokeDevice(row.id, by);
+    return { revoked: rows.length };
+  }
+
   return {
     hashPassword,
     verifyPassword,
@@ -535,6 +650,12 @@ function createAuth(db, { now = () => Date.now() } = {}) {
     setTerminalPin: (id, pin) => setTerminalSecret(id, 'terminal_pin', pin, 'The terminal PIN'),
     setTerminalBadge: (id, badge) => setTerminalSecret(id, 'terminal_badge', badge, 'The badge'),
     checkTerminal,
+    createPairToken,
+    claimPair,
+    listDevices,
+    renameDevice,
+    revokeDevice,
+    revokeAllDevices,
     audit,
     createApiKey,
     listApiKeys,

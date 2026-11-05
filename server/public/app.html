@@ -90,8 +90,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    administrator: [['users', 'Users'], ['pairing', 'Connect a device'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['pairing', 'Connect a device'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
@@ -104,7 +104,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -407,6 +407,19 @@
       return `<section><h2>Movement history</h2><p class="hint">Every move stores the person, the license plate, from, to, time and quantity.</p>
         <form class="form" data-act="history"><label>User<select name="user"><option value="">Anyone</option>${(users.users || []).map((u) => `<option>${esc(u.username)}</option>`).join('')}</select></label><label>Plate or SSCC<input name="holder" placeholder="PAL0000001"></label><button class="primary">Show</button></form>
         <div id="historyOut">${moveTable(movements)}</div></section>`;
+    },
+    async pairing() {
+      const info = await api('GET', '/api/pairing');
+      const addresses = (info.addresses || []).map((a) => `<option>${esc(a)}</option>`).join('');
+      let devices = '';
+      if (can('devices.manage')) {
+        const list = await api('GET', '/api/devices/paired');
+        const rows = (list.devices || []).filter((d) => !d.revokedAt).map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.displayName || d.username || '')}</td><td>${d.lastSeen ? esc(new Date(d.lastSeen).toISOString().slice(0, 16).replace('T', ' ')) : ''}</td><td>${esc(d.ip || '')}</td><td><form class="form" data-act="device-rename"><input type="hidden" name="id" value="${esc(d.id)}"><input name="name" value="${esc(d.name)}" size="12"><button>Rename</button></form> <form class="form" data-act="device-revoke"><input type="hidden" name="id" value="${esc(d.id)}"><button>Revoke</button></form></td></tr>`);
+        devices = `<h3>Paired devices</h3>${table(['Name', 'User', 'Last seen', 'IP', ''], rows)}<form data-act="device-revoke-all"><button>Revoke all</button></form>`;
+      }
+      return `<section><h2>Connect a device</h2><p class="hint">The phone has to be on the same network. The link is plain HTTP, for a trusted LAN. A code works once and only for a few minutes.</p>
+        <form class="form" data-act="pairing-create"><label>Address<select name="address">${addresses}</select></label><label>Sign in as<input name="userId" placeholder="blank: this sign-in"></label><button class="primary">Show the code</button></form>
+        <div id="pairCard"></div>${devices}</section>`;
     },
     async users() {
       const { users } = await api('GET', '/api/users');
@@ -981,6 +994,12 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
+      if (form.dataset.act === 'pairing-create') {
+        const card = await api('POST', '/api/pairing', { address: data.address, userId: data.userId || null });
+        const slot = document.getElementById('pairCard');
+        if (slot) slot.innerHTML = `<p>Code <b id="pairCode">${esc(card.code)}</b></p><p><a id="pairLink" href="${esc(card.url)}">${esc(card.url)}</a></p><div id="pairQr">${card.svg}</div>`;
+        return;
+      }
       if (form.dataset.act === 'tariff-preview') {
         const q = new URLSearchParams({ client: data.clientId, from: data.from || '', to: data.to || '', preview: '1' });
         history.replaceState(null, '', '#tariff?' + q.toString());
@@ -1201,6 +1220,9 @@
       return api('POST', '/api/items', body);
     }
     if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null, language: data.language || null });
+    if (name === 'device-rename') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/rename', { name: data.name });
+    if (name === 'device-revoke') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/revoke', {});
+    if (name === 'device-revoke-all') return api('POST', '/api/devices/paired/revoke-all', {});
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') {
       const opt = document.querySelector(`[data-act=assign] option[value="${CSS.escape(data.operator || '')}"]`);

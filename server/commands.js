@@ -18,6 +18,7 @@
     // Handhelds and desks
     addTruck: (wh, a) => wh.addTruck(req(a.id, 'id'), { mode: a.mode || 'auto', categories: a.categories || null }),
     terminalNote: (wh, a) => { wh.log(`Terminal ${req(a.device, 'device')}: ${a.text || ''}`, { device: a.device }); return true; },
+    deviceEvent: (wh, a) => { wh.log(`Device ${a.device || ''}: ${a.text || ''}`, { device: a.device || null }); return true; },
     setTruckMode: (wh, a) => wh.setTruckMode(req(a.id, 'id'), req(a.mode, 'mode'), { orderId: a.orderId || null }),
     setTruckCategories: (wh, a) => wh.setTruckCategories(req(a.id, 'id'), a.categories || null),
     scan: (wh, a) => wh.scan(req(a.id, 'id'), req(a.code, 'code')),
