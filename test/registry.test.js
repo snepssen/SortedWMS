@@ -6,7 +6,7 @@ const path = require('node:path');
 const registry = require('../modules/registry');
 const { Store } = require('../server/store');
 
-const CORE = ['abc', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'food', 'kitting', 'lots', 'quarantine', 'returns', 'serials', 'sites', 'stations', 'transfers', 'trucks', 'waves'];
+const CORE = ['abc', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'food', 'kitting', 'lots', 'quarantine', 'returns', 'serials', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves'];
 
 test('core modules declare the manifest fields and the presets agree with the original seven', () => {
   const list = registry.modules();
@@ -27,7 +27,13 @@ test('core modules declare the manifest fields and the presets agree with the or
   assert.equal(home.bins, true);
   assert.equal(home.camera, true);
   const chilled = registry.presetModules('chilled-dc');
-  for (const id of CORE) assert.equal(chilled[id], true, id);
+  for (const id of CORE) {
+    if (registry.get(id).defaultOn === false) {
+      assert.equal(chilled[id], false, id);
+      continue;
+    }
+    assert.equal(chilled[id], true, id);
+  }
   const maker = registry.presetModules('small-maker');
   assert.equal(maker.kitting, true);
   assert.equal(maker.trucks, false);
