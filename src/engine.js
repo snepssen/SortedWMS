@@ -76,6 +76,7 @@
     quarantine: 'Move to quarantine',
     'quarantine-return': 'Return released stock to storage',
     replenish: 'Replenish a pick face',
+    'return-split': 'Return the remainder',
   };
 
   // Receiving asks for these in this order. A GS1 label scan can fill several at once.
@@ -529,7 +530,7 @@
      * numbers that mean this item, such as a supplier's article number,
      * printed as "(91)40012009" on the label.
      */
-    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false, bestBefore = true }) {
+    addItem({ itemNo, gtin, name, category, palletQty, minShipDays = 0, storage = 'rack', unitGtin = null, unitsPerCase = null, codes = [], clientId = null, uom = 'case', lengthMm = null, widthMm = null, heightMm = null, weightKg = null, barcodes = null, status = 'active', food = false, frozen = false, highValue = false, bestBefore = true, value = null }) {
       if (!this.categories[category]) throw new Error(`Unknown category ${category}`);
       if (this.items[itemNo]) throw new Error(`Item ${itemNo} already exists`);
       if (gtin && !GS1.isValidGtin(gtin)) throw new Error(`GTIN ${gtin} has a wrong check digit`);
@@ -558,6 +559,13 @@
         lengthMm: measure(lengthMm, 'Length'), widthMm: measure(widthMm, 'Width'), heightMm: measure(heightMm, 'Height'), weightKg: measure(weightKg, 'Weight'),
         barcodes: barcodeList,
         flags: { food: Boolean(food), frozen: Boolean(frozen), highValue: Boolean(highValue) },
+        value: (() => {
+          if (value == null || value === '') return null;
+          const n = typeof value === 'number' ? value : Number(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+          if (!Number.isFinite(n) || n < 0) throw new Error('Value is a number of 0 or more');
+          if (n > 1e12) throw new Error('Value is too large');
+          return Math.round(n * 10000) / 10000;
+        })(),
       };
       // Goods that never go off (tools, hardware) are received without a best-before date.
       if (bestBefore === false || bestBefore === 'false') this.items[itemNo].bestBefore = false;
@@ -1033,6 +1041,12 @@
         const country = String(patch.country || '').trim().toUpperCase();
         if (!/^[A-Z]{2}$/.test(country)) throw new Error('Country is a two-letter code');
         patch = { ...patch, country };
+      }
+      if (patch.currency !== undefined) {
+        const currency = String(patch.currency || '').trim().toUpperCase();
+        if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Currency is a three-letter code, such as EUR');
+        try { new Intl.NumberFormat('en', { style: 'currency', currency }).format(0); } catch (e) { throw new Error(`Unknown currency ${currency}`); }
+        patch = { ...patch, currency };
       }
       if (patch.itemApproval !== undefined) patch = { ...patch, itemApproval: Boolean(patch.itemApproval) };
       if (patch.aisleCap !== undefined && !(Number.isInteger(patch.aisleCap) && patch.aisleCap >= 1)) {

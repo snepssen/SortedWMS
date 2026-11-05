@@ -22,6 +22,23 @@
     return n;
   }
 
+  /** Blank means "use the warehouse threshold". 0 is a real setting. */
+  function classLimits(raw) {
+    const out = {};
+    for (const cls of CLASSES) {
+      const row = raw && raw[cls];
+      if (!row) { out[cls] = { qty: null, percent: null }; continue; }
+      const qty = row.qty == null || row.qty === '' ? null : whole(row.qty, `Class ${cls} quantity`);
+      let percent = null;
+      if (row.percent != null && row.percent !== '') {
+        percent = Number(row.percent);
+        if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error(`Class ${cls} percent is 0 to 100`);
+      }
+      out[cls] = { qty, percent };
+    }
+    return out;
+  }
+
   function qtyAt(wh, loc, itemNo) {
     const place = wh.locations[loc];
     if (!place) return 0;
@@ -58,8 +75,9 @@
         basis: saved.basis === 'value' ? 'value' : 'velocity',
         classify: saved.classify === 'location' ? 'location' : 'item',
         frequency,
-        thresholdQty: saved.thresholdQty == null ? 0 : saved.thresholdQty,
-        thresholdPercent: saved.thresholdPercent == null ? 0 : saved.thresholdPercent,
+        thresholdQty: saved.thresholdQty == null ? 2 : saved.thresholdQty,
+        thresholdPercent: saved.thresholdPercent == null ? 5 : saved.thresholdPercent,
+        classThresholds: classLimits(saved.classThresholds),
         maxPerDay: saved.maxPerDay == null ? 40 : saved.maxPerDay,
         blind: saved.blind !== false,
       };
@@ -78,6 +96,7 @@
       const pct = Number(next.thresholdPercent);
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error('The percent threshold is 0 to 100');
       next.thresholdPercent = pct;
+      next.classThresholds = classLimits(patch.classThresholds || next.classThresholds);
       next.maxPerDay = whole(next.maxPerDay, 'Daily list');
       if (next.maxPerDay < 1 || next.maxPerDay > 500) throw new Error('The daily list is 1 to 500 counts');
       next.blind = Boolean(next.blind);
@@ -109,7 +128,7 @@
         const itemNo = itemOfMove(this, move);
         if (!itemNo) continue;
         const qty = Math.abs(Number(move.qty) || 0);
-        const value = Number(this.items[itemNo] && this.items[itemNo].value) || 0;
+        const value = this.module('item-value') ? (Number(this.items[itemNo] && this.items[itemNo].value) || 0) : 0;
         const score = settings.basis === 'value' ? qty * (value || 0) : qty;
         items[itemNo] = (items[itemNo] || 0) + score;
         if (move.from) locations[move.from] = (locations[move.from] || 0) + score;
@@ -232,15 +251,24 @@
       return found;
     };
 
-    function overThreshold(expected, counted, settings) {
+    function limitsFor(settings, cls) {
+      const over = cls && settings.classThresholds && settings.classThresholds[cls];
+      return {
+        thresholdQty: over && over.qty != null ? over.qty : settings.thresholdQty,
+        thresholdPercent: over && over.percent != null ? over.percent : settings.thresholdPercent,
+      };
+    }
+
+    function overThreshold(expected, counted, settings, cls) {
+      const use = limitsFor(settings, cls);
       const diff = Math.abs(counted - expected);
       if (diff === 0) return false;
-      const qtyOn = settings.thresholdQty > 0;
-      const pctOn = settings.thresholdPercent > 0;
+      const qtyOn = use.thresholdQty > 0;
+      const pctOn = use.thresholdPercent > 0;
       // Both zero means any difference is over the line.
       if (!qtyOn && !pctOn) return true;
-      if (qtyOn && diff > settings.thresholdQty) return true;
-      if (pctOn && expected > 0 && (diff / expected) * 100 > settings.thresholdPercent) return true;
+      if (qtyOn && diff > use.thresholdQty) return true;
+      if (pctOn && expected > 0 && (diff / expected) * 100 > use.thresholdPercent) return true;
       if (pctOn && expected === 0 && counted !== 0) return true;
       return false;
     }
@@ -276,7 +304,7 @@
       if (line.expected == null) line.expected = expected;
       if (qty !== expected && !REASONS.includes(reason)) throw new Error(`Reason is one of ${REASONS.join(', ')}`);
       line.counts.push({ t: wh.now(), by, qty, reason: reason || null, kind });
-      const over = overThreshold(expected, qty, settings);
+      const over = overThreshold(expected, qty, settings, line.class);
       return { expected, over };
     }
 

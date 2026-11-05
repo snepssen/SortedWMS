@@ -51,7 +51,7 @@
   function taskView(wh, t) {
     if (!t) return null;
     return {
-      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, sscc: t.sscc,
+      id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, reason: t.reason || null, sscc: t.sscc,
       from: t.from, fromName: placeName(wh, t.from), to: t.to, toName: placeName(wh, t.to),
       step: t.step, orderId: t.orderId, deliveryId: t.deliveryId, truckId: t.truckId, urgent: wh.isUrgent(t),
       why: t.type === 'SHIFT' ? SHIFT_REASONS[t.reason] : t.type === 'MOVE' ? t.note : t.type === 'COUNT' ? 'Nothing else to do: a quick stock count' : t.dispatchReason,
@@ -174,6 +174,34 @@
     };
     let currentActor = null;
     const ownClient = () => (currentActor && currentActor.role === 'client' ? String(currentActor.clientId || '').toUpperCase() : null);
+    const seesItemValue = () => {
+      const w = wh();
+      if (typeof w.module === 'function' && !w.module('item-value')) return false;
+      if (!w.feature('highValueSecurity')) return true;
+      if (!currentActor) return true;
+      if (currentActor.service || currentActor.role === 'administrator') return true;
+      return Boolean(currentActor.permissions && currentActor.permissions.includes('items.value'));
+    };
+    const presentItem = (item) => {
+      if (!item || seesItemValue() || !Object.prototype.hasOwnProperty.call(item, 'value')) return item;
+      const copy = { ...item };
+      delete copy.value;
+      return copy;
+    };
+    const valueDenied = () => {
+      const w = wh();
+      if (typeof w.module === 'function' && !w.module('item-value')) return { status: 403, error: 'Item value is switched off', module: 'item-value' };
+      return { status: 403, error: 'Item value is hidden for this role' };
+    };
+    const mentionsValue = (body) => {
+      if (!body || typeof body !== 'object') return false;
+      const filled = (row) => Boolean(row) && Object.prototype.hasOwnProperty.call(row, 'value');
+      if (filled(body)) return true;
+      const rows = Array.isArray(body) ? body : body.rows;
+      if (Array.isArray(rows) && rows.some(filled)) return true;
+      const doc = body.doc && typeof body.doc === 'object' ? body.doc : body;
+      return ['items', 'lines', 'pallets'].some((key) => Array.isArray(doc[key]) && doc[key].some(filled));
+    };
     const deny = () => ({ status: 403, error: 'That belongs to another client' });
 
     // Reads
@@ -187,6 +215,7 @@
       try {
         docs = b.csv != null ? Intake().fromCsv(b.type, b.csv) : Array.isArray(b.documents) ? b.documents : [b];
       } catch (e) { return { status: 400, error: e.message }; }
+      if (docs.some((doc) => mentionsValue(doc)) && !seesItemValue()) return valueDenied();
       if (!docs.length) return { status: 400, error: 'Nothing to take in' };
       if (docs.length > 500) return { status: 400, error: 'At most 500 documents a call' };
       const results = docs.map((doc) => {
@@ -209,6 +238,9 @@
     });
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
+    on('GET', '/api/return-moves', () => ({
+      tasks: Object.values(wh().tasks).filter((t) => t.reason === 'return-split' && ['open', 'active', 'held'].includes(t.status)).map((t) => taskView(wh(), t)),
+    }));
     on('GET', '/api/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ ...o,
       trailerReadiness: wh().trailerReadiness(o.id),
       shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),
@@ -222,8 +254,8 @@
         total: o.lines.reduce((n, l) => n + l.pallets, 0), loaded: pallets.filter((p) => o.loading && p.loc === o.loading.location).length, pallets };
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
-    on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own); });
-    on('GET', '/api/stock', () => { const own = ownClient(); return wh().stockSummary().filter((r) => own == null || (r.item && r.item.clientId === own)).map((r) => ({ ...r, next: palletView(wh(), r.next) })); });
+    on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own).map(presentItem); });
+    on('GET', '/api/stock', () => { const own = ownClient(); return wh().stockSummary().filter((r) => own == null || (r.item && r.item.clientId === own)).map((r) => ({ ...r, item: presentItem(r.item), next: palletView(wh(), r.next) })); });
     on('GET', '/api/quality', () => Object.values(wh().pallets).filter((p) => p.qualityHistory && p.qualityHistory.length).map((p) => palletView(wh(), p)));
     const recallView = (itemNo, batch) => {
       const r = wh().batchRecall(itemNo, batch);
@@ -351,7 +383,10 @@
     on('POST', '/api/workload', (_, q, b, by) => run('dropWorkload', { seed: Number(b.seed) || (Date.now() % 1e9) + 1, picks: Number(b.picks) || 0, inbound: Number(b.inbound) || 0 }, by));
     on('POST', '/api/plan/counts', (_, q, b, by) => run('planCounts', { from: b.from || null, to: b.to || null, limit: b.limit }, by));
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
-    on('POST', '/api/import/items', (_, q, b, by) => run('importItems', { rows: b.rows || b }, by));
+    on('POST', '/api/import/items', (_, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      return run('importItems', { rows: b.rows || b }, by);
+    });
     on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: b.rows || b }, by));
     on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b, planOnce: true }, by));
     on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
@@ -368,13 +403,14 @@
       if (!c) return { status: 404, error: `Unknown client ${id}` };
       const own = ownClient();
       if (own != null && c.id !== own) return deny();
-      return { ...clientView(c), itemList: Object.values(wh().items).filter((i) => i.clientId === c.id), stock: wh().stockForClient(c.id).filter((p) => p.status !== 'shipped').map((p) => palletView(wh(), p)) };
+      return { ...clientView(c), itemList: Object.values(wh().items).filter((i) => i.clientId === c.id).map(presentItem), stock: wh().stockForClient(c.id).filter((p) => p.status !== 'shipped').map((p) => palletView(wh(), p)) };
     });
     on('POST', '/api/clients', (_, q, b, by) => run('addClient', b, by));
     on('POST', '/api/clients/:id', ({ id }, q, b, by) => run('updateClient', { ...b, id: decodeURIComponent(id) }, by));
     on('POST', '/api/clients/:id/archive', ({ id }, q, b, by) => run('archiveClient', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/clients/:id/restore', ({ id }, q, b, by) => run('restoreClient', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/items', (_, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
       const own = ownClient();
       const body = { ...b };
       if (own != null) {
@@ -385,6 +421,7 @@
       return run('addItem', body, by);
     });
     on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
       const key = decodeURIComponent(itemNo);
       const own = ownClient();
       const item = wh().items[key];
@@ -594,7 +631,10 @@
     on('POST', '/api/equipment/:id/fault', ({ id }, q, b, by) => run('reportFault', { ...b, equipmentId: decodeURIComponent(id) }, by));
     on('POST', '/api/equipment/:id/maintenance', ({ id }, q, b, by) => run('recordMaintenance', { ...b, equipmentId: decodeURIComponent(id) }, by));
     on('POST', '/api/faults/:id/close', ({ id }, q, b, by) => run('closeFault', { id: decodeURIComponent(id), note: b.note }, by));
-    on('GET', '/api/search', (_, q) => wh().search(q.q || ''));
+    on('GET', '/api/search', (_, q) => {
+      const found = wh().search(q.q || '');
+      return { ...found, items: (found.items || []).map(presentItem) };
+    });
     on('GET', '/api/exceptions', () => ({
       held: Object.values(wh().tasks).filter((t) => t.status === 'held' && !t.replacedBy).map((t) => taskView(wh(), t)),
       blocked: wh()._livePallets().filter((p) => p.status === 'blocked').map((p) => palletView(wh(), p)),
@@ -602,12 +642,36 @@
       faults: (wh().faults || []).filter((f) => f.status === 'open'),
       quality: wh()._livePallets().filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
     }));
+    on('GET', '/api/reports/area', (_, q) => wh().reportArea(q, ownClient()));
+    on('GET', '/api/reports/area/:name.csv', ({ name }, q) => {
+      try { return { contentType: 'text/csv; charset=utf-8', raw: wh().reportCsv(decodeURIComponent(name), q, ownClient()) }; }
+      catch (e) { return { status: e.status || 400, error: e.message }; }
+    });
+    on('GET', '/api/reports/area/:name', ({ name }, q) => {
+      const report = wh().reportById(decodeURIComponent(name), q, ownClient());
+      if (report.hidden) return { status: 404, error: report.reason };
+      return report;
+    });
     on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
       return wh()._livePallets().filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
     });
     on('GET', '/api/reports/orders', () => Object.values(wh().orders).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
+    on('POST', '/api/item-value/currency', (_, q, b, by) => run('setCurrency', { currency: b.currency }, by));
+    on('GET', '/api/reports/stock-value', (_, q) => {
+      if (!seesItemValue()) return valueDenied();
+      const own = ownClient();
+      return wh().stockValueReport({ client: own || q.client || q.clientId || null });
+    });
+    on('GET', '/api/reports/stock-value.csv', (_, q) => {
+      if (!seesItemValue()) return valueDenied();
+      const own = ownClient();
+      const report = wh().stockValueReport({ client: own || q.client || q.clientId || null });
+      const head = ['client', 'item', 'name', 'location', 'qty', 'unit value', 'value', 'currency'];
+      const rows = report.rows.map((r) => [r.client, r.itemNo, r.name, r.location, r.qty, r.unitValue == null ? '' : r.unitValue, r.value, r.currency]);
+      return { contentType: 'text/csv; charset=utf-8', raw: csv([head, ...rows, ['', '', '', '', '', '', report.total, report.currency]]) };
+    });
     on('GET', '/api/reports/stock.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
       raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
