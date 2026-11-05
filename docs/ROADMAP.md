@@ -38,6 +38,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - Categories added one by one, like items; a new building starts with one, General.
 - Items without a best-before (tools, hardware), received without one even where lots and expiry are on.
 - Bins refilled straight from a rack pallet, keeping its batch and best-before.
+- A text terminal for scanner guns (telnet, ASCII, off until enabled). See [TERMINAL.md](TERMINAL.md).
 - Connect a phone on the same network with a QR code. The session is bound to that device. See [PAIRING.md](PAIRING.md).
 - The demo on GitHub Pages: a distribution centre for four clients worked by bots in every role on the real screens, on a clock you can pause or speed up. Each role's card points at what just happened that concerns it; take over any role and work it yourself.
 - One light/dark setting (Auto, Light or Dark) for every screen, kept in the browser; Auto follows the device.
