@@ -32,6 +32,12 @@ Every pending step runs in one transaction, and each one is written to `upgrade_
 
 Nothing here deletes warehouse data. A module that is switched off keeps its rows; its upgrade steps still run, so the data is current when the module is switched on again.
 
+## Recount defaults (ABC module, step 2)
+
+A new warehouse recounts when a count is off by more than 2 pieces or more than 5%. Each class can set its own quantity and percent; a blank class uses the warehouse numbers. Both at 0 still means every difference waits for a recount and approval.
+
+Warehouses that already had both thresholds saved as 0 and 0% — the previous default — are moved to 2 and 5% by module step `abc-recount-defaults`. That runs once, on start and on backup import, and rewrites the saved settings and the `setAbc` journal rows that stored 0 and 0. Set both back to 0 afterwards if every difference should wait.
+
 ## Adding a step
 
 Add an object to `CORE_STEPS`, or to a module's `upgrades` list, with the next integer version. Do not renumber a step that has already shipped: a database that recorded version 3 will skip anything numbered 3 or lower.
