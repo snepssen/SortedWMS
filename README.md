@@ -260,6 +260,8 @@ Settings, through environment variables:
 
 **How it keeps state.** Every change (each scan, each office action) is a command written to the database with its time and who did it, before the answer goes back. On restart the server loads the latest snapshot and replays the commands after it, which rebuilds exactly the same warehouse. That list of commands is also the **audit trail** in the office: who moved which pallet, from where to where, and when.
 
+**Data upgrades.** The database keeps a schema version. On start, and again when a backup is imported, any pending upgrade steps run: the core steps first, then one set per module. Each step runs once. The server copies the database into `data/backups` before it changes anything, prints each step, and if a step fails the change is rolled back and that copy is left in place. See [docs/UPGRADES.md](docs/UPGRADES.md).
+
 **Label printers.** Map each printer name to its address in the site file (`"LP-OUT-01": "10.0.4.51:9100"`). Labels are sent as ZPL over TCP port 9100 as soon as they're created; the office Settings tab shows what was sent and what failed.
 
 ## Files
@@ -284,6 +286,7 @@ Settings, through environment variables:
 | `server/hardware.js` | Wedge / manual / simulated scans, and simulated, browser or network printing. |
 | `src/foundation.js` | Clients, items, locations, holders, labels, equipment and adjustments. |
 | `server/store.js` | The database: command journal (audit trail), snapshots, replay on start. |
+| `server/upgrades.js` | Schema version and the upgrade steps run on start and on backup import. |
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.blank.json` | The empty building a new warehouse starts from. A site file can also carry a layout, block lanes, stations, routes, desks, items and printer addresses (see `test/fixtures/site.json`). |
 | `server/public/` | `app.html` (each role's screens, at `/app`), `setup.html` (the setup wizard), `bins.html` (the bin handheld), `handheld.html` (Android scanners on trucks), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
