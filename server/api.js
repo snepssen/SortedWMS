@@ -602,6 +602,16 @@
       faults: (wh().faults || []).filter((f) => f.status === 'open'),
       quality: wh()._livePallets().filter((p) => p.qualityHold).map((p) => palletView(wh(), p)),
     }));
+    on('GET', '/api/reports/area', (_, q) => wh().reportArea(q, ownClient()));
+    on('GET', '/api/reports/area/:name.csv', ({ name }, q) => {
+      try { return { contentType: 'text/csv; charset=utf-8', raw: wh().reportCsv(decodeURIComponent(name), q, ownClient()) }; }
+      catch (e) { return { status: e.status || 400, error: e.message }; }
+    });
+    on('GET', '/api/reports/area/:name', ({ name }, q) => {
+      const report = wh().reportById(decodeURIComponent(name), q, ownClient());
+      if (report.hidden) return { status: 404, error: report.reason };
+      return report;
+    });
     on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
