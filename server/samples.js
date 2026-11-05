@@ -75,7 +75,7 @@ const SAMPLES = {
   '3pl': {
     name: 'Small 3PL',
     load(x, now, wh) {
-      x('applyPreset', { id: 'high-value' });
+      x('applyPreset', { id: '3pl' });
       x('generateGuided', { answers: { sections: { count: 2, name: 'Hall, Mezz' }, layouts: [
         { type: 'rack', aisles: { count: 2, name: '01' }, bays: { count: 4, name: '01' }, positions: { count: 2 }, levels: { count: 3, name: 'A' } },
         { type: 'shelf', aisles: { count: 1 }, bays: { count: 2, name: 'Shelf 1' }, positions: { count: 4, name: 'Bin 1' }, levels: { count: 1 } },

@@ -86,8 +86,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
@@ -99,8 +99,14 @@
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
-  // Screens that belong to a module disappear while it is off.
-  const PANEL_MODULE = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks' };
+  // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections' };
+  function panelModule(id) {
+    if (MODS && MODS.modules) {
+      for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
+    }
+    return PANEL_FALLBACK[id] || null;
+  }
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
   const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
@@ -113,7 +119,11 @@
     if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent(location.pathname + location.search)); throw new Error('Sign in required'); }
     const type = res.headers.get('content-type') || '';
     const data = type.includes('json') ? await res.json().catch(() => ({})) : await res.text();
-    if (!res.ok) throw new Error((data && data.error) || res.statusText);
+    if (!res.ok) {
+      const err = new Error((data && data.error) || res.statusText);
+      if (data && typeof data === 'object') { err.needs = data.needs; err.dependents = data.dependents; err.offer = data.offer; err.conflicts = data.conflicts; }
+      throw err;
+    }
     return data;
   }
   const can = (p) => me && me.permissions && me.permissions.includes(p);
@@ -128,10 +138,10 @@
     $('#who').textContent = `${me.displayName} · ${me.username}`;
     const simple = MODS && MODS.simple && me.role !== 'client';
     const listed = simple ? SIMPLE_NAV.filter(([, , perm]) => can(perm)).map(([id, label]) => [id, label]) : (NAV[me.role] || [['floor', 'Home']]);
-    const shown = listed.filter(([id]) => modOn(PANEL_MODULE[id]));
+    const shown = listed.filter(([id]) => modOn(panelModule(id)));
     const items = shown.length ? shown : listed;
     const home = simple ? items[0][0] : HOME[me.role];
-    if (!panel || (!items.some(([id]) => id === panel) && !PANELS[panel]) || !modOn(PANEL_MODULE[panel])) panel = items.some(([id]) => id === home) ? home : items[0][0];
+    if (!panel || (!items.some(([id]) => id === panel) && !PANELS[panel]) || !modOn(panelModule(panel))) panel = items.some(([id]) => id === home) ? home : items[0][0];
     const hh = document.getElementById('handheldLink');
     if (hh) hh.style.display = modOn('trucks') ? '' : 'none';
     const floor = document.getElementById('floorLink');
@@ -218,7 +228,7 @@
         ${can('stock.adjust') ? `<section><h2>Correct a quantity</h2><form class="form" data-act="stock-adjust"><label>Pallet SSCC<input name="sscc" required></label><label>Quantity<input name="qty" type="number" min="0" required></label><label>Reason<select name="reason">${reasons}</select></label><button class="primary">Correct</button></form></section>` : ''}
         ${can('stock.create') ? `<section><h2>Create stock</h2><p class="hint">Stock that was found, or missed at receiving.</p><form class="form" data-act="stock-create"><label>Location<input name="code" required></label><label>Item<input name="itemNo" required></label><label>Quantity<input name="qty" type="number" min="1" required></label><label>Batch<input name="batch"></label><label>Best before<input name="expiry" type="date"></label><label>Reason<select name="reason"><option>found</option><option>correction</option><option>recount</option><option>other</option></select></label><button class="primary">Create</button></form></section>` : ''}
         ${can('stock.delete') ? `<section><h2>Delete stock</h2><p class="hint">Takes the pallet out of stock for good. The record and its history stay.</p><form class="form" data-act="stock-delete"><label>Pallet SSCC<input name="sscc" required></label><label>Reason<select name="reason"><option>damage</option><option>expiry</option><option>correction</option><option>other</option></select></label><button class="primary">Delete</button></form></section>` : ''}
-        ${can('counts.execute') ? `<section><h2>Cycle counts</h2><p class="hint">Plan count jobs for the stock trucks: places with corrections and lost pallets first, then the longest since a count.</p><form class="form" data-act="plan-counts-stock"><label>How many<input name="limit" type="number" min="1" value="5"></label><button class="primary">Plan counts</button></form></section>` : ''}
+        ${can('counts.execute') && modOn('trucks') ? `<section><h2>Cycle counts</h2><p class="hint">Plan count jobs for the stock trucks: places with corrections and lost pallets first, then the longest since a count.</p><form class="form" data-act="plan-counts-stock"><label>How many<input name="limit" type="number" min="1" value="5"></label><button class="primary">Plan counts</button></form></section>` : ''}
         </div>`;
     },
     async bins() {
@@ -230,7 +240,7 @@
       if (can('picks.execute')) forms.push(`<section><h2>Pick</h2><form class="form" data-act="bin-take"><label>Order<input name="orderId" placeholder="optional"></label><label>Bin<input name="loc" required autocomplete="off"></label>${what}<label>Qty<input name="qty" type="number" min="1" value="1"></label>${unit}<label>Serials<input name="serials" placeholder="if traced" size="14"></label><button class="primary">Pick</button></form><p class="hint">For an order, the pick waits for packing under the bin code. Earliest expiry goes first.</p></section>`);
       if (can('moves.execute')) forms.push(`<section><h2>Move</h2><form class="form" data-act="bin-move"><label>From<input name="from" required autocomplete="off"></label><label>To<input name="to" required autocomplete="off"></label>${what}<label>Qty<input name="qty" type="number" min="1" value="1"></label>${unit}<label>Serials<input name="serials" placeholder="if traced" size="14"></label><button class="primary">Move</button></form></section>`);
       if (can('counts.execute')) forms.push(`<section><h2>Count</h2><form class="form" data-act="bin-count"><label>Bin<input name="loc" required autocomplete="off"></label>${what}<label>Counted<input name="counted" type="number" min="0"></label><label>Or serials<input name="serials" placeholder="every one in the bin" size="16"></label>${unit}<label>Batch<input name="batch" placeholder="all" size="8"></label><label>Reason<select name="reason"><option>recount</option><option>found</option><option>damage</option><option>expiry</option><option>correction</option><option>other</option></select></label><button class="primary">Save count</button></form></section>`);
-      if (can('items.write')) forms.push(`<section><h2>Serial numbers</h2><p class="hint">A traced item is picked, moved and counted by scanning one serial per piece. Put-away may scan them too. Stock control's Check finds a serial: where it is, or which order and customer it went to.</p><form class="form" data-act="bin-serials"><label>Item<input name="itemNo" required></label><label><input type="checkbox" name="on" checked> Trace by serial number</label><button class="primary">Save</button></form></section>`);
+      if (can('items.write') && modOn('serials')) forms.push(`<section><h2>Serial numbers</h2><p class="hint">A traced item is picked, moved and counted by scanning one serial per piece. Put-away may scan them too. Stock control's Check finds a serial: where it is, or which order and customer it went to.</p><form class="form" data-act="bin-serials"><label>Item<input name="itemNo" required></label><label><input type="checkbox" name="on" checked> Trace by serial number</label><button class="primary">Save</button></form></section>`);
       if (can('items.write')) forms.push(`<section><h2>Units and packs</h2><form class="form" data-act="bin-units"><label>Item<input name="itemNo" required></label><label>Base unit<input name="base" placeholder="piece"></label><label>kg per unit<input name="unitWeightKg" type="number" step="0.001" min="0"></label><label>Packs<input name="packs" placeholder="box=12, case=144" size="18"></label><label>Pack barcodes<input name="barcodes" placeholder="box=8710001, case=8710002" size="22"></label><button class="primary">Save units</button></form><p class="hint">Any quantity can then be given in a pack. A bin shows 30 pieces as 2 box + 6 piece.</p></section>`);
       return `<section><h2>Bins and shelves</h2><p class="hint">Loose stock without a license plate. A bin can hold several items unless it is set to one item only. On foot with a phone or scanner? <a href="${window.SORTED_DEMO ? 'bins.html' : '/bins'}">Open the bin handheld</a>.</p>
         <form class="form" data-act="bin-find"><label>Item, barcode or bin<input name="q" required autocomplete="off" placeholder="M3 or Shelf1-Bin2"></label><button class="primary">Find</button></form><div id="binOut"></div></section>
@@ -439,6 +449,32 @@
       return `<section><h2>Permissions</h2><p class="hint">Administrator always has every permission. Other roles start from a default you can narrow or widen.</p>
         <form data-act="role-save"><label>Role<select name="role" id="rolePick">${cat.roles.map((r) => `<option value="${r.id}" ${r.id === current.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
         <div class="checks">${boxes}</div><p><button class="primary" ${current.fixed ? 'disabled' : ''}>Save ${esc(current.label)}</button></p></form></section>`;
+    },
+    async modules() {
+      const list = MODS || await api('GET', '/api/modules');
+      MODS = list;
+      const writable = can('modules.write');
+      const cards = list.modules.map((m) => {
+        const needs = (m.dependsOn || []).map((d) => esc(d.name)).join(', ');
+        const blocks = (m.conflicts || []).map((id) => esc(id)).join(', ');
+        const perms = (m.permissions || []).map((p) => esc(p.label)).join(', ');
+        const fields = m.settings && m.settings.properties ? Object.entries(m.settings.properties).map(([key, spec]) => {
+          const value = (m.settingsValues && m.settingsValues[key] != null) ? m.settingsValues[key] : (spec.default != null ? spec.default : '');
+          if (spec.type === 'boolean') return `<label><input type="checkbox" data-setting="${esc(m.id)}" data-key="${esc(key)}" ${value ? 'checked' : ''} ${writable ? '' : 'disabled'}> ${esc(spec.title || key)}</label>`;
+          return `<label>${esc(spec.title || key)}<input data-setting="${esc(m.id)}" data-key="${esc(key)}" value="${esc(value)}" ${writable ? '' : 'disabled'}></label>`;
+        }).join('') : '';
+        return `<section><h2>${esc(m.name)} <span class="dim">v${esc(m.version)}</span></h2>
+          <p>${esc(m.description || m.hint || '')}</p>
+          <p class="hint">${needs ? `Needs ${needs}. ` : ''}${blocks ? `Conflicts with ${blocks}. ` : ''}${perms ? `Adds: ${perms}. ` : ''}Switching it off keeps the data.</p>
+          <label><input type="checkbox" data-mod="${esc(m.id)}" ${m.on ? 'checked' : ''} ${writable ? '' : 'disabled'}> On for this warehouse</label>
+          ${fields ? `<form class="form" data-act="module-settings" data-id="${esc(m.id)}">${fields}<button ${writable ? '' : 'disabled'}>Save settings</button></form>` : ''}
+        </section>`;
+      }).join('');
+      return `<section><h2>Modules</h2><p class="hint">Turn on what this warehouse uses. A module that is off disappears from the menus, and its pages answer as if they were not there. The stock and the history stay, so turning it on again brings them back.</p>
+        <label><input type="checkbox" id="simpleModules" ${list.simple ? 'checked' : ''} ${writable ? '' : 'disabled'}> Simple screens — one short menu</label>
+        <p id="moduleOffer"></p>
+        ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
+        </section>${cards}`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
@@ -790,6 +826,35 @@
   };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
   $('#main').onclick = async (e) => {
+    const saveModules = e.target.closest('#saveModules');
+    if (saveModules) {
+      e.preventDefault();
+      const modules = { simple: document.getElementById('simpleModules').checked };
+      for (const box of document.querySelectorAll('#main input[data-mod]')) modules[box.dataset.mod] = box.checked;
+      const offer = document.getElementById('moduleOffer');
+      const send = (extra) => api('POST', '/api/setup/modules', { modules, ...extra });
+      try {
+        MODS = await send({});
+        offer.innerHTML = msg('Saved. Menus follow this list.', true);
+        paintNav();
+        window.dispatchEvent(new Event('sorted-modules'));
+      } catch (err) {
+        const enable = err.offer === 'enable' && err.needs;
+        const disable = err.offer === 'disable';
+        if (!enable && !disable) { offer.innerHTML = msg(err.message, false); return; }
+        offer.innerHTML = `<p class="msg">${esc(err.message)}</p><p><button type="button" id="moduleOfferYes">${enable ? 'Enable them too' : 'Switch those off too'}</button> <button type="button" id="moduleOfferNo">Leave it</button></p>`;
+        document.getElementById('moduleOfferYes').onclick = async () => {
+          try {
+            MODS = await send(enable ? { enableDependencies: true } : { disableDependents: true });
+            offer.innerHTML = msg(enable ? 'Saved, including what it needs.' : 'Saved. The data is still there.', true);
+            paintNav();
+            draw();
+          } catch (e2) { offer.innerHTML = msg(e2.message, false); }
+        };
+        document.getElementById('moduleOfferNo').onclick = () => { offer.innerHTML = ''; };
+      }
+      return;
+    }
     const b = e.target.closest('[data-slip], [data-sheet], [data-act], #sim, #stationPick, #devicePick');
     if (!b) return;
     try {
@@ -879,6 +944,12 @@
       const el = document.getElementById('scanMsg');
       if (el) el.innerHTML = msg('Picked ' + data.code, true);
       return;
+    }
+    if (form.dataset.act === 'module-settings') {
+      const settings = {};
+      for (const field of form.querySelectorAll('[data-setting]')) settings[field.dataset.key] = field.type === 'checkbox' ? field.checked : field.value;
+      await api('POST', '/api/modules/' + encodeURIComponent(form.dataset.id) + '/settings', { settings });
+      return draw();
     }
     if (form.dataset.act.startsWith('bin-')) return await binAct(form.dataset.act, data);
     if (form.dataset.act === 'label-sheet') {
@@ -1206,7 +1277,7 @@
   const DEMO_NAV_ROLES = ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock'];
   function demoUser(role) {
     const permissions = {
-      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write'],
+      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'modules.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write'],
       manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read', 'clients.read', 'tariff.write'],
       office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'clients.write', 'tariff.write', 'items.read'],
       technician: ['wms.read', 'sites.switch', 'technical.write', 'labels.print'],
@@ -1279,6 +1350,12 @@
       return;
     }
     try { MODS = await api('GET', '/api/modules'); } catch (e) { MODS = null; } // a client login sees every screen it owns
+    window.sortedModuleOn = (id) => modOn(id);
+    window.dispatchEvent(new Event('sorted-modules'));
+    if (me.role === 'client' && !modOn('clients')) {
+      $('#main').innerHTML = msg('Client login is switched off for this warehouse.', false);
+      return;
+    }
     panel = (location.hash || '#').slice(1).split('?')[0];
     await draw();
     loadSites();

@@ -157,8 +157,9 @@ function createOutbox({ store, now = () => Date.now(), fetchImpl = (...a) => fet
     return written;
   }
 
-  function start({ every = 5000, folder = null } = {}) {
+  function start({ every = 5000, folder = null, enabled = null } = {}) {
     const timer = setInterval(() => {
+      if (typeof enabled === 'function' && enabled() === false) return;
       if (folder) { try { writeFolder(folder); } catch (e) { log.error('outbox folder', e); } }
       pump().catch((e) => log.error('webhooks', e));
     }, every);

@@ -91,7 +91,21 @@
     }
   }
 
+  function allowed() {
+    return typeof window.sortedModuleOn !== 'function' || window.sortedModuleOn('camera') !== false;
+  }
+
+  function clearButtons() {
+    document.querySelectorAll('.cam-btn').forEach((b) => b.remove());
+    document.querySelectorAll('[data-cam]').forEach((input) => {
+      delete input.dataset.cam;
+      const row = input.parentElement;
+      if (row && row.classList.contains('cam-row') && row.parentNode) row.replaceWith(input);
+    });
+  }
+
   function add(input) {
+    if (!allowed()) return;
     if (input.dataset.cam || input.type === 'number' || input.type === 'hidden' || input.type === 'password') return;
     input.dataset.cam = '1';
     const b = document.createElement('button');
@@ -108,7 +122,8 @@
     row.append(input, b);
   }
 
-  const sweep = () => document.querySelectorAll(FIELDS).forEach(add);
+  const sweep = () => { if (allowed()) document.querySelectorAll(FIELDS).forEach(add); else clearButtons(); };
+  window.addEventListener('sorted-modules', sweep);
   new MutationObserver(sweep).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sweep);
   else sweep();

@@ -173,7 +173,13 @@
     const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     if (res.status === 401) { location.assign('/login?next=' + encodeURIComponent('/setup')); throw new Error('Sign in required'); }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || res.statusText);
+    if (!res.ok) {
+      const err = new Error(data.error || res.statusText);
+      err.needs = data.needs;
+      err.offer = data.offer;
+      err.dependents = data.dependents;
+      throw err;
+    }
     return data;
   }
   function say(text, ok) {
@@ -235,7 +241,10 @@
     state = data;
     document.getElementById('who').textContent = data.setup && data.setup.preset ? 'Preset ' + data.setup.preset : 'Not finished yet';
     document.getElementById('presets').innerHTML = data.presets.map((p) => `<button type="button" class="card ${data.setup && data.setup.preset === p.id ? 'on' : ''}" data-preset="${esc(p.id)}"><b>${esc(p.name)}</b><span class="hint">${esc(p.summary)}</span></button>`).join('');
-    document.getElementById('modules').innerHTML = data.modules.modules.map((m) => `<label><input type="checkbox" name="${esc(m.id)}" ${m.on ? 'checked' : ''}> <span><b>${esc(m.label)}</b> — ${esc(m.hint)}</span></label>`).join('');
+    document.getElementById('modules').innerHTML = data.modules.modules.map((m) => {
+      const needs = (m.dependsOn || []).map((d) => d.name).join(', ');
+      return `<label><input type="checkbox" name="${esc(m.id)}" ${m.on ? 'checked' : ''}> <span><b>${esc(m.label || m.name)}</b> — ${esc(m.hint || m.description || '')}${needs ? ` Needs ${esc(needs)}.` : ''}</span></label>`;
+    }).join('');
     document.getElementById('simple').checked = data.modules.simple;
     showCategories(data.categories);
     document.getElementById('features').innerHTML = data.featureList.map((f) => `<label><input type="checkbox" name="${esc(f.id)}" ${data.features && data.features[f.id] ? 'checked' : ''}> <span><b>${esc(f.label)}</b> — ${esc(f.hint)}</span></label>`).join('');
@@ -275,8 +284,21 @@
   document.getElementById('saveModules').onclick = async () => {
     const modules = { simple: document.getElementById('simple').checked };
     for (const box of document.querySelectorAll('#modules input')) modules[box.name] = box.checked;
-    try { await api('POST', '/api/setup/modules', { modules }); say('Saved. The menus follow on the next page load.', true); }
-    catch (err) { say(err.message, false); }
+    const send = (extra) => api('POST', '/api/setup/modules', { modules, ...extra });
+    try { await send({}); say('Saved. The menus follow on the next page load.', true); }
+    catch (err) {
+      if (err.offer === 'enable' && err.needs && confirm(`${err.message} Enable them too?`)) {
+        try { await send({ enableDependencies: true }); say('Saved, including what it needs. The menus follow on the next page load.', true); state = await api('GET', '/api/setup'); render(state); }
+        catch (e2) { say(e2.message, false); }
+        return;
+      }
+      if (err.offer === 'disable' && confirm(`${err.message} Switch those off too? Their data stays.`)) {
+        try { await send({ disableDependents: true }); say('Saved. Nothing was deleted.', true); state = await api('GET', '/api/setup'); render(state); }
+        catch (e2) { say(e2.message, false); }
+        return;
+      }
+      say(err.message, false);
+    }
   };
   function showCategories(cats) {
     document.getElementById('categories').innerHTML = Object.entries(cats || {}).map(([c, n]) => `<b>${esc(c)}</b> ${esc(n)}`).join(' · ') || 'None yet.';

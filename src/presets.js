@@ -105,6 +105,23 @@
       ]),
       virtual: [{ code: 'STAGE01', role: 'staging', name: 'Packing table' }],
     },
+    {
+      id: '3pl',
+      name: 'Small 3PL',
+      summary: 'Other people\'s goods: clients, billing and connections, racks and bins. No temperature regime.',
+      features: { temperatureZones: false, lotExpiry: false, fefo: false, highValueSecurity: true },
+      modules: { trucks: true, waves: true, kitting: true, stations: false, clients: true, billing: true, sites: true, simple: false },
+      categories: { ELEC: 'Electronics', COMP: 'Computers' },
+      zones: [],
+      locationPlan: plan([
+        { key: 'cell', scheme: 'word', words: ['Hall'] },
+        { key: 'aisle', scheme: 'number', from: 1, to: 2, pad: 2 },
+        { key: 'bay', scheme: 'number', from: 1, to: 2, pad: 2 },
+        { key: 'position', scheme: 'number', from: 1, to: 2, pad: 0 },
+        { key: 'height', scheme: 'letter', from: 'A', to: 'B' },
+      ]),
+      virtual: [{ code: 'STAGE01', role: 'staging', name: 'Staging' }],
+    },
   ];
 
   return { FEATURES, MODULES, ALL_ON, PRESETS };

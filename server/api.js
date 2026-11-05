@@ -10,6 +10,22 @@
   'use strict';
   // The same routes run in the browser on Pages, where there is no require: use the globals the modules set there.
   const presetsLib = () => (typeof require === 'function' ? require('../src/presets') : globalThis.SortedPresets);
+  const registryLib = () => {
+    if (typeof require === 'function') {
+      try { return require('../modules/registry'); } catch (e) { return null; }
+    }
+    return typeof globalThis !== 'undefined' ? globalThis.SortedRegistry : null;
+  };
+  function hiddenModes(wh) {
+    const reg = registryLib();
+    const hidden = new Set();
+    if (!reg || typeof wh.module !== 'function') return hidden;
+    for (const mod of reg.modules()) {
+      if (wh.module(mod.id)) continue;
+      for (const mode of mod.handheld || []) hidden.add(mode.id);
+    }
+    return hidden;
+  }
   const Intake = () => (typeof require === 'function' ? require('../src/intake') : globalThis.SortedIntake);
   const locationsLib = () => (typeof require === 'function' ? require('../src/locations') : globalThis.SortedLocations);
   const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, SCAN_COMMANDS, COMMAND_PREFIX } = Engine;
@@ -54,7 +70,7 @@
     const ins = wh.trucks[id] ? wh.instruction(id) : { kind: d.taskId ? 'receive' : 'idle' };
     const task = d.taskId ? wh.tasks[d.taskId] : null;
     const out = {
-      id, kind: d.kind || 'truck', mode: d.mode, operator: d.operator || null, duty: d.duty || null, equipment: d.equipment || null, modes: Object.entries(TRUCK_MODES).map(([k, v]) => ({ id: k, label: v.label })),
+      id, kind: d.kind || 'truck', mode: d.mode, operator: d.operator || null, duty: d.duty || null, equipment: d.equipment || null, modes: Object.entries(TRUCK_MODES).filter(([k]) => !hiddenModes(wh).has(k)).map(([k, v]) => ({ id: k, label: v.label })),
       categories: d.categories, message: d.message ? { ok: d.message.ok, text: wh.display(d.message.text) } : null, stats: d.stats,
       instruction: { kind: ins.kind, task: taskView(wh, task) },
     };
@@ -186,7 +202,10 @@
     });
     on('GET', '/api/messages', (_, q) => wh().messageLog({ after: q.after, limit: q.limit, type: q.type || null, clientId: ownClient() }));
     on('GET', '/api/devices', () => [...Object.keys(wh().trucks), ...Object.keys(wh().desks)].map((id) => deviceView(wh(), id)));
-    on('GET', '/api/scan-commands', () => Object.entries(SCAN_COMMANDS).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) })));
+    on('GET', '/api/scan-commands', () => {
+      const hidden = hiddenModes(wh());
+      return Object.entries(SCAN_COMMANDS).filter(([, c]) => !c.mode || !hidden.has(c.mode)).map(([k, c]) => ({ code: COMMAND_PREFIX + k, label: c.label, group: c.group, confirm: Boolean(c.confirm) }));
+    });
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
     on('GET', '/api/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ ...o,
@@ -416,7 +435,15 @@
     on('POST', '/api/setup/preset', (_, q, b, by) => run('applyPreset', b, by));
     on('POST', '/api/categories', (_, q, b, by) => run('addCategory', b, by));
     on('GET', '/api/modules', () => wh().moduleList());
-    on('POST', '/api/setup/modules', (_, q, b, by) => run('setModules', { modules: b.modules || b }, by));
+    on('POST', '/api/setup/modules', (_, q, b, by) => {
+      try {
+        return run('setModules', { modules: b.modules || b, enableDependencies: Boolean(b.enableDependencies), disableDependents: Boolean(b.disableDependents) }, by);
+      } catch (e) {
+        if (e.needs || e.dependents || e.conflicts) return { status: 409, error: e.message, needs: e.needs || null, dependents: e.dependents || null, conflicts: e.conflicts || null, offer: e.offer || null };
+        throw e;
+      }
+    });
+    on('POST', '/api/modules/:id/settings', ({ id }, q, b, by) => run('setModuleSettings', { id: decodeURIComponent(id), settings: b.settings || b }, by));
     on('POST', '/api/setup/features', (_, q, b, by) => run('setFeatures', { features: b.features || b }, by));
     on('POST', '/api/setup/complete', (_, q, b, by) => run('completeSetup', {}, by));
     on('POST', '/api/locations/preview', (_, q, b) => locationsLib().expand(b.plan || b, { limit: 24 }));
@@ -600,34 +627,16 @@
       return handleOnce(method, rawUrl, body, by);
     }
 
-    // Changes that belong to a module are refused while it is off. Reads still answer.
-    const MODULE_ROUTES = [
-      ['trucks', /^\/api\/(devices|aisles\/|shift\/start|plan\/counts)/],
-      ['waves', /^\/api\/waves/],
-      ['kitting', /^\/api\/(val|work-orders)/],
-      ['stations', /^\/api\/(stations\/[^/]+\/scan|pallets\/[^/]+\/process)/],
-      ['billing', /^\/api\/clients\/[^/]+\/(tariff|space)$/],
-      ['clients', /^\/api\/clients/],
-      ['sites', /^\/api\/sites/],
-    ];
-    function moduleOff(method, path) {
-      if (method === 'GET' || typeof wh().module !== 'function') return null;
-      const hit = MODULE_ROUTES.find(([, re]) => re.test(path));
-      return hit && !wh().module(hit[0]) ? hit[0] : null;
-    }
-
     function handleOnce(method, rawUrl, body, by) {
       const url = new URL(rawUrl, 'http://x');
+      const reg = registryLib();
+      const denied = reg && reg.denial(wh(), method, url.pathname);
+      if (denied) return denied;
       const route = routes.find((r) => r.method === method && r.re.test(url.pathname));
       if (!route) return { status: 404, body: { error: `No route ${method} ${url.pathname}` } };
-      const off = moduleOff(method, url.pathname);
-      if (off) {
-        const label = (wh().moduleList().modules.find((m) => m.id === off) || {}).label || off;
-        return { status: 409, body: { error: `${label} is switched off for this warehouse. An administrator can turn it on in setup.`, module: off } };
-      }
       const answer = (out) => {
       if (out && out.contentType) return { status: out.status || 200, body: out.raw != null ? out.raw : out.body, contentType: out.contentType };
-      if (out && out.status && out.error) return { status: out.status, body: { error: out.error } };
+      if (out && out.status && out.error) return { status: out.status, body: { error: out.error, needs: out.needs, dependents: out.dependents, conflicts: out.conflicts, offer: out.offer, module: out.module } };
       return { status: 200, body: out === undefined ? { ok: true } : out };
       };
       try {
