@@ -1042,6 +1042,11 @@
         if (!/^[A-Z]{2}$/.test(country)) throw new Error('Country is a two-letter code');
         patch = { ...patch, country };
       }
+      if (patch.language !== undefined) {
+        const language = String(patch.language || '').trim().toLowerCase();
+        if (language && !/^[a-z]{2}$/.test(language)) throw new Error('Language is a two-letter code, such as en or nl');
+        patch = { ...patch, language: language || 'en' };
+      }
       if (patch.currency !== undefined) {
         const currency = String(patch.currency || '').trim().toUpperCase();
         if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Currency is a three-letter code, such as EUR');

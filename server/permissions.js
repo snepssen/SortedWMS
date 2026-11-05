@@ -289,6 +289,7 @@ const RULES = [
   ['GET', '/api/backup', 'settings.write'],
   ['POST', '/api/backup', 'settings.write'],
   ['POST', '/api/password', 'wms.read'],
+  ['POST', '/api/language', null],
   ['GET', '/api/pairing', 'wms.read'],
   ['POST', '/api/pairing', null],
   ['POST', '/api/pairing/claim', null],
