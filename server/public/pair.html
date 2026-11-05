@@ -4,45 +4,77 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect · SortedWMS</title>
-<script src="theme.js"></script>
+<script src="/theme.js"></script>
 <style>
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #eef2f4; color: #17202a; font: 16px/1.45 system-ui, sans-serif; }
-  main { width: min(420px, calc(100% - 24px)); background: #fff; border-radius: 16px; padding: 20px; }
-  button { font: inherit; font-weight: 700; width: 100%; border: 0; border-radius: 10px; padding: 12px; background: #1769c2; color: #fff; }
-  input { font: inherit; width: 100%; padding: 10px; margin: 8px 0 12px; }
-  .err { color: #a32620; }
+  :root { --bg: #eef2f4; --card: #fff; --ink: #17202a; --dim: #5c6b76; --line: #d5dee6; --acc: #1769c2; --field: #fff; --on-acc: #fff; --bad: #a32620; --ok: #1b7f45; }
+  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --acc: #59a9ff; --field: #10161b; --on-acc: #0b1620; --bad: #ff6b63; --ok: #3ccf7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 17px/1.45 system-ui, sans-serif; }
+  main { width: min(420px, calc(100% - 28px)); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  p { margin: 0 0 14px; color: var(--dim); }
+  label { display: block; font-size: 14px; color: var(--dim); }
+  input { font: inherit; width: 100%; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 6px 0 14px; }
+  input.code { font: 700 30px/1 ui-monospace, Menlo, monospace; letter-spacing: 8px; text-align: center; }
+  button { font: inherit; font-weight: 700; width: 100%; min-height: 50px; border: 0; border-radius: 10px; background: var(--acc); color: var(--on-acc); cursor: pointer; }
+  .err { color: var(--bad); min-height: 1.2em; margin: 12px 0 0; }
+  .ok { color: var(--ok); font-weight: 700; font-size: 19px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Connect this device</h1>
-  <p id="msg">Opening the warehouse…</p>
+  <p id="msg">Connecting…</p>
+  <form id="codeForm" hidden>
+    <label>The 6-digit code on the computer<input class="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
+    <button>Connect</button>
+  </form>
   <form id="secret" hidden>
-    <label>Password or PIN <input name="secret" type="password" autocomplete="current-password" required></label>
+    <label>Password or terminal PIN<input name="secret" type="password" autocomplete="current-password" required></label>
     <button>Sign in</button>
   </form>
-  <p class="err" id="err"></p>
+  <p class="err" id="err" role="alert"></p>
 </main>
 <script>
 (function () {
-  const token = location.pathname.split('/').filter(Boolean).pop();
-  const err = document.getElementById('err');
+  const $ = (id) => document.getElementById(id);
+  const last = location.pathname.split('/').filter(Boolean).pop();
+  const token = last && last !== 'pair' ? last : '';
+  let code = '';
   async function claim(secret) {
-    const res = await fetch('/api/pairing/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: token === 'pair' ? '' : token, secret: secret || null }) });
+    $('err').textContent = '';
+    const res = await fetch('/api/pairing/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: token || '', code: code || null, secret: secret || null }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || 'Could not connect');
     try { localStorage.setItem('sorted.device', body.deviceId); } catch (e) { /* the cookie still names the device */ }
-    document.getElementById('msg').textContent = 'This device is connected. The queued scans on a handheld stay on the device.';
-    location.assign('/handheld');
+    $('codeForm').hidden = true;
+    $('secret').hidden = true;
+    const name = body.user && (body.user.displayName || body.user.username);
+    const hours = body.idleHours || 4;
+    $('msg').innerHTML = '';
+    const ok = document.createElement('p'); ok.className = 'ok'; ok.textContent = `✓ Connected${name ? ` as ${name}` : ''}`;
+    const note = document.createElement('p'); note.textContent = `This device stays signed in while you use it and signs out after ${hours} hours without use. Opening the warehouse…`;
+    $('msg').replaceWith(ok); ok.after(note);
+    setTimeout(() => location.replace('/app'), 1600);
   }
-  document.getElementById('secret').onsubmit = async (e) => {
-    e.preventDefault();
-    try { await claim(new FormData(e.target).get('secret')); } catch (e2) { err.textContent = e2.message; }
-  };
-  claim('').catch((e) => {
-    if (/Password or PIN/.test(e.message)) { document.getElementById('secret').hidden = false; document.getElementById('msg').textContent = 'This device is shared. Enter that person\'s password or PIN.'; return; }
-    err.textContent = e.message;
-  });
+  function fail(e) {
+    if (/Password or PIN/.test(e.message) && $('secret').hidden) {
+      $('codeForm').hidden = true;
+      $('secret').hidden = false;
+      $('msg').textContent = 'This device will be signed in as someone else. They type their password or terminal PIN here.';
+      $('secret').querySelector('input').focus();
+      return;
+    }
+    $('err').textContent = /expired|already used|not valid/.test(e.message) ? `${e.message}. Make a new code on the computer.` : e.message;
+  }
+  $('codeForm').onsubmit = (e) => { e.preventDefault(); code = new FormData(e.target).get('code').trim(); claim('').catch(fail); };
+  $('secret').onsubmit = (e) => { e.preventDefault(); claim(new FormData(e.target).get('secret')).catch(fail); };
+  if (token) claim('').catch(fail);
+  else {
+    $('msg').textContent = 'On the computer, open Connect a phone. Type the code it shows.';
+    $('codeForm').hidden = false;
+    $('codeForm').querySelector('input').focus();
+  }
 })();
 </script>
 </body>

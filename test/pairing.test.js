@@ -50,3 +50,18 @@ test('a pairing code is single use, expires, binds the device, times out after 4
   const listed = auth.listDevices().find((d) => d.id === live.deviceId);
   assert.ok(listed.revokedAt);
 });
+
+test('a paired device in use stays signed in past 4 hours and past a day; the cookie outlives the idle limit', () => {
+  let t = Date.UTC(2026, 10, 5, 8);
+  const auth = createAuth(new DatabaseSync(':memory:'), { now: () => t, deviceIdleMs: 4 * 60 * 60 * 1000 });
+  const user = auth.insertUser({ username: 'sam', password: 'sorted-ok', role: 'administrator', displayName: 'Sam' });
+  const claimed = auth.claimPair({ token: auth.createPairToken({ userId: user.id, createdBy: user.id }).token, userAgent: 'Phone', ip: '192.168.1.9' });
+  assert.ok(claimed.maxAge > 4 * 60 * 60, 'the browser must not drop the cookie at 4 hours');
+  const phone = { headers: { cookie: `sorted_session=${encodeURIComponent(claimed.token)}; sorted_device=${encodeURIComponent(claimed.deviceId)}` } };
+  for (let hour = 0; hour < 30; hour++) {
+    t += 60 * 60 * 1000;
+    assert.equal((auth.userFromRequest(phone) || {}).username, 'sam', `still signed in after ${hour + 1} hours of use`);
+  }
+  t += 4 * 60 * 60 * 1000 + 1;
+  assert.equal(auth.userFromRequest(phone), null);
+});

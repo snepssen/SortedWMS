@@ -47,6 +47,8 @@
     blind: 'Booked qty is hidden',
     return: 'Return the remainder',
     helpText: '0 back  ? help  c cancel',
+    keys: '0 Back  ? Help',
+    menuKeys: 'Number  ? Help',
     lan: 'This port is for the LAN only',
   };
   const NL = {
@@ -79,6 +81,8 @@
     blind: 'Geboekt aantal verborgen',
     return: 'Restant terugbrengen',
     helpText: '0 terug  ? help  c stop',
+    keys: '0 Terug  ? Help',
+    menuKeys: 'Nummer  ? Help',
     lan: 'Deze poort is alleen voor het LAN',
   };
 
@@ -136,11 +140,26 @@
       try { store.exec('terminalNote', { device, text }, session.user ? session.user.username : 'terminal'); } catch (e) { /* journal is best-effort on the sign-in screen */ }
     }
 
-    function paint(title, rows) {
+    function paint(title, rows, { error = false } = {}) {
       const cols = session.profile ? session.profile.cols : 20;
-      const body = [say(session.lang, title), ...rows.flatMap((row) => wrap(row, cols))];
+      const seen = new Set();
+      const unique = rows.filter((row) => { const k = String(row); if (seen.has(k)) return false; seen.add(k); return true; });
+      const heading = say(session.lang, title).replace(/^[\d?]+\s+/, '');
+      const body = [heading, ...unique.flatMap((row) => wrap(error ? `! ${row}` : row, cols))];
       session.lines = body;
       session.last = now();
+      if (error) session.bell = true;
+    }
+
+    // What the frame shows around the body: a tag on the title line, the keys, the prompt.
+    function meta() {
+      const step = session.step;
+      const tag = session.user ? session.user.username : device;
+      if (step === 'size') return { tag: device, prompt: '#' };
+      if (step === 'user') return { tag: device, prompt: say(session.lang, 'user') };
+      if (step === 'pin') return { tag: device, prompt: 'PIN' };
+      if (step === 'menu' || step === 'more') return { tag, columns: true, keys: say(session.lang, 'menuKeys'), prompt: '#' };
+      return { tag, keys: say(session.lang, 'keys'), prompt: '>' };
     }
 
     function wh() {
@@ -168,7 +187,6 @@
       if (can(u, 'counts.execute') && on('abc')) rows.push(say(session.lang, 'count'));
       if (can(u, 'stock.read')) rows.push(say(session.lang, 'enquiry'));
       rows.push(say(session.lang, 'more'));
-      rows.push(say(session.lang, 'back'));
       return rows;
     }
 
@@ -334,7 +352,7 @@
           return;
         }
       } catch (e) {
-        paint(session.step || 'menu', [e.message]);
+        paint(session.step || 'menu', [e.message], { error: true });
       }
     }
 
@@ -364,7 +382,7 @@
       if (session.step === 'size') {
         const names = Object.keys(PROFILES);
         const name = names[Number(text) - 1] || names.find((n) => n === text);
-        if (!name) { paint('size', names.map((n, i) => `${i + 1} ${n}`)); return; }
+        if (!name) { paint('size', names.map((n, i) => `${i + 1} ${n}`), { error: Boolean(text) }); return; }
         session.profile = { name, ...PROFILES[name] };
         session.step = 'user';
         paint('user', []);
@@ -378,13 +396,14 @@
       }
       if (session.step === 'pin') {
         const result = auth.checkTerminal(session.pendingUser, text);
-        if (result && result.locked) { paint('locked', []); session.step = 'user'; return; }
-        if (!result) { paint('denied', []); session.step = 'user'; return; }
+        if (result && result.locked) { session.step = 'user'; paint('user', [say(session.lang, 'locked')], { error: true }); return; }
+        if (!result) { session.step = 'user'; paint('user', [say(session.lang, 'denied')], { error: true }); return; }
         session.user = result;
         session.lang = result.language || session.lang;
         note(`sign in ${result.username}`);
         return showMenu();
       }
+      if ((session.step === 'menu' || session.step === 'more') && (text === '?' || text.toLowerCase() === 'help' || text === 'F2')) return showHelp();
       if (session.step === 'menu' || session.step === 'more') return choose(text);
       if (text === '?' || text.toLowerCase() === 'help' || text === 'F2') return showHelp();
       if (text === '0' || text.toLowerCase() === 'back' || text === 'F1' || text.toLowerCase() === 'c' || text === 'F3') return showMenu();
@@ -407,7 +426,7 @@
       session.step = 'user';
     }
     paint(session.step === 'size' ? 'size' : 'user', session.step === 'size' ? Object.keys(PROFILES).map((n, i) => `${i + 1} ${n}`) : []);
-    return { input, setProfileFromSize, screen: () => session.lines.slice(), session };
+    return { input, setProfileFromSize, screen: () => session.lines.slice(), meta, session };
   }
 
   return { PROFILES, createSession, say, fold, missingDutch, EN, NL };

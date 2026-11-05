@@ -112,3 +112,67 @@ test('a socket session signs in, receives, puts away, and counts blind', async (
     store.close();
   }
 });
+
+test('the parser echoes what is typed, stars a PIN, and never types a function key into a field', () => {
+  const lines = [];
+  const keys = [];
+  let echoed = '';
+  let masked = false;
+  const { createParser } = require('../server/terminal');
+  const push = createParser((l) => lines.push(l), () => {}, { echo: (t) => { echoed += t; }, mask: () => masked, onKey: (k) => keys.push(k) });
+  push(Buffer.from('ab\x7fc\r\n'));
+  assert.deepEqual(lines, ['ac']);
+  assert.equal(echoed, 'ab\b \bc\r\n');
+  masked = true; echoed = '';
+  push(Buffer.from('2468\r'));
+  assert.equal(echoed, '****\r\n');
+  masked = false;
+  push(Buffer.from('xy\x1bOP'));
+  push(Buffer.from('\x1b[11~\x1b[A\x1b[13~'));
+  assert.deepEqual(keys, ['F1', 'F1', 'F3']);
+  push(Buffer.from('\n'));
+  assert.deepEqual(lines, ['ac', '2468', ''], 'half-typed text and escape codes are dropped, not booked');
+});
+
+test('every screen profile fits, and wide short screens put the menu in two columns', () => {
+  const { layout } = require('../server/terminal');
+  const { createSession, PROFILES } = require('../src/terminal');
+  const store = new Store({ site: site(), now: () => Date.UTC(2026, 10, 5, 9) });
+  store.exec('setModules', { modules: { terminal: true } }, 'admin');
+  const auth = createAuth(store.db);
+  auth.ensureDemoUsers();
+  auth.setTerminalPin(auth.getUser('manager').id, '2468');
+  try {
+    for (const [name, size] of Object.entries(PROFILES)) {
+      const ui = createSession({ store, auth, device: 'RF1', profile: name });
+      ui.input('manager'); ui.input('2468');
+      const { lines, prompt } = layout(ui);
+      assert.equal(lines.length, size.rows - 1, `${name}: the last row is the prompt`);
+      assert.ok(lines.every((l) => l.length <= size.cols), `${name}: nothing wider than the screen`);
+      assert.ok(prompt.length < size.cols);
+      const text = lines.join('\n');
+      assert.match(text, /1 Receive/, name);
+      assert.match(text, /9 More/, `${name}: the whole menu is on screen`);
+    }
+  } finally { store.close(); }
+});
+
+test('two terminals at once get different device ids, and a freed id is used again', async () => {
+  const store = new Store({ site: site(), now: () => Date.UTC(2026, 10, 5, 9) });
+  store.exec('setModules', { modules: { terminal: true } }, 'admin');
+  const auth = createAuth(store.db);
+  const server = serve({ store, auth, port: 0, idleMs: 60000 });
+  await new Promise((r) => server.on('listening', r));
+  const port = server.address().port;
+  try {
+    const a = await open(port); await a.wait('RF1');
+    const b = await open(port); await b.wait('RF2');
+    a.end();
+    await new Promise((r) => setTimeout(r, 100));
+    const c = await open(port); await c.wait('RF1');
+    b.end(); c.end();
+  } finally {
+    await new Promise((r) => server.close(r));
+    store.close();
+  }
+});

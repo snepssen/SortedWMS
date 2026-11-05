@@ -299,6 +299,8 @@
     'terminal.blind': 'Booked qty is hidden',
     'terminal.return': 'Return the remainder',
     'terminal.helpText': '0 back  ? help  c cancel',
+    'terminal.keys': '0 Back  ? Help',
+    'terminal.menuKeys': 'Number  ? Help',
     'terminal.lan': 'This port is for the LAN only',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;

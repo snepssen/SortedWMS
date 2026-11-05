@@ -297,6 +297,8 @@
     'terminal.blind': 'Geboekt aantal verborgen',
     'terminal.return': 'Breng de rest terug',
     'terminal.helpText': '0 terug  ? help  c stop',
+    'terminal.keys': '0 Terug  ? Help',
+    'terminal.menuKeys': 'Nummer  ? Help',
     'terminal.lan': 'Deze poort is alleen voor het LAN',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;

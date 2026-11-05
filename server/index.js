@@ -172,6 +172,18 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && req.method === 'POST' && url.pathname === '/api/totp/disable') {
         try { return send(200, { user: auth.disableTotp(actor.id, body) }); } catch (e) { return send(400, { error: e.message }); }
       }
+      // A terminal PIN and badge are not the web password: they sign in on the text terminal only.
+      const termSecret = url.pathname.match(/^\/api\/users\/(\d+)\/terminal$/);
+      if (auth && req.method === 'POST' && termSecret) {
+        try {
+          let user = null;
+          if (body.pin) user = auth.setTerminalPin(termSecret[1], String(body.pin));
+          if (body.badge) user = auth.setTerminalBadge(termSecret[1], String(body.badge));
+          if (body.clear) user = auth.clearTerminal(termSecret[1]);
+          if (!user) return send(400, { error: 'Give a PIN, a badge, or clear' });
+          return send(200, { user });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
       const reset = url.pathname.match(/^\/api\/users\/(\d+)\/reset-password$/);
       if (auth && req.method === 'POST' && reset) {
         try { return send(200, auth.resetPassword(reset[1], by)); } catch (e) { return send(400, { error: e.message }); }
@@ -188,7 +200,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/pairing') {
         if (!actor) return send(401, { error: 'Sign in required' });
-        return send(200, { addresses: require('./pairing').lanAddresses() });
+        return send(200, { addresses: require('./pairing').lanAddresses(), terminalPort: store.terminalPort || null, terminalError: store.terminalError || null, idleHours: Math.round(auth.deviceIdleMs / 36e5 * 10) / 10 });
       }
       if (auth && req.method === 'POST' && url.pathname === '/api/pairing') {
         if (!actor) return send(401, { error: 'Sign in required' });
@@ -208,6 +220,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
           return send(200, { ...card, addresses, expiresAt: issued.expiresAt, username: target.username, requireSecret: forSomeoneElse });
         } catch (e) { return send(400, { error: e.message }); }
       }
+      if (auth && req.method === 'GET' && url.pathname === '/api/pairing/status') {
+        if (!actor) return send(401, { error: 'Sign in required' });
+        const status = auth.pairStatus(url.searchParams.get('code'), actor.id);
+        return status ? send(200, status) : send(404, { error: 'Unknown code' });
+      }
       if (auth && req.method === 'POST' && url.pathname === '/api/pairing/claim') {
         try {
           const ip = String(req.socket && req.socket.remoteAddress || '');
@@ -218,7 +235,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
             auth.sessionCookie(claimed.token, claimed.maxAge),
             `sorted_device=${encodeURIComponent(claimed.deviceId)}; Path=/; SameSite=Lax; Max-Age=${claimed.maxAge}`,
           ];
-          return send(200, { user: claimed.user, deviceId: claimed.deviceId }, 'application/json; charset=utf-8', { 'set-cookie': cookies });
+          return send(200, { user: claimed.user, deviceId: claimed.deviceId, idleHours: Math.round(auth.deviceIdleMs / 36e5 * 10) / 10 }, 'application/json; charset=utf-8', { 'set-cookie': cookies });
         } catch (e) { return send(400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/devices/paired') {
@@ -327,18 +344,35 @@ function main() {
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
   const port = Number(process.env.PORT || 8080);
-  if (store.wh.module('terminal')) {
-    const term = require('./terminal').serve({
-      store, auth,
-      port: Number(process.env.TERMINAL_PORT || 2323),
+  // The text terminal listens while its module is on: switching it on or off in
+  // Modules starts or stops the telnet port within a couple of seconds. The
+  // module's settings give the port, idle minutes and session cap; the
+  // TERMINAL_* variables win when they are set.
+  let term = null;
+  let termKey = '';
+  const syncTerminal = () => {
+    const on = Boolean(store.wh.module && store.wh.module('terminal'));
+    const set = (store.wh.moduleSettings && store.wh.moduleSettings.terminal) || {};
+    const opts = {
+      port: Number(process.env.TERMINAL_PORT || set.port || 2323),
       host: process.env.TERMINAL_HOST || '0.0.0.0',
       allowList: process.env.TERMINAL_ALLOW || 'lan',
-      idleMs: Number(process.env.TERMINAL_IDLE_MS || 15 * 60 * 1000),
-      maxSessions: Number(process.env.TERMINAL_MAX || 8),
-    });
-    term.on('listening', () => console.log(`Terminal (telnet) on port ${term.address().port}. LAN only, plaintext.`));
-    term.on('error', (err) => console.error('Terminal', err.message));
-  }
+      idleMs: Number(process.env.TERMINAL_IDLE_MS || (Number(set.idleMinutes) > 0 ? set.idleMinutes * 60 * 1000 : 15 * 60 * 1000)),
+      maxSessions: Number(process.env.TERMINAL_MAX || set.maxSessions || 8),
+    };
+    const key = on ? JSON.stringify(opts) : '';
+    if (key === termKey) return;
+    if (term) { term.close(); term = null; store.terminalPort = null; console.log('Terminal (telnet) stopped.'); }
+    store.terminalError = null;
+    termKey = key;
+    if (!on) return;
+    term = require('./terminal').serve({ store, auth, ...opts });
+    term.on('listening', () => { store.terminalPort = term.address().port; console.log(`Terminal (telnet) on port ${store.terminalPort}. LAN only, plaintext.`); });
+    term.on('error', (err) => { console.error('Terminal', err.message); term = null; store.terminalPort = null; store.terminalError = err.message; });
+  };
+  syncTerminal();
+  const termWatch = setInterval(() => { try { syncTerminal(); } catch (e) { console.error('Terminal', e.message); } }, 2000);
+  if (termWatch.unref) termWatch.unref();
   server.listen(port, () => {
     console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin`);
     if (boot.mustChange) console.log(`Administrator ${boot.username} / sorted-admin: sign in and choose a new password`);

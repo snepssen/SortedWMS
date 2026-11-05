@@ -62,7 +62,28 @@
   .checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
   .checks label { flex-direction: row; align-items: center; color: var(--ink); font-size: 14px; }
   a { color: var(--acc); }
-  @media (max-width: 720px) { main { padding: 10px; } header h1 { font-size: 16px; } .job { font-size: 18px; } }
+  #pairBtn.on { background: var(--acc); color: var(--on-acc); border-color: var(--acc); }
+  .pair { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; align-items: start; }
+  .pair .qr { background: #fff; padding: 12px; border-radius: 12px; line-height: 0; }
+  .pair .qr svg { width: 232px; height: 232px; }
+  .pair .code { font: 700 34px/1.1 ui-monospace, Menlo, monospace; letter-spacing: 4px; margin: 2px 0 6px; }
+  .pair ol { margin: 0 0 10px; padding-left: 20px; }
+  .pair ol li { margin: 4px 0; }
+  .pair .timer { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .pair .done { font-size: 17px; color: var(--ok); font-weight: 700; }
+  @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } .pair .qr { justify-self: start; } }
+  @media (max-width: 720px) {
+    main { padding: 10px; } header h1 { font-size: 16px; } .job { font-size: 18px; }
+    /* On a phone: one row of menu buttons that scrolls sideways, and the controls on one short row. */
+    header { gap: 8px; padding: 8px 10px; }
+    header #who { display: none; }
+    header nav { order: 9; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+    header nav::-webkit-scrollbar { display: none; }
+    header nav button { flex: 0 0 auto; }
+    header label.who { font-size: 0; gap: 0; }
+    header label.who select { font-size: 14px; }
+    header #pairBtn { display: none !important; }
+  }
 </style>
 <script src="camera.js"></script>
 <script src="/locales/en.js"></script>
@@ -78,6 +99,7 @@
   <label id="siteLabel" class="who">Warehouse <select id="sitePick"></select></label>
   <a class="btn" href="/admin" id="floorLink">Floor</a>
   <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
+  <button id="pairBtn" type="button" title="Open SortedWMS on a phone or tablet on this network">Connect a phone</button>
   <select data-theme-picker></select>
   <label class="who">Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
   <button id="out" type="button">Sign out</button>
@@ -90,8 +112,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['pairing', 'Connect a device'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['pairing', 'Connect a device'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
@@ -134,6 +156,100 @@
   const table = (heads, rows) => `<div style="overflow-x:auto"><table><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.join('') || `<tr><td class="dim" colspan="${heads.length}">Nothing here</td></tr>`}</table></div>`;
   // The warehouse's own categories, set in the setup wizard.
   const catOptions = () => Object.entries(me.categories || {}).map(([id, label]) => `<option value="${esc(id)}">${esc(label || id)}</option>`).join('') || '<option value="">No categories yet: add them in the setup wizard</option>';
+  function span(ms) {
+    const m = Math.max(0, Math.round(ms / 60000));
+    return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`;
+  }
+  function ago(t) {
+    const ms = Date.now() - t;
+    if (ms < 60000) return 'just now';
+    return `${span(ms)} ago`;
+  }
+  function agentName(ua) {
+    const s = String(ua || '');
+    const os = /iPhone/.test(s) ? 'iPhone' : /iPad/.test(s) ? 'iPad' : /Android/.test(s) ? 'Android' : /Mac OS X/.test(s) ? 'Mac' : /Windows/.test(s) ? 'Windows' : /Linux/.test(s) ? 'Linux' : '';
+    const br = /Edg\//.test(s) ? 'Edge' : /Firefox\//.test(s) ? 'Firefox' : /Chrome\//.test(s) ? 'Chrome' : /Safari\//.test(s) ? 'Safari' : '';
+    return [br, os].filter(Boolean).join(' on ');
+  }
+  async function devicesSection(hours) {
+    if (!can('devices.manage')) return '';
+    if (!hours) hours = ((await api('GET', '/api/pairing')).idleHours) || 4;
+    const list = await api('GET', '/api/devices/paired');
+    const live = (list.devices || []).filter((d) => !d.revokedAt);
+    const rows = live.map((d) => {
+      const left = d.lastSeen ? d.lastSeen + hours * 36e5 - Date.now() : 0;
+      const state = left > 0 ? `${ago(d.lastSeen)}<br><span class="dim">signs out in ${span(left)} if not used</span>` : '<span class="dim">signed out (idle)</span>';
+      return `<tr><td><form class="form" data-act="device-rename" style="margin:0"><input type="hidden" name="id" value="${esc(d.id)}"><input name="name" value="${esc(d.name)}" aria-label="Device name" size="16"><button>Rename</button></form><span class="dim">${esc(agentName(d.userAgent))}</span></td><td>${esc(d.displayName || d.username || '')}</td><td>${state}</td><td>${esc(d.ip || '')}</td><td><button type="button" data-act="device-revoke" data-id="${esc(d.id)}">Sign out</button></td></tr>`;
+    });
+    return `<section id="pairDevices"><h2>Connected phones and tablets</h2><p class="hint">Each stays signed in while it is used and signs out after ${hours} hours without use. Sign one out if it is lost or passed on.</p>
+      ${rows.length ? table(['Device', 'Signed in as', 'Last used', 'Address', ''], rows) + '<p><button type="button" data-act="device-revoke-all">Sign out every device</button></p>' : '<p class="dim">No phone or tablet is connected yet.</p>'}</section>`;
+  }
+  async function refreshDevices() {
+    const sec = document.getElementById('pairDevices');
+    if (!sec) return;
+    const html = await devicesSection();
+    const box = document.createElement('div'); box.innerHTML = html;
+    sec.replaceWith(box.firstElementChild);
+  }
+  // One code at a time: it counts down, and a new one replaces it when it runs out or is used.
+  async function newPairCode(hours) {
+    if (pairTimer) { clearInterval(pairTimer); pairTimer = null; }
+    const qr = document.getElementById('pairQr');
+    if (!qr) return;
+    const addr = document.getElementById('pairAddress');
+    const user = document.getElementById('pairUser');
+    let card;
+    try { card = await api('POST', '/api/pairing', { address: addr ? addr.value : null, userId: user && user.value ? user.value : null }); }
+    catch (e) { document.getElementById('pairDone').innerHTML = msg(e.message, false); return; }
+    qr.innerHTML = card.svg;
+    const link = document.getElementById('pairLink');
+    link.textContent = card.url; link.href = card.url;
+    document.getElementById('pairCode').textContent = card.code;
+    const short = document.getElementById('pairShort');
+    if (short) short.textContent = card.url.replace(/^https?:\/\//, '').replace(/\/pair\/.*$/, '/pair');
+    const done = document.getElementById('pairDone');
+    done.innerHTML = card.requireSecret ? `<p class="hint">${esc(card.username)} types their password or terminal PIN on the phone.</p>` : '';
+    const timer = document.getElementById('pairTimer');
+    let tick = 0;
+    const step = async () => {
+      if (!document.getElementById('pairQr')) { clearInterval(pairTimer); pairTimer = null; return; }
+      const left = card.expiresAt - Date.now();
+      timer.textContent = left > 0 ? `Code works once, for ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')} more` : 'Making a new code…';
+      if (left <= 0) return newPairCode(hours);
+      if (++tick % 2) return;
+      let st = null;
+      try { st = await api('GET', '/api/pairing/status?code=' + encodeURIComponent(card.code)); } catch (e) { return; }
+      if (st && st.state === 'paired') {
+        clearInterval(pairTimer); pairTimer = null;
+        const what = st.device ? (agentName(st.device.userAgent) || st.device.name) : 'The device';
+        qr.style.opacity = '0.25';
+        timer.textContent = '';
+        for (const id of ['pairCode', 'pairLink']) { const el = document.getElementById(id); if (el) el.style.opacity = '0.35'; }
+        done.innerHTML = `<p class="done">✓ ${esc(what)} is connected as ${esc(st.device ? st.device.username : card.username)}.</p><p class="hint">It signs out after ${hours} hours without use.</p><p><button type="button" data-act="pair-new">Connect another</button></p>`;
+        if (can('devices.manage')) refreshDevices();
+      }
+    };
+    step();
+    pairTimer = setInterval(step, 1000);
+  }
+  // Scanner guns sign in on the text terminal with a user and a PIN or badge, not the web password.
+  async function terminalSection(users) {
+    const mod = (MODS && MODS.modules || []).find((m) => m.id === 'terminal') || {};
+    let port = (mod.settingsValues && mod.settingsValues.port) || 2323;
+    let address = location.hostname;
+    let status = '';
+    try {
+      const info = await api('GET', '/api/pairing');
+      if (info.addresses && info.addresses[0]) address = info.addresses[0];
+      if (info.terminalPort) { port = info.terminalPort; status = '<span class="tag">Listening</span> '; }
+      else status = `<span class="tag bad">Not listening</span> ${info.terminalError ? esc(info.terminalError) + '. ' : 'It starts a few seconds after the module is turned on. '}`;
+    } catch (e) { /* the page's own host still works */ }
+    const opts = users.filter((u) => u.active && u.role !== 'client').map((u) => `<option value="${u.id}">${esc(u.username)} · ${esc(u.displayName)}</option>`).join('');
+    const rows = users.filter((u) => u.terminalPin || u.terminalBadge).map((u) => `<tr><td>${esc(u.username)}</td><td>${u.terminalPin ? 'PIN' : ''}${u.terminalPin && u.terminalBadge ? ' and ' : ''}${u.terminalBadge ? 'badge' : ''}</td><td><button type="button" data-act="terminal-clear" data-id="${u.id}">Remove</button></td></tr>`);
+    return `<section><h2>Text terminal</h2><p class="hint">${status}Point the scanner's telnet client at <code>${esc(address)}</code> port <code>${esc(port)}</code>, or from a computer: <code>telnet ${esc(address)} ${esc(port)}</code>. Sign in there with the user name and a terminal PIN or a badge scan. These are not the web password. Telnet is plain text: keep it on the warehouse network.</p>
+      <form class="form" data-act="terminal-secret"><label>User<select name="id">${opts}</select></label><label>Terminal PIN<input name="pin" inputmode="numeric" autocomplete="off" minlength="4" maxlength="32" placeholder="4 or more digits"></label><label>Badge<input name="badge" autocomplete="off" placeholder="scan the badge (optional)"></label><button class="primary">Save</button></form>
+      ${table(['User', 'Can sign in with', ''], rows)}</section>`;
+  }
   const msg = (text, ok) => `<p class="msg ${ok ? 'ok' : 'bad'}">${esc(text)}</p>`;
 
   function paintNav() {
@@ -150,10 +266,14 @@
     if (hh) hh.style.display = modOn('trucks') ? '' : 'none';
     const floor = document.getElementById('floorLink');
     if (floor) floor.style.display = simple ? 'none' : '';
+    const pairBtn = document.getElementById('pairBtn');
+    if (pairBtn) { pairBtn.style.display = me.role !== 'client' && modOn('device-pairing') ? '' : 'none'; pairBtn.classList.toggle('on', panel === 'pairing'); }
     $('#nav').innerHTML = items.map(([id, label]) => `<button type="button" data-panel="${id}" class="${id === panel ? 'on' : ''}">${label}</button>`).join('');
   }
 
+  let pairTimer = null;
   async function draw() {
+    if (pairTimer) { clearInterval(pairTimer); pairTimer = null; }
     paintNav();
     const main = $('#main');
     main.innerHTML = '<p class="dim">Loading…</p>';
@@ -410,16 +530,30 @@
     },
     async pairing() {
       const info = await api('GET', '/api/pairing');
-      const addresses = (info.addresses || []).map((a) => `<option>${esc(a)}</option>`).join('');
-      let devices = '';
-      if (can('devices.manage')) {
-        const list = await api('GET', '/api/devices/paired');
-        const rows = (list.devices || []).filter((d) => !d.revokedAt).map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.displayName || d.username || '')}</td><td>${d.lastSeen ? esc(new Date(d.lastSeen).toISOString().slice(0, 16).replace('T', ' ')) : ''}</td><td>${esc(d.ip || '')}</td><td><form class="form" data-act="device-rename"><input type="hidden" name="id" value="${esc(d.id)}"><input name="name" value="${esc(d.name)}" size="12"><button>Rename</button></form> <form class="form" data-act="device-revoke"><input type="hidden" name="id" value="${esc(d.id)}"><button>Revoke</button></form></td></tr>`);
-        devices = `<h3>Paired devices</h3>${table(['Name', 'User', 'Last seen', 'IP', ''], rows)}<form data-act="device-revoke-all"><button>Revoke all</button></form>`;
+      const addresses = info.addresses || [];
+      const hours = info.idleHours || 4;
+      let others = '';
+      if (can('users.write')) {
+        try {
+          const { users } = await api('GET', '/api/users');
+          others = users.filter((u) => u.active && u.id !== me.id).map((u) => `<option value="${u.id}">${esc(u.displayName)} (${esc(u.username)})</option>`).join('');
+        } catch (e) { others = ''; }
       }
-      return `<section><h2>Connect a device</h2><p class="hint">The phone has to be on the same network. The link is plain HTTP, for a trusted LAN. A code works once and only for a few minutes.</p>
-        <form class="form" data-act="pairing-create"><label>Address<select name="address">${addresses}</select></label><label>Sign in as<input name="userId" placeholder="blank: this sign-in"></label><button class="primary">Show the code</button></form>
-        <div id="pairCard"></div>${devices}</section>`;
+      const devices = await devicesSection(hours);
+      if (!addresses.length) {
+        return `<section><h2>Connect a phone</h2>${msg('This computer has no address on a local network, so a phone cannot reach it. Connect it to Wi-Fi or a cable, then try again.', false)}</section>${devices}`;
+      }
+      const pick = addresses.length > 1 ? `<label>Network<select id="pairAddress">${addresses.map((a) => `<option>${esc(a)}</option>`).join('')}</select></label>` : '';
+      const who = others ? `<label>Sign in as<select id="pairUser"><option value="">Me (${esc(me.displayName)})</option>${others}</select></label>` : '';
+      setTimeout(() => newPairCode(hours), 0);
+      return `<section><h2>Connect a phone</h2>
+        <div class="pair"><div class="qr" id="pairQr" aria-label="QR code"></div>
+        <div><ol><li>Join the phone to the same Wi-Fi as this computer.</li><li>Point the phone's camera at the code and open the link.</li><li>No camera? Open the link below on the phone.</li></ol>
+          <p><a id="pairLink" href="#" style="font-size:15px;word-break:break-all"></a></p>
+          <p class="dim" style="margin:10px 0 0">Or open <b id="pairShort">/pair</b> on the phone and type</p><div class="code" id="pairCode">······</div>
+          <p class="timer" id="pairTimer"></p><div id="pairDone"></div>
+          ${pick || who ? `<div class="form">${pick}${who}<button type="button" data-act="pair-new">New code</button></div>` : '<p><button type="button" data-act="pair-new">New code</button></p>'}
+          <p class="hint">The phone stays signed in while you use it and signs out after ${hours} hours without use. Plain HTTP: for your own network only.</p></div></div></section>${devices}`;
     },
     async users() {
       const { users } = await api('GET', '/api/users');
@@ -427,7 +561,7 @@
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
       return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
         <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Language<select name="language"><option value="">Warehouse default</option><option value="en">English</option><option value="nl">Dutch</option></select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
-        ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>
+        ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>${modOn('terminal') ? await terminalSection(users) : ''}
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
     async connections() {
@@ -894,6 +1028,7 @@
     history.replaceState(null, '', '#' + panel);
     draw();
   };
+  $('#pairBtn').onclick = () => { panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
   $('#main').onclick = async (e) => {
     const saveModules = e.target.closest('#saveModules');
@@ -964,6 +1099,10 @@
         $('#main').insertAdjacentHTML('afterbegin', msg(`Temporary password for ${reset.username}: ${reset.temporaryPassword}. They must change it at the next sign-in.`, true));
         return;
       }
+      if (act === 'pair-new') { const h = (await api('GET', '/api/pairing')).idleHours || 4; for (const id of ['pairQr', 'pairCode', 'pairLink']) { const el = document.getElementById(id); if (el) el.style.opacity = ''; } return newPairCode(h); }
+      if (act === 'device-revoke') { if (!confirm('Sign this device out? It needs a new code to connect again.')) return; await api('POST', '/api/devices/paired/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
+      if (act === 'device-revoke-all') { if (!confirm('Sign out every connected phone and tablet?')) return; await api('POST', '/api/devices/paired/revoke-all', {}); return draw(); }
+      if (act === 'terminal-clear') { if (!confirm('Remove the terminal PIN and badge? This user can no longer sign in on the text terminal.')) return; await api('POST', '/api/users/' + b.dataset.id + '/terminal', { clear: true }); return draw(); }
       if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
@@ -994,12 +1133,6 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
-      if (form.dataset.act === 'pairing-create') {
-        const card = await api('POST', '/api/pairing', { address: data.address, userId: data.userId || null });
-        const slot = document.getElementById('pairCard');
-        if (slot) slot.innerHTML = `<p>Code <b id="pairCode">${esc(card.code)}</b></p><p><a id="pairLink" href="${esc(card.url)}">${esc(card.url)}</a></p><div id="pairQr">${card.svg}</div>`;
-        return;
-      }
       if (form.dataset.act === 'tariff-preview') {
         const q = new URLSearchParams({ client: data.clientId, from: data.from || '', to: data.to || '', preview: '1' });
         history.replaceState(null, '', '#tariff?' + q.toString());
@@ -1219,6 +1352,7 @@
       else body.value = Number(data.value);
       return api('POST', '/api/items', body);
     }
+    if (name === 'terminal-secret') return api('POST', '/api/users/' + encodeURIComponent(data.id) + '/terminal', { pin: data.pin || null, badge: data.badge || null });
     if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null, language: data.language || null });
     if (name === 'device-rename') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/rename', { name: data.name });
     if (name === 'device-revoke') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/revoke', {});

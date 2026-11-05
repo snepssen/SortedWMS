@@ -12,6 +12,8 @@ const SESSION_MS = 12 * 60 * 60 * 1000;
 const IDLE_MS = Number(process.env.SORTED_IDLE_MS) || 30 * 60 * 1000;
 const DEVICE_IDLE_MS = Number(process.env.SORTED_DEVICE_IDLE_MS) || 4 * 60 * 60 * 1000;
 const PAIR_MS = 5 * 60 * 1000;
+// A paired device stays signed in while it is used; only DEVICE_IDLE_MS without a request ends it.
+const DEVICE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 const MAX_FAILS = 5;
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -226,6 +228,8 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
       sites: row.sites ? JSON.parse(row.sites) : null,
       clientId: row.client_id || null,
       language: row.language || null,
+      terminalPin: Boolean(row.terminal_pin),
+      terminalBadge: Boolean(row.terminal_badge),
       permissions: permissionsFor(row.role),
     };
   }
@@ -524,6 +528,14 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
   }
 
+  function clearTerminal(id) {
+    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
+    if (!row) throw new Error('Unknown user');
+    db.prepare('UPDATE users SET terminal_pin = NULL, terminal_badge = NULL, terminal_fails = 0, terminal_locked_until = NULL WHERE id = ?').run(row.id);
+    record('terminal_pin', row.username, { cleared: true });
+    return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
+  }
+
   function checkTerminal(username, secret) {
     const row = getUser(username);
     if (!row || !row.active) return null;
@@ -565,6 +577,19 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     return { token, code, expiresAt: expires, user: rowToUser(user) };
   }
 
+  // Whether a code this person made has been used yet, for the desktop that shows it.
+  function pairStatus(code, createdBy) {
+    const row = db.prepare('SELECT * FROM pair_tokens WHERE code = ? AND created_by = ? ORDER BY expires_at DESC').get(String(code || ''), Number(createdBy));
+    if (!row) return null;
+    const state = row.used_at ? 'paired' : (row.expires_at <= now() ? 'expired' : 'waiting');
+    let device = null;
+    if (row.used_at) {
+      const d = db.prepare('SELECT d.id, d.name, d.user_agent, u.username FROM paired_devices d JOIN users u ON u.id = d.user_id WHERE d.user_id = ? AND d.created_at >= ? ORDER BY d.created_at ASC').get(row.user_id, row.used_at);
+      if (d) device = { name: d.name, username: d.username, userAgent: d.user_agent };
+    }
+    return { state, expiresAt: row.expires_at, device };
+  }
+
   function claimPair({ token, code, secret, userAgent, ip } = {}) {
     const row = token
       ? db.prepare('SELECT * FROM pair_tokens WHERE token_hash = ?').get(tokenHash(token))
@@ -580,13 +605,15 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     }
     db.prepare('UPDATE pair_tokens SET used_at = ? WHERE token_hash = ?').run(now(), row.token_hash);
     const deviceId = randomBytes(18).toString('base64url');
-    const name = `${user.display_name}'s device`;
+    const ua = String(userAgent || '');
+    const kind = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android phone' : 'Android tablet') : 'device';
+    const name = `${user.display_name}'s ${kind}`;
     db.prepare('INSERT INTO paired_devices (id, user_id, name, user_agent, created_at, last_seen, last_ip) VALUES (?, ?, ?, ?, ?, ?, ?)').run(deviceId, user.id, name, String(userAgent || '').slice(0, 200), now(), now(), ip || null);
     const sessionToken = randomBytes(32).toString('base64url');
     const t = now();
-    db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen, device_id, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(tokenHash(sessionToken), user.id, t, t + SESSION_MS, t, deviceId, String(userAgent || '').slice(0, 200), ip || null);
+    db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen, device_id, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(tokenHash(sessionToken), user.id, t, t + DEVICE_SESSION_MS, t, deviceId, String(userAgent || '').slice(0, 200), ip || null);
     record('device-paired', user.username, { device: deviceId, ip: ip || null });
-    return { token: sessionToken, deviceId, user: rowToUser(user), maxAge: Math.floor(deviceIdleMs / 1000) };
+    return { token: sessionToken, deviceId, user: rowToUser(user), maxAge: Math.floor(DEVICE_SESSION_MS / 1000), idleMs: deviceIdleMs };
   }
 
   function deviceRow(row) {
@@ -649,9 +676,12 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     canAccessSite,
     setTerminalPin: (id, pin) => setTerminalSecret(id, 'terminal_pin', pin, 'The terminal PIN'),
     setTerminalBadge: (id, badge) => setTerminalSecret(id, 'terminal_badge', badge, 'The badge'),
+    clearTerminal,
     checkTerminal,
     createPairToken,
     claimPair,
+    pairStatus,
+    deviceIdleMs,
     listDevices,
     renameDevice,
     revokeDevice,
