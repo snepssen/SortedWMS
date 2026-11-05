@@ -209,6 +209,9 @@
     });
     on('GET', '/api/devices/:id', ({ id }) => deviceView(wh(), id) || { status: 404, error: `No device ${id}` });
     on('GET', '/api/tasks', (_, q) => Object.values(wh().tasks).filter((t) => (q.status ? t.status === q.status : ['open', 'active', 'held'].includes(t.status))).map((t) => taskView(wh(), t)));
+    on('GET', '/api/return-moves', () => ({
+      tasks: Object.values(wh().tasks).filter((t) => t.reason === 'return-split' && ['open', 'active', 'held'].includes(t.status)).map((t) => taskView(wh(), t)),
+    }));
     on('GET', '/api/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ ...o,
       trailerReadiness: wh().trailerReadiness(o.id),
       shippingHolds: o.status === 'shipped' ? [] : o.lines.flatMap((l) => l.allocated).map((s) => wh().pallets[s]).filter((p) => wh().shipState(p) !== 'ok').map((p) => ({ sscc: p.sscc, reason: wh().holdReason(p) || wh().shipState(p) })),

@@ -104,7 +104,7 @@ The behaviour (the warehouse methods) can live in `src/`, which is what the core
 
 A warehouse that has never chosen has every module on (`modules[id] !== false`). A preset writes an explicit true or false for each one.
 
-The core set includes ABC cycle counts (`abc`) and Reports (`reports`). Reports that belong to another module (best-before needs `lots`, count accuracy needs `abc`) are omitted while that module is off. A client login is scoped to that client.
+The core set includes ABC cycle counts (`abc`), Reports (`reports`) and the replenishment return move (`return-move`). Reports that belong to another module (best-before needs `lots`, count accuracy needs `abc`) are omitted while that module is off. A client login is scoped to that client. `return-move` only changes the split drop: the remainder becomes a task back to storage. With it off, the remainder is booked back at the drop.
 
 ## Switching one on or off
 
