@@ -95,11 +95,19 @@
   }
 
   /** Printable 4×6 label. The browser's print dialog is the PDF path. */
+  function tr(lang, key) {
+    try {
+      const api = typeof require === 'function' ? require('./i18n') : (typeof globalThis !== 'undefined' ? globalThis.SortedI18n : null);
+      return api ? api.t(lang || 'en', key) : key;
+    } catch (e) { return key; }
+  }
+
   function labelHtml(d) {
-    const rows = (d.lines || []).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('');
+    const lang = d.lang || 'en';
+    const rows = (d.lines || []).map(([k, v]) => `<tr><th>${escapeHtml(tr(lang, k))}</th><td>${escapeHtml(v)}</td></tr>`).join('');
     const kids = (d.children || []).map((c) => `<li><span class="mono">(00) ${escapeHtml(c.sscc || c)}</span> ${escapeHtml(c.itemNo || '')}${c.qty == null ? '' : ` × ${escapeHtml(c.qty)}`}</li>`).join('');
     return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(d.kind === 'master' ? 'Master label' : 'Pallet label')} ${escapeHtml(d.sscc)}</title>
+<html lang="${lang === 'nl' ? 'nl' : 'en'}"><head><meta charset="utf-8"><title>${escapeHtml(tr(lang, d.kind === 'master' ? 'Master label' : 'Pallet label'))} ${escapeHtml(d.sscc)}</title>
 <style>
   body { margin: 0; font: 14px/1.35 system-ui, sans-serif; color: #111; }
   .sheet { width: 4in; min-height: 6in; margin: 12px auto; padding: 0.25in; border: 1px solid #111; box-sizing: border-box; }
@@ -116,14 +124,14 @@
   button { font: inherit; padding: 8px 14px; }
   @media print { .actions { display: none; } .sheet { margin: 0; border: 0; } @page { size: 4in 6in; margin: 0.15in; } }
 </style></head><body>
-<div class="actions"><button onclick="print()">Print / save as PDF</button></div>
+<div class="actions"><button onclick="print()">${escapeHtml(tr(lang, 'Print / save as PDF'))}</button></div>
 <article class="sheet">
-  <h1>${escapeHtml(d.kind === 'master' ? 'MASTER LABEL' : 'PALLET LABEL')}</h1>
+  <h1>${escapeHtml(tr(lang, d.kind === 'master' ? 'MASTER LABEL' : 'PALLET LABEL'))}</h1>
   <h2>${escapeHtml(d.title || d.itemName || '')}</h2>
   ${d.barcodeSvg ? `<div class="bar">${d.barcodeSvg}</div>` : ''}
   <p class="sscc">(00) ${escapeHtml(d.sscc)}</p>
   <table>${rows}</table>
-  ${kids ? `<p><b>Contains</b></p><ul>${kids}</ul>` : ''}
+  ${kids ? `<p><b>${escapeHtml(tr(lang, 'Contains'))}</b></p><ul>${kids}</ul>` : ''}
 </article>
 </body></html>`;
   }

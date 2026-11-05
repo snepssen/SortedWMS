@@ -288,6 +288,7 @@ const RULES = [
   ['GET', '/api/backup', 'settings.write'],
   ['POST', '/api/backup', 'settings.write'],
   ['POST', '/api/password', 'wms.read'],
+  ['POST', '/api/language', null],
   ['POST', '/api/totp/setup', 'wms.read'],
   ['POST', '/api/totp/enable', 'wms.read'],
   ['POST', '/api/totp/disable', 'wms.read'],
