@@ -46,7 +46,12 @@ class Store {
   _upgrade() {
     let modules = this.moduleUpgrades;
     if (!modules) {
-      try { modules = require('../modules/registry').upgradeModules(); } catch (e) { modules = []; }
+      try {
+        modules = require('../modules/registry').upgradeModules();
+      } catch (e) {
+        if (e && e.code === 'MODULE_NOT_FOUND') modules = [];
+        else throw e;
+      }
     }
     const report = upgradeDatabase(this.db, {
       modules,

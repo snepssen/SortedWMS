@@ -47,4 +47,4 @@ Add an object to `CORE_STEPS`, or to a module's `upgrades` list, with the next i
 }
 ```
 
-Module steps are collected from each module and handed to the same runner. The module file format is described in [MODULES.md](MODULES.md) once modules live in `modules/`.
+Module steps are collected from each module and handed to the same runner. The file format is in [MODULES.md](MODULES.md).
