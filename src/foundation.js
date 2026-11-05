@@ -256,6 +256,16 @@
         if (!patch.clientId) item.clientId = null;
         else item.clientId = this._client(patch.clientId).id;
       }
+      if ('value' in patch) {
+        const raw = patch.value;
+        if (raw == null || raw === '') item.value = null;
+        else {
+          const n = typeof raw === 'number' ? raw : Number(String(raw).trim().replace(/\s/g, '').replace(',', '.'));
+          if (!Number.isFinite(n) || n < 0) throw new Error('Value is a number of 0 or more');
+          if (n > 1e12) throw new Error('Value is too large');
+          item.value = Math.round(n * 10000) / 10000;
+        }
+      }
       if (patch.minShipDays != null) this.setMinShipDays(itemNo, Number(patch.minShipDays));
       if (patch.status === 'archived' || patch.status === 'active') item.status = patch.status;
       for (const key of ['food', 'frozen', 'highValue']) if (key in patch) {
@@ -1278,6 +1288,13 @@
       return globalThis.SortedSerials;
     }
 
+    function loadItemValue() {
+      if (typeof require === 'function') {
+        try { return require('./item-value'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedItemValue;
+    }
+
     function loadReports() {
       if (typeof require === 'function') {
         try { return require('./reports'); } catch (e) { /* browser */ }
@@ -1566,6 +1583,8 @@
     if (intake && intake.install) intake.install(Warehouse, deps);
     const abc = loadAbc();
     if (abc && abc.install) abc.install(Warehouse);
+    const itemValue = loadItemValue();
+    if (itemValue && itemValue.install) itemValue.install(Warehouse);
     const reports = loadReports();
     if (reports && reports.install) reports.install(Warehouse);
 

@@ -561,15 +561,21 @@
         const showFood = features.temperatureZones || features.lotExpiry;
         const showFrozen = features.temperatureZones;
         const showValue = features.highValueSecurity;
+        const showMoney = modOn('item-value') && me.itemValue !== false && !(features.highValueSecurity && !can('items.value') && me.itemValue !== true);
+        const moneyLabel = esc(me.currency || 'EUR');
         return `<section><h2>Your items</h2><p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
-          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category">${catOptions()}</select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<label><input type="checkbox" name="noBestBefore"> No best-before</label><button class="primary">Add item</button></form>
-          ${table(['SKU', 'Description', 'Unit', 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td><td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
+          <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category">${catOptions()}</select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showMoney ? `<label>Value (${moneyLabel})<input id="itemValue" name="value" type="number" min="0" step="0.01"></label>` : ''}${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<label><input type="checkbox" name="noBestBefore"> No best-before</label><button class="primary">Add item</button></form>
+          ${table(['SKU', 'Description', 'Unit', ...(showMoney ? [`Value (${me.currency || 'EUR'})`] : []), 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td>${showMoney ? `<td>${i.value == null ? '' : esc(i.value)}</td>` : ''}<td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
       }
       const items = await api('GET', '/api/items');
       const clients = await api('GET', '/api/clients?archived=1');
       const opts = clients.filter((c) => c.status === 'active').map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-      return `<section><h2>Items</h2><form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><label><input name="noBestBefore" type="checkbox"> No best-before</label><button class="primary">Add item</button></form>
-        ${table(['Item', 'Name', 'Client', 'UOM', 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td><td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
+      const showMoney = modOn('item-value') && me.itemValue !== false;
+      const moneyLabel = esc(me.currency || 'EUR');
+      const currencyForm = showMoney && (can('items.value') || me.role === 'administrator' || me.role === 'manager') ? `<form class="form" data-act="item-currency"><label>Warehouse currency<input name="currency" value="${moneyLabel}" maxlength="3" size="4"></label><button>Save currency</button></form>` : '';
+      return `<section><h2>Items</h2>${currencyForm}<form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label>${showMoney ? `<label>Value (${moneyLabel})<input id="itemValue" name="value" type="number" min="0" step="0.01" placeholder="0.00"></label>` : ''}<label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><label><input name="noBestBefore" type="checkbox"> No best-before</label><button class="primary">Add item</button></form>
+        ${showMoney ? `<form class="form" data-act="item-value"><label>Update value<select name="itemNo">${items.filter((i) => i.status !== 'archived').map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)}</option>`).join('')}</select></label><label>Value (${moneyLabel})<input name="value" type="number" min="0" step="0.01"></label><button>Save value</button></form>` : ''}
+        ${table(['Item', 'Name', 'Client', 'UOM', ...(showMoney ? [`Value (${me.currency || 'EUR'})`] : []), 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td>${showMoney ? `<td>${i.value == null ? '' : esc(i.value)}</td>` : ''}<td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
     },
     async inbound() {
       const deliveries = await api('GET', '/api/deliveries');
@@ -627,6 +633,13 @@
         const body = report.rows.slice(0, 40).map((row) => `<tr>${report.columns.map((c) => `<td>${esc(row[c])}</td>`).join('')}</tr>`);
         return `<section><h2>${esc(report.title)}</h2><p><a href="${csv(report.id)}">CSV</a> <span class="dim">${report.rows.length} row${report.rows.length === 1 ? '' : 's'}</span></p>${table(heads, body)}</section>`;
       }).join('');
+      let stockValue = '';
+      if (modOn('item-value') && me.itemValue !== false) {
+        try {
+          const priced = await api('GET', '/api/reports/stock-value?' + q.toString());
+          stockValue = `<section><h2>Stock value (${esc(priced.currency)})</h2><p><a href="/api/reports/stock-value.csv?${q.toString()}">CSV</a> <span class="dim">total ${esc(priced.total)} ${esc(priced.currency)}</span></p>${table(['Item', 'Client', 'Location', 'Qty', 'Unit value', 'Value'], priced.rows.slice(0, 40).map((r) => `<tr><td>${esc(r.itemNo)} ${esc(r.name)}</td><td>${esc(r.client)}</td><td>${esc(r.location)}</td><td>${esc(r.qty)}</td><td>${r.unitValue == null ? '' : esc(r.unitValue)}</td><td>${esc(r.value)}</td></tr>`))}</section>`;
+        } catch (e) { stockValue = ''; }
+      }
       const clientLock = me.role === 'client';
       return `<section><h2>Reports</h2><p class="hint">As of ${esc(area.asOf)} (${esc(area.timeZone)}). Filters use that clock. ${clientLock ? 'You see only your own stock and movements.' : ''}</p>
         <form class="form" data-act="report-filter">
@@ -638,7 +651,7 @@
           <label>To<input name="to" type="date" value="${esc(f.to || '')}"></label>
           <label>Best-before within days<input name="within" type="number" min="0" value="${esc(f.within || '')}"></label>
           <button class="primary">Apply</button>
-        </form></section>${blocks}`;
+        </form></section>${blocks}${stockValue}`;
     },
     async tariff() {
       const clients = await api('GET', '/api/clients?archived=1');
@@ -1181,7 +1194,12 @@
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
-    if (name === 'client-item') return api('POST', '/api/items', { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' });
+    if (name === 'client-item') {
+      const body = { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' };
+      if (data.value === '' || data.value == null) delete body.value;
+      else body.value = Number(data.value);
+      return api('POST', '/api/items', body);
+    }
     if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null, language: data.language || null });
     if (name === 'hw-mode') return api('POST', '/api/hardware/mode', data);
     if (name === 'assign') {
@@ -1217,7 +1235,14 @@
       return;
     }
     if (name === 'client-add') return api('POST', '/api/clients', data);
-    if (name === 'item-add') return api('POST', '/api/items', { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: Number(data.palletQty || 1), lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), clientId: data.clientId || null, gtin: data.gtin || null });
+    if (name === 'item-add') {
+      const body = { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: Number(data.palletQty || 1), lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), clientId: data.clientId || null, gtin: data.gtin || null };
+      if (data.value === '' || data.value == null) delete body.value;
+      else body.value = Number(data.value);
+      return api('POST', '/api/items', body);
+    }
+    if (name === 'item-value') return api('POST', '/api/items/' + encodeURIComponent(data.itemNo), { value: data.value === '' ? null : Number(data.value) });
+    if (name === 'item-currency') return api('POST', '/api/item-value/currency', { currency: data.currency });
     if (name === 'asn') return api('POST', '/api/deliveries', { ...data, pallets: Number(data.pallets || 1), clientId: data.clientId || null });
     if (name === 'order') return api('POST', '/api/orders', { id: data.id, customer: data.customer, lane: data.lane, minDays: data.minDays === '' ? null : Number(data.minDays), lines: [data.units ? { itemNo: data.itemNo, units: Number(data.units) } : { itemNo: data.itemNo, pallets: Number(data.pallets || 1) }] });
     if (name === 'wave-plan') return api('POST', '/api/waves', { orders: String(data.orders || '').split(/[\s,]+/).filter(Boolean) });
@@ -1339,9 +1364,9 @@
   const DEMO_NAV_ROLES = ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock'];
   function demoUser(role) {
     const permissions = {
-      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'modules.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write'],
-      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read', 'clients.read', 'tariff.write'],
-      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'clients.write', 'tariff.write', 'items.read'],
+      administrator: ['users.read', 'users.write', 'roles.read', 'roles.write', 'settings.read', 'settings.write', 'modules.write', 'sites.write', 'sites.switch', 'wms.read', 'wms.write', 'reports.read', 'orders.read', 'orders.write', 'outbound.read', 'outbound.write', 'inbound.read', 'inbound.write', 'picks.execute', 'putaway.execute', 'val.execute', 'labels.print', 'holders.read', 'holders.write', 'moves.execute', 'clients.read', 'tariff.write', 'items.value'],
+      manager: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'tasks.read', 'clients.read', 'tariff.write', 'items.value'],
+      office: ['wms.read', 'wms.write', 'reports.read', 'sites.switch', 'orders.read', 'orders.write', 'outbound.write', 'inbound.write', 'labels.print', 'clients.read', 'clients.write', 'tariff.write', 'items.read', 'items.value'],
       technician: ['wms.read', 'sites.switch', 'technical.write', 'labels.print'],
       inbound: ['wms.read', 'sites.switch', 'inbound.read', 'inbound.write', 'putaway.execute', 'scans.execute', 'labels.print', 'holders.write'],
       picker: ['wms.read', 'sites.switch', 'picks.execute', 'val.execute', 'outbound.write', 'orders.read', 'scans.execute', 'labels.print'],
@@ -1397,6 +1422,8 @@
     me.features = session.features || {};
     me.categories = session.categories || {};
     me.itemApproval = Boolean(session.itemApproval);
+    me.currency = session.currency || 'EUR';
+    me.itemValue = session.itemValue !== false;
     me.language = session.language || 'en';
     const langPick = document.getElementById('langPick');
     if (langPick) {

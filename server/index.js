@@ -30,7 +30,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/station': 'server/public/station.html', '/station.html': 'server/public/station.html',
     '/desk': 'server/public/desk.html', '/desk.html': 'server/public/desk.html',
     '/loading': 'server/public/loading.html', '/loading.html': 'server/public/loading.html',
-    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/reports.js': 'src/reports.js', '/src/i18n.js': 'src/i18n.js', '/locales/en.js': 'locales/en.js', '/locales/nl.js': 'locales/nl.js', '/i18n-boot.js': 'server/public/i18n-boot.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
+    '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/item-value.js': 'src/item-value.js', '/src/reports.js': 'src/reports.js', '/src/i18n.js': 'src/i18n.js', '/locales/en.js': 'locales/en.js', '/locales/nl.js': 'locales/nl.js', '/i18n-boot.js': 'server/public/i18n-boot.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
     '/app.html': 'server/public/app.html',
   };
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -88,6 +88,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/session') {
         if (!sessionUser) return send(401, { error: 'Sign in required' });
         const site = store.wh;
+        const highValue = Boolean(site && site.feature && site.feature('highValueSecurity'));
+        const moduleOn = !site || !site.module || site.module('item-value');
+        const itemValue = Boolean(moduleOn && (!highValue || sessionUser.role === 'administrator' || (sessionUser.permissions || []).includes('items.value')));
         const i18n = require('../src/i18n');
         const language = i18n.choose(sessionUser.language, site && site.config && site.config.language);
         return send(200, {
@@ -98,6 +101,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
           language,
           timeZone: (site && site.config && site.config.timeZone) || 'Europe/Brussels',
           currency: (site && site.config && site.config.currency) || 'EUR',
+          itemValue,
         });
       }
 
