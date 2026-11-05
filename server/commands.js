@@ -31,6 +31,7 @@
 
     // Office
     setConfig: (wh, a) => wh.setConfig(a.patch || {}),
+    setCurrency: (wh, a) => wh.setCurrency(a.currency),
     setUrgent: (wh, a) => wh.setUrgent(req(a.taskId, 'taskId'), Boolean(a.urgent)),
     cancelTask: (wh, a) => wh.cancelTask(req(a.taskId, 'taskId')),
     releaseTask: (wh, a) => wh.releaseTask(req(a.taskId, 'taskId')),
@@ -80,7 +81,18 @@
     // Master data and imports
     addItem: (wh, a) => wh.addItem(a),
     approveItem: (wh, a) => wh.approveItem(req(a.itemNo, 'itemNo')),
-    importItems: (wh, a) => (a.rows || []).map((r) => (wh.items[r.itemNo] ? null : wh.addItem(r))).filter(Boolean).length,
+    importItems: (wh, a) => {
+      let n = 0;
+      for (const r of a.rows || []) {
+        if (!r || !r.itemNo) continue;
+        if (wh.items[r.itemNo]) {
+          if (r.value != null && r.value !== '') wh.updateItem(r.itemNo, { value: r.value });
+          else continue;
+        } else wh.addItem(r);
+        n++;
+      }
+      return n;
+    },
     importLocations: (wh, a) => wh.importLocations(a.rows || []),
     // Orders from a spreadsheet: one row per line (orderId, customer, lane, itemNo, pallets, process).
     // Rows of one order are added together; an order that fails is listed and the rest still go in.

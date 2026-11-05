@@ -6,7 +6,7 @@ Switching a module off hides it. It does not delete anything. Switching it on br
 
 ## Where modules live
 
-Core modules are the files in `modules/`. One file, one module. `modules/registry.js` loads every other file in that folder.
+Core modules are the files in `modules/`. One file, one module. `modules/registry.js` loads every other file in that folder. Item value (`item-value`) keeps a price on each item and the stock-value report; switching it off hides both and leaves the amounts stored.
 
 A third-party module is the same kind of file in a folder you choose. There is no network install and no package to download.
 
@@ -104,7 +104,7 @@ The behaviour (the warehouse methods) can live in `src/`, which is what the core
 
 A warehouse that has never chosen has every module on (`modules[id] !== false`). A preset writes an explicit true or false for each one.
 
-The core set includes ABC cycle counts (`abc`): classes, a daily blind list, recount and approval. Its routes are under `/api/abc`. Turning it off hides Cycle counts and the handheld count card. The history of counts stays.
+The core set includes ABC cycle counts (`abc`), Reports (`reports`) and the replenishment return move (`return-move`). Reports that belong to another module (best-before needs `lots`, count accuracy needs `abc`) are omitted while that module is off. A client login is scoped to that client. `return-move` only changes the split drop: the remainder becomes a task back to storage. With it off, the remainder is booked back at the drop.
 
 ## Switching one on or off
 

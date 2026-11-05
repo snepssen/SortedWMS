@@ -24,6 +24,7 @@ const PERMISSIONS = [
   ['items.read', 'View items'],
   ['items.write', 'Add, edit and remove items'],
   ['items.approve', 'Approve items submitted by a client'],
+  ['items.value', 'See and edit item value'],
   ['locations.read', 'View locations'],
   ['locations.write', 'Create, edit and delete locations'],
   ['holders.read', 'View holders'],
@@ -85,7 +86,7 @@ const DEFAULTS = {
   administrator: ALL,
   manager: ALL.filter((id) => !EXCEPT.has(id)),
   office: [
-    'clients.read', 'clients.write', 'tariff.write', 'items.read', 'items.write', 'items.approve',
+    'clients.read', 'clients.write', 'tariff.write', 'items.read', 'items.write', 'items.approve', 'items.value',
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
@@ -112,7 +113,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read'],
 };
 
 // null permission means the route is public.
@@ -151,6 +152,9 @@ const RULES = [
   ['GET', '/api/items', 'items.read'],
   ['POST', '/api/items', 'items.write'],
   ['POST', '/api/items/:itemNo', 'items.write'],
+  ['POST', '/api/item-value/currency', 'items.value'],
+  ['GET', '/api/reports/stock-value', 'reports.read'],
+  ['GET', '/api/reports/stock-value.csv', 'reports.read'],
   ['POST', '/api/items/:itemNo/archive', 'items.write'],
   ['POST', '/api/items/:itemNo/approve', 'items.approve'],
   ['POST', '/api/items/:itemNo/remove', 'items.write'],
@@ -289,6 +293,9 @@ const RULES = [
   ['POST', '/api/totp/disable', 'wms.read'],
   ['POST', '/api/login/totp', null],
   ['POST', '/api/users/:id/reset-password', 'users.write'],
+  ['GET', '/api/reports/area', 'reports.read'],
+  ['GET', '/api/reports/area/:name', 'reports.read'],
+  ['GET', '/api/reports/area/:name.csv', 'reports.read'],
   ['GET', '/api/reports/stock', 'reports.read'],
   ['GET', '/api/reports/expiry', 'reports.read'],
   ['GET', '/api/reports/orders', 'reports.read'],
