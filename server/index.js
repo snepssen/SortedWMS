@@ -16,6 +16,7 @@ const { createApi } = require('./api');
 const { createAuth } = require('./auth');
 const { createHardware } = require('./hardware');
 const { permissionFor } = require('./permissions');
+const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -105,6 +106,14 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && actor && access.permission && !auth.can(actor, access.permission)) {
         return send(403, { error: `Missing permission: ${access.permission}` });
       }
+      const siteForModule = decodeURIComponent(String(req.headers['x-site'] || '').trim() || 'MAIN').toUpperCase() || 'MAIN';
+      let moduleWh = store.wh;
+      try { moduleWh = store.warehouse(siteForModule === 'MAIN' ? 'MAIN' : siteForModule); } catch (e) { moduleWh = store.wh; }
+      if (actor && actor.role === 'client' && moduleWh && typeof moduleWh.module === 'function' && !moduleWh.module('clients') && !['/api/session', '/api/modules', '/api/logout'].includes(url.pathname)) {
+        return send(403, { error: 'Client login is switched off for this warehouse.', module: 'clients' });
+      }
+      const denied = registry.denial(moduleWh, req.method, url.pathname);
+      if (denied) return send(denied.status, denied.body);
       if (auth && actor && actor.mustChangePassword && !['/api/password', '/api/logout', '/api/session'].includes(url.pathname)) {
         return send(403, { error: 'Change your password before continuing', mustChangePassword: true });
       }
@@ -150,10 +159,20 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       if (auth && req.method === 'POST' && userEdit) {
         try { return send(200, { user: auth.updateUser(userEdit[1], { ...body, by }) }); } catch (e) { return send(400, { error: e.message }); }
       }
-      if (auth && req.method === 'GET' && url.pathname === '/api/roles') return send(200, auth.catalog());
+      if (auth && req.method === 'GET' && url.pathname === '/api/roles') {
+        const cat = auth.catalog();
+        const hidden = registry.hiddenPermissions(store.wh);
+        cat.permissions = cat.permissions.filter((perm) => !hidden.has(perm.id));
+        return send(200, cat);
+      }
       const roleEdit = url.pathname.match(/^\/api\/roles\/([a-z]+)$/);
       if (auth && req.method === 'POST' && roleEdit) {
-        try { return send(200, { role: roleEdit[1], permissions: auth.setRolePermissions(roleEdit[1], body.permissions, by) }); } catch (e) { return send(400, { error: e.message }); }
+        try {
+          const hidden = registry.hiddenPermissions(store.wh);
+          const current = (auth.catalog().roles.find((role) => role.id === roleEdit[1]) || {}).permissions || [];
+          const kept = current.filter((perm) => hidden.has(perm));
+          return send(200, { role: roleEdit[1], permissions: auth.setRolePermissions(roleEdit[1], [...(body.permissions || []), ...kept], by) });
+        } catch (e) { return send(400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/auth-log') return send(200, auth.audit(url.searchParams.get('limit')));
       // API keys for other systems: made by an administrator, shown once, revoked here.
@@ -215,11 +234,12 @@ function main() {
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
-  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null });
+  const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
+  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
   const server = createServer({ store, printers, auth, hardware, backups, outbox });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
-  const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }) });
+  const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
   const port = Number(process.env.PORT || 8080);
   server.listen(port, () => {
     console.log(`SortedWMS on http://localhost:${port}  ·  sign in: /login  ·  roles: /app  ·  handheld: /handheld  ·  office: /admin`);

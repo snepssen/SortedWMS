@@ -33,7 +33,7 @@ test('the three numbering examples and a skipped-level home plan', () => {
 
 test('presets turn category features on or off without being paints-only', () => {
   const ids = PRESETS.map((p) => p.id);
-  assert.deepEqual(ids, ['chilled-dc', 'high-value', 'home-garage', 'small-maker']);
+  assert.deepEqual(ids, ['chilled-dc', 'high-value', 'home-garage', 'small-maker', '3pl']);
   const home = PRESETS.find((p) => p.id === 'home-garage');
   assert.equal(home.features.temperatureZones, false);
   assert.equal(home.features.lotExpiry, false);

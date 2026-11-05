@@ -103,3 +103,14 @@ The behaviour (the warehouse methods) can live in `src/`, which is what the core
 - `useDirectory(dir)` and `register(mod)` (the second is for tests)
 
 A warehouse that has never chosen has every module on (`modules[id] !== false`). A preset writes an explicit true or false for each one.
+
+## Switching one on or off
+
+Administrators and managers open **Modules** in `/app`. The page lists the description, the version, what it needs and what it conflicts with.
+
+- Turning one on while something it needs is off is refused, and the page offers to turn those on as well. One save does both, in the journal, under the person who saved it.
+- Turning one off while another still needs it is refused, and the page offers to turn those off too. Nothing is deleted.
+- A read to a route of a module that is off is **404**. A write is **403**. The same answer is given to the API and to the screens.
+- The menu entry, the office tab and the handheld mode are not drawn. A permission the module adds is not listed while editing a role. The role keeps that permission, so it is ticked again when the module comes back.
+- Client logins are refused while Clients is off. The client records stay.
+- The drop folder and the outbox wait while Connections is off. Files already in the folder are taken in when it is on again.

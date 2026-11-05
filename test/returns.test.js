@@ -154,6 +154,7 @@ test('returns over the API: inbound books and grades, a picker cannot, and the j
   };
   try {
     store.exec('applyPreset', { id: 'home-garage' }, 'test');
+    store.exec('setModules', { modules: { returns: true, serials: true } }, 'test');
     store.exec('generateGuided', { answers: { sections: { count: 1, name: 'Wall' }, layouts: [{ type: 'shelf', positions: { count: 3, name: 'Bin 1' } }] } }, 'test');
     store.exec('addItem', { itemNo: 'CAM', name: 'Camera', category: 'HOME', palletQty: 1, uom: 'piece' }, 'test');
     store.exec('setItemSerials', { itemNo: 'CAM', on: true }, 'test');

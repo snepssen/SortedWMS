@@ -1264,6 +1264,13 @@
       return globalThis.SortedPresets;
     }
 
+    function loadRegistry() {
+      if (typeof require === 'function') {
+        try { return require('../modules/registry'); } catch (e) { /* browser, or an old tree */ }
+      }
+      return typeof globalThis !== 'undefined' ? globalThis.SortedRegistry : null;
+    }
+
     function loadSerials() {
       if (typeof require === 'function') {
         try { return require('./serials'); } catch (e) { /* browser */ }
@@ -1350,7 +1357,9 @@
       const preset = PRESETS.find((p) => p.id === id);
       if (!preset) throw new Error('Unknown warehouse preset');
       this.features = { ...preset.features };
-      if (preset.modules) this.modules = { ...preset.modules };
+      const reg = loadRegistry();
+      const fromRegistry = reg ? reg.presetModules(preset.id) : null;
+      if (fromRegistry || preset.modules) this.modules = { ...(fromRegistry || {}), ...(preset.modules || {}) };
       for (const [code, name] of Object.entries(preset.categories || {})) if (!this.categories[code]) this.categories[code] = name;
       this.setup = {
         ...(this.setup || {}), preset: preset.id, features: { ...this.features },
@@ -1366,31 +1375,95 @@
       return !this.modules || this.modules[name] !== false;
     };
 
-    proto.setModules = function (patch = {}) {
+    function rememberFeatures(wh, key, names) {
+      wh.moduleFeatures = wh.moduleFeatures || {};
+      wh.moduleFeatures[key] = {};
+      for (const name of names) wh.moduleFeatures[key][name] = Boolean(wh.features && wh.features[name]);
+    }
+
+    function restoreFeatures(wh, key, names) {
+      const saved = wh.moduleFeatures && wh.moduleFeatures[key];
+      if (!saved) return;
+      wh.features = { ...(wh.features || {}) };
+      for (const name of names) if (name in saved) wh.features[name] = Boolean(saved[name]);
+    }
+
+    proto.setModules = function (patch = {}, options = {}) {
+      const reg = loadRegistry();
       const { MODULES } = loadPresets();
-      const ids = MODULES.map(([id]) => id).concat('simple');
-      const next = { ...(this.modules || {}) };
-      for (const [key, value] of Object.entries(patch || {})) {
-        if (!ids.includes(key)) throw new Error(`Unknown module ${key}`);
-        next[key] = Boolean(value);
+      let next;
+      if (reg) {
+        next = reg.resolveChange(reg.modules(), { ...(this.modules || {}) }, patch || {}, options || {});
+      } else {
+        const ids = MODULES.map(([id]) => id).concat('simple');
+        next = { ...(this.modules || {}) };
+        for (const [key, value] of Object.entries(patch || {})) {
+          if (!ids.includes(key)) throw new Error(`Unknown module ${key}`);
+          next[key] = Boolean(value);
+        }
+        if (next.billing !== false && next.clients === false) throw new Error('3PL billing needs Clients');
       }
-      if (next.billing !== false && next.clients === false) throw new Error('3PL billing needs Clients');
       if (next.trucks === false) {
         const busy = this._liveTasks().filter((t) => t.truckId && this.trucks[t.truckId] && ['active'].includes(t.status));
         if (busy.length) throw new Error(`${busy.length} truck job${busy.length === 1 ? ' is' : 's are'} under way. Finish them before switching trucks off`);
       }
       if (next.waves === false && typeof this.activeWave === 'function' && this.activeWave()) throw new Error('A pick wave is active. Finish or cancel it first');
+      // Switching lots or food off stops the rule. The dates and readings stay, and come back with the switch.
+      const was = (id) => !this.modules || this.modules[id] !== false;
+      if (was('lots') && next.lots === false) rememberFeatures(this, 'lots', ['lotExpiry', 'fefo']);
+      if (!was('lots') && next.lots !== false) restoreFeatures(this, 'lots', ['lotExpiry', 'fefo']);
+      if (was('food') && next.food === false) rememberFeatures(this, 'food', ['temperatureZones']);
+      if (!was('food') && next.food !== false) restoreFeatures(this, 'food', ['temperatureZones']);
+      if (next.lots === false) this.features = { ...(this.features || {}), lotExpiry: false, fefo: false };
+      if (next.food === false) this.features = { ...(this.features || {}), temperatureZones: false };
       this.modules = next;
-      this.setup = { ...(this.setup || {}), modules: { ...next }, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
-      const off = MODULES.filter(([id]) => next[id] === false).map(([, label]) => label);
-      this.log(`Modules: ${off.length ? `${off.join(', ')} off` : 'all on'}${next.simple ? ', simple screens' : ''}`);
+      const actor = this._actor || 'admin';
+      this.setup = { ...(this.setup || {}), modules: { ...next }, updatedAt: this.now(), updatedBy: actor };
+      const names = reg ? reg.modules() : MODULES.map(([id, label]) => ({ id, name: label }));
+      const off = names.filter((mod) => next[mod.id] === false).map((mod) => mod.name);
+      this.log(`Modules updated by ${actor}: ${off.length ? `${off.join(', ')} off` : 'all on'}${next.simple ? ', simple screens' : ''}`);
       if (next.trucks !== false) this.dispatch();
       return { ...this.moduleList() };
     };
 
+    proto.setModuleSettings = function (id, patch = {}) {
+      const reg = loadRegistry();
+      const mod = reg && reg.get(id);
+      if (!mod) throw new Error(`Unknown module ${id}`);
+      const props = (mod.settings && mod.settings.properties) || {};
+      const current = { ...((this.moduleSettings && this.moduleSettings[id]) || {}) };
+      for (const [key, value] of Object.entries(patch || {})) {
+        if (!props[key]) throw new Error(`${mod.name} has no setting ${key}`);
+        const kind = props[key].type;
+        if (kind === 'boolean') current[key] = Boolean(value);
+        else if (kind === 'integer') {
+          const n = Number(value);
+          if (!Number.isInteger(n)) throw new Error(`${props[key].title || key} must be a whole number`);
+          current[key] = n;
+        } else if (kind === 'number') {
+          const n = Number(value);
+          if (!Number.isFinite(n)) throw new Error(`${props[key].title || key} must be a number`);
+          current[key] = n;
+        } else current[key] = String(value);
+      }
+      this.moduleSettings = { ...(this.moduleSettings || {}), [id]: current };
+      this.log(`Module ${mod.name} settings updated by ${this._actor || 'admin'}`);
+      return { id, settings: current };
+    };
+
     proto.moduleList = function () {
+      const reg = loadRegistry();
+      if (reg) {
+        const byId = new Map(reg.modules().map((mod) => [mod.id, mod]));
+        const modules = reg.describe(this).map((mod) => ({
+          ...mod,
+          dependsOn: (mod.dependencies || []).map((id) => ({ id, name: (byId.get(id) || {}).name || id })),
+          settingsValues: (this.moduleSettings && this.moduleSettings[mod.id]) || {},
+        }));
+        return { modules, simple: Boolean(this.modules && this.modules.simple) };
+      }
       const { MODULES } = loadPresets();
-      return { modules: MODULES.map(([id, label, hint]) => ({ id, label, hint, on: this.module(id) })), simple: Boolean(this.modules && this.modules.simple) };
+      return { modules: MODULES.map(([id, label, hint]) => ({ id, name: label, label, description: hint, hint, on: this.module(id), dependencies: [], conflicts: [] })), simple: Boolean(this.modules && this.modules.simple) };
     };
 
     proto.setFeatures = function (patch) {
@@ -1398,6 +1471,8 @@
       this.features = { ...(this.features || {}) };
       for (const key of allowed) if (key in (patch || {})) this.features[key] = Boolean(patch[key]);
       if (this.features.fefo && !this.features.lotExpiry) throw new Error('FEFO needs lot and expiry to be on');
+      if (this.modules && this.modules.lots === false && (this.features.lotExpiry || this.features.fefo)) throw new Error('Lots and best-before is switched off');
+      if (this.modules && this.modules.food === false && this.features.temperatureZones) throw new Error('Food and temperature is switched off');
       this.setup = { ...(this.setup || {}), features: { ...this.features }, updatedAt: this.now(), updatedBy: this._actor || 'admin' };
       this.log('Category features updated');
       return this.features;

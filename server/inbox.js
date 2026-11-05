@@ -25,7 +25,7 @@ function bodyFor(name, text) {
   return doc;
 }
 
-function watchInbox({ dir, api, every = 5000, settle = 2000, log = console, now = () => Date.now() }) {
+function watchInbox({ dir, api, every = 5000, settle = 2000, log = console, now = () => Date.now(), enabled = null }) {
   const done = path.join(dir, 'done');
   const failed = path.join(dir, 'failed');
   for (const d of [dir, done, failed]) fs.mkdirSync(d, { recursive: true });
@@ -49,6 +49,7 @@ function watchInbox({ dir, api, every = 5000, settle = 2000, log = console, now 
 
   /** Take in every file that is ready. Returns what happened to each. */
   function poll() {
+    if (typeof enabled === 'function' && enabled() === false) return {};
     const out = {};
     let names = [];
     try { names = fs.readdirSync(dir); } catch (e) { return out; }

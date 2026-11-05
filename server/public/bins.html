@@ -641,6 +641,9 @@
       me = last;
     }
     try { MODS = await api('GET', '/api/modules'); } catch (e) { MODS = null; }
+    window.sortedModuleOn = (id) => modOn(id);
+    window.dispatchEvent(new Event('sorted-modules'));
+    if (MODS && !modOn('bins')) { $('job').innerHTML = '<div class="mid">Bins are switched off for this warehouse.</div>'; return; }
     if (window.SortedOffline && !window.SortedLocal) {
       queue = window.SortedOffline.createOfflineQueue(localStorage, `sorted.bins.queue.${me.username}`);
       loadCache();
