@@ -115,6 +115,9 @@
     if (ins.kind === 'find' && ins.result) I.result = lookupView(wh, ins.result);
     if (ins.armed) I.armed = ins.armed;
     if (ins.pending) I.pending = { via: ins.pending.via, pallet: palletView(wh, ins.pending.pallet), ...lookupView(wh, ins.pending.info) };
+    // Stacked pickup: every pallet on the forks with its own drop, the current one first.
+    if (ins.stack) I.stack = ins.stack.map((s) => ({ taskId: s.taskId, sscc: s.sscc, itemNo: s.itemNo, to: s.to, toName: placeName(wh, s.to), current: s.current }));
+    if (ins.canStack) I.canStack = true;
     return out;
   }
 

@@ -207,6 +207,8 @@
       if (task && task.reason === 'return-split') rows.push(say(session.lang, 'return'));
       if (ins && ins.targetName) rows.push(ins.targetName);
       if (ins && ins.pallet) rows.push(`${ins.pallet.itemNo || ''} ${String(ins.pallet.sscc || '').slice(-6)}`);
+      // Stacked pickup: the other pallets on the forks, each with its drop.
+      for (const s of (ins && ins.stack) || []) if (!s.current) rows.push(`+${String(s.sscc).slice(-6)} > ${s.to}`);
       const truck = wh().trucks[device];
       if (truck && truck.message && truck.message.text) rows.push(truck.message.text);
       return rows;

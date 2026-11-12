@@ -45,6 +45,9 @@
   .belongs .where b { color: var(--acc); }
   .lines li .loc { font-weight: 800; }
   .card.held { border-color: var(--warn); }
+  .stack { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+  .stack ul { list-style: none; margin: 4px 0 0; padding: 0; }
+  .stack li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-weight: 600; }
   .cust { margin-top: 8px; border-left: 4px solid var(--warn); background: rgba(255, 176, 32, .1); border-radius: 6px; padding: 6px 10px; color: var(--warn); font-weight: 700; }
   .cust div { font-weight: 600; color: var(--ink); }
   .card.armed { border: 2px solid var(--warn); background: rgba(255, 176, 32, .12); }
@@ -179,6 +182,16 @@
     return `<div class="cust">${esc(c.name)}${c.notes.map((n) => `<div>${esc(n)}</div>`).join('')}</div>`;
   }
 
+  // Stacked pickup: the other pallets on the forks, each with its own drop. Scan one to make it the next drop.
+  function stackHtml(I) {
+    if (I.stack && I.stack.length > 1) {
+      const rest = I.stack.filter((s) => !s.current);
+      return `<div class="stack"><div class="sub">Also on the forks (${rest.length}). Scan a drop to drop that one; set one down and anyone can take it over</div>
+        <ul>${rest.map((s) => `<li><span>…${esc(s.sscc.slice(-6))} ${esc(s.itemNo || '')}</span><span>→ ${locBig(s.toName)}</span></li>`).join('')}</ul></div>`;
+    }
+    return I.canStack ? '<div class="sub">Stacked pallets? Scan the next one to take it along</div>' : '';
+  }
+
   function palletHtml(p) {
     if (!p) return '';
     const exp = p.expiry ? p.expiry.split('-').reverse().join('-') : '';
@@ -260,8 +273,8 @@
       case 'paused': return `<div class="card"><div class="kicker">Paused</div><div class="mid">No jobs until you pick a mode</div></div>`;
       case 'idle': return `<div class="card"><div class="kicker">Auto</div><div class="mid">No job for you right now</div><div class="sub">The next one appears here by itself. Scan any pallet, location or item to check it.</div></div>`;
       case 'pickup': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Pick up at</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}<div class="sub">${esc(t.why || '')}</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
-      case 'drop': return `<div class="card"><div class="kicker${urgent}">${t && t.reason === 'return-split' ? 'Return the remainder' : job}</div><div class="sub">${t && t.reason === 'return-split' ? 'Take the rest of the plate back. Drop at' : 'Drop at'}</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${I.targetCheck ? '<div class="sub">Label won\'t scan? Type its check digit</div>' : ''}${custHtml(I)}${palletHtml(I.pallet)}</div>`;
-      case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}</div>`;
+      case 'drop': return `<div class="card"><div class="kicker${urgent}">${t && t.reason === 'return-split' ? 'Return the remainder' : job}</div><div class="sub">${t && t.reason === 'return-split' ? 'Take the rest of the plate back. Drop at' : 'Drop at'}</div><div class="big">${locBig(I.targetName)}</div>${spoken}${enter}${I.targetCheck ? '<div class="sub">Label won\'t scan? Type its check digit</div>' : ''}${custHtml(I)}${palletHtml(I.pallet)}${stackHtml(I)}</div>`;
+      case 'wait': return `<div class="card"><div class="kicker">${job}</div><div class="mid">Wait at the aisle entry</div><div class="sub">2 trucks are in aisle ${esc(I.aisle)}. You're let in when one leaves.</div><div class="big">${locBig(I.targetName)}</div>${palletHtml(I.pallet)}${stackHtml(I)}</div>`;
       case 'check-pallet': return `<div class="card"><div class="kicker${urgent}">${job}</div><div class="sub">Check the picked pallet in</div><div class="big">${esc(t.fromName || '')}</div><div class="sub">Scan the pallet. Its shipping label prints at this lane.</div>${custHtml(I)}${palletHtml(I.pallet)}</div>`;
       case 'abc': return `<div class="card"><div class="kicker">Cycle count · class ${esc(I.abc.class)}</div><div class="sub">${I.abc.status === 'recount' ? 'Recount' : 'Blind count'} at</div><div class="big">${locBig(I.abc.loc)}</div><div class="mid">${esc(I.abc.itemNo)}</div><div class="sub">${esc(I.abc.name || '')}. The booked quantity is not on this screen.</div>
         <div class="row" style="margin-top:10px"><input id="abcQty" inputmode="numeric" placeholder="Quantity"><button class="primary" id="abcSave">${I.abc.status === 'recount' ? 'Submit recount' : 'Submit count'}</button></div>
