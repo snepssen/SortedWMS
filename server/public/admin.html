@@ -382,7 +382,9 @@
           <label><span><input type="checkbox" id="cCheck" ${c.checkAfterPick ? 'checked' : ''}> Check & label after picking</span></label></div>
         <div class="form"><label>Batches per block lane <input id="cLaneB" size="3" value="${c.blockLaneBatches}"></label>
           <label title="A block lane down to this many pallets is moved to the racks rather than buried by a new batch. 0 = never.">Few left in a block lane <input id="cRemnant" size="3" value="${c.blockRemnant ?? 3}"></label>
-          <label>Buried stock <select id="cBuried">${['both', 'digout', 'pickfirst', 'off'].map((v) => `<option ${v === c.buriedStock ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>Buried stock <select id="cBuried">${['both', 'digout', 'pickfirst', 'off'].map((v) => `<option ${v === c.buriedStock ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+        <div class="form"><label title="Stacked pickup: a truck lifts pallets standing on each other in one go, each to its own drop, while the stack stays under this height (the truck's or the dock door's clearance). Every item needs a height on its card. 0 = one pallet at a time.">Highest stack on a truck (mm) <input id="cStack" size="5" value="${c.stackMaxMm ?? 0}"></label>
+          <label title="Added to each pallet's goods height when a stack is measured.">Empty pallet (mm) <input id="cBase" size="4" value="${c.palletBaseMm ?? 144}"></label>
           <button class="primary" id="cSave">Save</button></div><div class="out" id="cOut" style="display:none"></div></section>
       <section><h2>Naming on screens</h2><p class="hint">Both barcodes always scan.</p>
         <div class="form"><select id="nShow"><option value="row" ${S.naming === 'row' ? 'selected' : ''}>AA03C2 (cell, rack, bay, level, position)</option><option value="current" ${S.naming !== 'row' ? 'selected' : ''}>38-02-0-10 (current labels)</option></select><button id="nSave">Save</button></div>
@@ -589,6 +591,7 @@
         priority: val('#cPrio').split(/[,\s]+/).filter(Boolean).map((s) => s.toUpperCase()), aisleCap: Number(val('#cCap')), escalateAfterMin: Number(val('#cEsc')),
         groundNextPerItem: Number(val('#cGround')), travelOptimise: $('#cNear').checked, oneWay: $('#cOne').checked, checkAfterPick: $('#cCheck').checked,
         blockLaneBatches: Number(val('#cLaneB')), buriedStock: $('#cBuried').value, blockRemnant: Number(val('#cRemnant')),
+        stackMaxMm: Number(val('#cStack')), palletBaseMm: Number(val('#cBase')),
         enabled: Object.fromEntries([...document.querySelectorAll('[data-jobon]')].map((b) => [b.dataset.jobon, b.checked])),
         schedule: val('#cSched').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
           const m = l.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s+(.+)$/);
