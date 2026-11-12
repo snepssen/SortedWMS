@@ -4,6 +4,12 @@
  */
 (function (root) {
   const dict = {
+    'Stacked pallets? Scan the next one to take it along': 'Stacked pallets? Scan the next one to take it along',
+    'taken over by': 'taken over by',
+    'Next drop': 'Next drop',
+    'On the forks': 'On the forks',
+    'Report problem': 'Report problem',
+    'Change mode': 'Change mode',
     'Sign in to the warehouse. Each role opens its own view.': 'Sign in to the warehouse. Each role opens its own view.',
     'Username': 'Username',
     'Password': 'Password',

@@ -83,6 +83,9 @@
       if (plan.length > 5000) throw new Error('That is more than 5000 locations at once');
       const map = new Map(plan.map((p) => [p.from, p.to]));
       const swap = (code) => (code != null && map.has(code) ? map.get(code) : code);
+      for (const rule of this.config.stackClearances || []) {
+        if (rule.kind === 'door') { rule.from = swap(rule.from); rule.to = swap(rule.to); }
+      }
       // Re-key the locations first, all together, so a chain (A→B, B→C) works.
       const moved = plan.map((p) => [p, this.locations[p.from]]);
       for (const [p] of moved) delete this.locations[p.from];

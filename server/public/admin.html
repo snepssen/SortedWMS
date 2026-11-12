@@ -365,8 +365,28 @@
 
   // ---- Settings -----------------------------------------------------------------------
 
+  function doorInputs(rule = {}) {
+    return `<div class="form" data-door>
+      <label>Door name <input data-name value="${esc(rule.name || '')}"></label>
+      <label>From <input data-from value="${esc(rule.from || '')}"></label>
+      <label>To <input data-to value="${esc(rule.to || '')}"></label>
+      <label>Clearance (mm) <input type="number" min="1" max="20000" data-mm value="${esc(rule.mm || '')}"></label>
+      <button type="button" data-remove>Remove</button></div>`;
+  }
+
+  function readClearances() {
+    const trucks = [...document.querySelectorAll('[data-truck-mm]')].filter((input) => input.value !== '')
+      .map((input) => ({ kind: 'truck', truck: input.dataset.truckMm, mm: Number(input.value) }));
+    const doors = [...document.querySelectorAll('[data-door]')].map((row) => {
+      const field = (name) => row.querySelector('[data-' + name + ']').value.trim();
+      return { kind: 'door', name: field('name'), from: field('from'), to: field('to'), mm: Number(field('mm')) };
+    });
+    return [...trucks, ...doors];
+  }
+
   async function renderSettings() {
     const c = S.config;
+    const rules = c.stackClearances || [];
     const [print, printers] = await Promise.all([api('GET', '/api/print-queue'), api('GET', '/api/printers')]);
     return `<div class="grid">
       <section><h2>Dispatch</h2>
@@ -383,9 +403,14 @@
         <div class="form"><label>Batches per block lane <input id="cLaneB" size="3" value="${c.blockLaneBatches}"></label>
           <label title="A block lane down to this many pallets is moved to the racks rather than buried by a new batch. 0 = never.">Few left in a block lane <input id="cRemnant" size="3" value="${c.blockRemnant ?? 3}"></label>
           <label>Buried stock <select id="cBuried">${['both', 'digout', 'pickfirst', 'off'].map((v) => `<option ${v === c.buriedStock ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+        <p class="hint">${c.stackMaxMm ? 'Stacked pickup enabled' : 'Stacked pickup off'}. Enter the warehouse stack limit in mm. Any lower truck or door limit applies. Two pallets with 900 mm of goods each count as ${2 * (900 + (c.palletBaseMm ?? 144))} mm including both bases.</p>
         <div class="form"><label title="Stacked pickup: a truck lifts pallets standing on each other in one go, each to its own drop, while the stack stays under this height (the truck's or the dock door's clearance). Every item needs a height on its card. 0 = one pallet at a time.">Highest stack on a truck (mm) <input id="cStack" size="5" value="${c.stackMaxMm ?? 0}"></label>
           <label title="Added to each pallet's goods height when a stack is measured.">Empty pallet (mm) <input id="cBase" size="4" value="${c.palletBaseMm ?? 144}"></label>
-          <button class="primary" id="cSave">Save</button></div><div class="out" id="cOut" style="display:none"></div></section>
+          </div><details><summary>Truck and door clearances</summary>
+          <div class="form">${S.trucks.map(({ id }) => `<label>${esc(id)} (mm) <input type="number" min="1" max="20000" data-truck-mm="${esc(id)}" placeholder="Warehouse limit" value="${esc(rules.find((r) => r.kind === 'truck' && r.truck === id)?.mm || '')}"></label>`).join('')}</div>
+          <p class="hint">Enter the two location codes for travel through each door. Routes apply in both directions. Use * at one end for every route to or from the other location.</p>
+          <div id="doorRules">${rules.filter((r) => r.kind === 'door').map(doorInputs).join('')}</div><button type="button" id="addDoor">Add door</button></details>
+          <div class="form"><button class="primary" id="cSave">Save</button></div><div class="out" id="cOut" style="display:none"></div></section>
       <section><h2>Naming on screens</h2><p class="hint">Both barcodes always scan.</p>
         <div class="form"><select id="nShow"><option value="row" ${S.naming === 'row' ? 'selected' : ''}>AA03C2 (cell, rack, bay, level, position)</option><option value="current" ${S.naming !== 'row' ? 'selected' : ''}>38-02-0-10 (current labels)</option></select><button id="nSave">Save</button></div>
         <h2 style="margin-top:16px">Command card</h2><p class="hint">Barcodes for every handheld button (modes, problem reports, receiving, cancel), so drivers in gloves never need the touch screen. Print, laminate, one per truck.</p>
@@ -586,12 +611,14 @@
     // Audit
     on('#auGo', () => { ls.set('auBy', val('#auBy')); ls.set('auOp', val('#auOp')); draw(); });
     // Settings
+    on('#addDoor', () => $('#doorRules').insertAdjacentHTML('beforeend', doorInputs()));
+    on('#doorRules', (e) => { if (e.target.closest('[data-remove]')) e.target.closest('[data-door]').remove(); });
     on('#cSave', () => { $('#cOut').style.display = ''; act('#cOut', async () => {
       await api('POST', '/api/config', {
         priority: val('#cPrio').split(/[,\s]+/).filter(Boolean).map((s) => s.toUpperCase()), aisleCap: Number(val('#cCap')), escalateAfterMin: Number(val('#cEsc')),
         groundNextPerItem: Number(val('#cGround')), travelOptimise: $('#cNear').checked, oneWay: $('#cOne').checked, checkAfterPick: $('#cCheck').checked,
         blockLaneBatches: Number(val('#cLaneB')), buriedStock: $('#cBuried').value, blockRemnant: Number(val('#cRemnant')),
-        stackMaxMm: Number(val('#cStack')), palletBaseMm: Number(val('#cBase')),
+        stackClearances: readClearances(), stackMaxMm: Number(val('#cStack')), palletBaseMm: Number(val('#cBase')),
         enabled: Object.fromEntries([...document.querySelectorAll('[data-jobon]')].map((b) => [b.dataset.jobon, b.checked])),
         schedule: val('#cSched').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
           const m = l.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s+(.+)$/);

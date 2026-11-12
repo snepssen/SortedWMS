@@ -156,6 +156,7 @@
   async function write(method, path, body) {
     const id = `${(me && me.username) || 'bins'}-${Date.now().toString(36)}-${++seq}`;
     if (!queue || window.SortedLocal) return api(method, path, body);
+    if (queue.snapshot().conflicts.length) throw new Error('Review the refused scan first');
     if (queue.snapshot().pending.length) { queue.enqueue({ method, path, body, id }); showNet(); flush(); return { queued: true }; }
     try {
       return await api(method, path, body, id);
@@ -197,7 +198,7 @@
     const { pending, conflicts } = queue.snapshot();
     if (conflicts.length) {
       el.className = 'bad';
-      el.innerHTML = `${conflicts.length} saved scan${conflicts.length === 1 ? ' was' : 's were'} not accepted${pending.length ? `; ${pending.length} more wait behind ${conflicts.length === 1 ? 'it' : 'them'}` : ''}: ${conflicts.map((c, i) => `<div>${esc(describe(c))}: ${esc(c.error)} <button type="button" data-drop="${i}">Discard</button></div>`).join('')}${pending.length ? '<button type="button" id="retry">Send the rest</button>' : ''}`;
+      el.innerHTML = `${conflicts.length} saved scan${conflicts.length === 1 ? ' was' : 's were'} not accepted${pending.length ? `; ${pending.length} more wait behind ${conflicts.length === 1 ? 'it' : 'them'}` : ''}: ${conflicts.map((c, i) => `<div>${esc(describe(c))}: ${esc(c.error)} <button type="button" data-drop="${i}">Discard</button></div>`).join('')}`;
     } else if (pending.length) {
       el.className = 'off';
       el.innerHTML = `Offline: ${pending.length} scan${pending.length === 1 ? '' : 's'} saved on this phone, sent when the connection is back. <button type="button" id="retry">Try now</button>`;
@@ -684,7 +685,7 @@
       $('net').onclick = async (e) => {
         if (e.target.id === 'retry') return flush();
         const d = e.target.closest('[data-drop]');
-        if (d) { queue.discardConflict(d.dataset.drop); showNet(); await refreshCache(); }
+        if (d) { queue.discardConflict(d.dataset.drop); showNet(); await flush(); await refreshCache(); }
       };
     }
     $('who').textContent = me.displayName ? `${me.displayName} · ${me.username}` : me.username;

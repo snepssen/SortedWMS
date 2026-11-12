@@ -176,3 +176,46 @@ test('two terminals at once get different device ids, and a freed id is used aga
     store.close();
   }
 });
+
+test('Move on two RF terminals updates the idle operator after a takeover', async () => {
+  const store = new Store({ site: site() });
+  const auth = createAuth(store.db);
+  auth.ensureDemoUsers();
+  auth.setTerminalPin(auth.getUser('manager').id, '2468');
+  const wh = store.wh;
+  wh.setModules({ terminal: true });
+  wh.setConfig({ stackMaxMm: 2600 });
+  wh.addItem({ itemNo: 'CASE', name: 'Case', category: 'GEN', heightMm: 800, palletQty: 10 });
+  wh.setLocationCategory({ aisle: 1 }, 'GEN');
+  const stock = () => wh.stockPallet('DOCK-IN', { itemNo: 'CASE', qty: 10, batch: 'T', expiry: '2027-06-01' }).sscc;
+  const a = stock(), b = stock();
+  const server = serve({ store, auth, port: 0 });
+  await new Promise((r) => server.on('listening', r));
+  const clients = [];
+  try {
+    for (let i = 0; i < 2; i++) {
+      const c = await open(server.address().port);
+      clients.push(c);
+      await c.wait('Screen'); c.send('4\n');
+      await c.wait('User'); c.send('manager\n');
+      await c.wait('PIN'); c.send('2468\n');
+      await c.wait('Menu'); c.send('3\n');
+      await c.wait('Move');
+    }
+    const [first, second] = clients;
+    first.send(a + '\n'); await first.wait('Take it to');
+    first.send(b + '\n'); await first.wait('Stacked');
+    second.send(b + '\n'); await second.wait('Taken over');
+    await first.wait('taken over by RF2');
+    const drop = (id) => wh.tasks[wh.trucks[id].taskId].to;
+    const x = drop('RF1'), y = drop('RF2');
+    first.send(x + '\n'); second.send(y + '\n');
+    await Promise.all([first.wait('Done'), second.wait('Done')]);
+    assert.equal(wh.pallets[a].loc, x);
+    assert.equal(wh.pallets[b].loc, y);
+  } finally {
+    clients.forEach((c) => c.end());
+    await new Promise((r) => server.close(r));
+    store.close();
+  }
+});

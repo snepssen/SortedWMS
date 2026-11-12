@@ -63,7 +63,7 @@ function createParser(onLine, onNaws, { echo = () => {}, mask = () => false, onK
   let line = '';
   let esc = '';
   let lastCr = false;
-  return function push(chunk) {
+  function push(chunk) {
     for (const b of chunk) {
       if (sub) {
         if (iac && b === SE) {
@@ -108,7 +108,9 @@ function createParser(onLine, onNaws, { echo = () => {}, mask = () => false, onK
       if (b === 127 || b === 8) { if (line) { line = line.slice(0, -1); echo('\b \b'); } continue; }
       if (b >= 32 && b < 127) { line += String.fromCharCode(b); echo(mask() ? '*' : String.fromCharCode(b)); }
     }
-  };
+  }
+  push.typing = () => Boolean(line || esc);
+  return push;
 }
 
 /**
@@ -174,7 +176,8 @@ function serve({ store, auth, port = 2323, host = '127.0.0.1', now = () => Date.
     socket._ui = ui;
     let vt = false;
     let echoOn = true;
-    const write = () => { if (!socket.destroyed) socket.write(frame(ui, vt)); };
+    let lastLoad;
+    const write = () => { lastLoad = ui.loadState(); if (!socket.destroyed) socket.write(frame(ui, vt)); };
     const parser = createParser(
       (line) => { ui.input(line); write(); },
       (cols, rows) => { vt = true; ui.setProfileFromSize(cols, rows); write(); },
@@ -184,6 +187,10 @@ function serve({ store, auth, port = 2323, host = '127.0.0.1', now = () => Date.
         onNoEcho: () => { echoOn = false; },
       },
     );
+    socket._refreshLoad = () => {
+      const state = ui.loadState();
+      if (state && state !== lastLoad && !parser.typing()) { ui.refreshLoad(); write(); }
+    };
     sessions.add(socket);
     socket.on('data', (buf) => parser(buf));
     socket.on('close', () => sessions.delete(socket));
@@ -195,6 +202,7 @@ function serve({ store, auth, port = 2323, host = '127.0.0.1', now = () => Date.
     for (const socket of sessions) {
       const ui = socket._ui;
       if (ui && now() - ui.session.last > idleMs) socket.end('\r\nIdle: signed out\r\n');
+      else socket._refreshLoad();
     }
   }, Math.min(idleMs, 1000));
   if (timer.unref) timer.unref();
