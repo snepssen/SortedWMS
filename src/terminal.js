@@ -205,7 +205,7 @@
       const task = ins && ins.task;
       const rows = [];
       if (task && task.reason === 'return-split') rows.push(say(session.lang, 'return'));
-      if (ins && ins.targetName) rows.push(ins.targetName);
+      if (ins && ins.target) rows.push(ins.targetName || ins.target);
       if (ins && ins.pallet) rows.push(`${ins.pallet.itemNo || ''} ${String(ins.pallet.sscc || '').slice(-6)}`);
       // Stacked pickup: the other pallets on the forks, each with its drop.
       for (const s of (ins && ins.stack) || []) if (!s.current) rows.push(`+${String(s.sscc).slice(-6)} > ${s.to}`);
@@ -233,7 +233,7 @@
       ensureTruck('transfer');
       session.step = 'move';
       note('move');
-      paint('move', [say(session.lang, 'pallet')]);
+      paint('move', [say(session.lang, 'pallet'), ...jobText()]);
     }
 
     function openReplenish() {
@@ -428,7 +428,20 @@
       session.step = 'user';
     }
     paint(session.step === 'size' ? 'size' : 'user', session.step === 'size' ? Object.keys(PROFILES).map((n, i) => `${i + 1} ${n}`) : []);
-    return { input, setProfileFromSize, screen: () => session.lines.slice(), meta, session };
+    function loadState() {
+      if (!session.user || !['move', 'putaway', 'pick', 'receive', 'replenish'].includes(session.step)) return '';
+      const truck = wh().trucks[device];
+      return truck ? JSON.stringify([truck.taskId, truck.load, truck.carried, truck.message]) : '';
+    }
+    function refreshLoad() {
+      const lastInput = session.last;
+      const truck = wh().trucks[device];
+      const handoff = truck.message?.handoff;
+      const notice = handoff && session.lang === 'nl' ? `${handoff.pallet} overgenomen door ${handoff.toTruck}` : truck.message?.text;
+      paint(session.step, [notice || say(session.lang, 'scan'), ...jobText()]);
+      session.last = lastInput;
+    }
+    return { input, loadState, refreshLoad, setProfileFromSize, screen: () => session.lines.slice(), meta, session };
   }
 
   return { PROFILES, createSession, say, fold, missingDutch, EN, NL };

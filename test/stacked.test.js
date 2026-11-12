@@ -144,3 +144,54 @@ test('a carrying truck can take a set-down pallet onto its own stack', () => {
   assert.equal(jobOf(wh, top).truckId, 'R2');
   assert.match(wh.trucks.R1.message.text, /taken over by R2/);
 });
+
+test('Transfer mode keeps both jobs and hands one to a second Transfer truck', () => {
+  const { wh, bottom, top } = setup({ stackMaxMm: 2600 });
+  for (const id of ['R1', 'R2']) wh.setTruckMode(id, 'transfer');
+  liftBoth(wh, bottom, top);
+  const first = jobOf(wh, bottom), second = jobOf(wh, top);
+  assert.notEqual(first.to, second.to);
+  assert.ok(wh.scan('R2', top).ok);
+  assert.equal(wh.trucks.R1.message.handoff.toTruck, 'R2');
+  assert.equal(wh.trucks.R1.message.ok, true);
+  assert.ok(wh.scan('R1', first.to).ok);
+  assert.ok(wh.scan('R2', second.to).ok);
+  assert.equal(wh.pallets[bottom].loc, first.to);
+  assert.equal(wh.pallets[top].loc, second.to);
+});
+
+test('partial pallets still require full goods clearance', () => {
+  const { wh, bottom, top } = setup({ stackMaxMm: 2300 });
+  wh.pallets[top].qty = 1;
+  wh.scan('R1', bottom);
+  assert.match(wh.scan('R1', top).text, /2388 mm/);
+});
+
+test('a tighter truck or door limits a stack before either stock or its reservation changes', () => {
+  const { wh, bottom, top } = setup({ stackMaxMm: 3000 });
+  wh.setConfig({ stackClearances: [{ kind: 'truck', truck: 'R1', mm: 2200 }] });
+  wh.scan('R1', bottom);
+  assert.match(wh.scan('R1', top).text, /2200 mm limit on R1/);
+  const door = { kind: 'door', name: 'North door', from: '*', to: wh.tasks[wh.trucks.R1.taskId].to, mm: 2100 };
+  wh.setConfig({ stackClearances: [door] });
+  assert.match(wh.scan('R1', top).text, /2100 mm limit at North door/);
+  assert.equal(wh.pallets[top].loc, 'DOCK-IN');
+  assert.equal(wh.trucks.R1.load, bottom);
+  assert.equal(jobOf(wh, top), undefined);
+  wh.setConfig({ stackClearances: [{ ...door, mm: 2388 }] });
+  assert.ok(wh.scan('R1', top).ok);
+});
+
+test('stock check traces both trucks and the final drop of a secondary stacked pallet', () => {
+  const { wh, bottom, top } = setup({ stackMaxMm: 2600 });
+  liftBoth(wh, bottom, top);
+  assert.match(wh.lookup(top).text, /On R1's forks/);
+  wh.scan('R2', top);
+  const to = jobOf(wh, top).to;
+  wh.scan('R2', to);
+  const history = wh.lookup(top).lines.filter((l) => / · (lifted|handoff|moved) · /.test(l));
+  assert.equal(history.length, 3);
+  assert.ok(history[0].includes(to));
+  assert.match(history[1], /handoff · R2 · R1 → R2/);
+  assert.match(history[2], /lifted · R1 · DOCK-IN/);
+});

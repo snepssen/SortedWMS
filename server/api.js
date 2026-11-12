@@ -71,7 +71,7 @@
     const task = d.taskId ? wh.tasks[d.taskId] : null;
     const out = {
       id, kind: d.kind || 'truck', mode: d.mode, operator: d.operator || null, duty: d.duty || null, equipment: d.equipment || null, modes: Object.entries(TRUCK_MODES).filter(([k]) => !hiddenModes(wh).has(k)).map(([k, v]) => ({ id: k, label: v.label })),
-      categories: d.categories, message: d.message ? { ok: d.message.ok, text: wh.display(d.message.text) } : null, stats: d.stats,
+      categories: d.categories, message: d.message ? { ...d.message, text: wh.display(d.message.text) } : null, stats: d.stats,
       instruction: { kind: ins.kind, task: taskView(wh, task) },
       abc: d.mode === 'count' && typeof wh.abcMine === 'function' && wh.module('abc') ? wh.abcMine(d.operator || id) : null,
     };

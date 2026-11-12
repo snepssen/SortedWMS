@@ -8,7 +8,8 @@ function memory() {
 }
 
 test('offline scans send in order and a refusal holds the rest', async () => {
-  const q = createOfflineQueue(memory());
+  const storage = memory();
+  const q = createOfflineQueue(storage);
   q.enqueue({ method: 'POST', path: '/api/devices/HH01/scan', body: { code: 'PALLET' }, id: 'a' });
   q.enqueue({ method: 'POST', path: '/api/devices/HH01/scan', body: { code: 'LOC' }, id: 'b' });
   q.enqueue({ method: 'POST', path: '/api/devices/HH01/scan', body: { code: 'NEXT' }, id: 'c' });
@@ -23,6 +24,9 @@ test('offline scans send in order and a refusal holds the rest', async () => {
   assert.equal(stopped.pending, 1);
   assert.equal(stopped.conflicts[0].error, 'That location is blocked');
   const sent = [];
+  const reload = createOfflineQueue(storage);
+  assert.equal((await reload.flush(() => assert.fail('unresolved conflict'))).stopped, 'conflict');
+  reload.discardConflict(0);
   const again = await q.flush(async (item) => { sent.push(item.body.code); return { ok: true }; });
   assert.deepEqual(sent, ['NEXT']);
   assert.equal(again.pending, 0);

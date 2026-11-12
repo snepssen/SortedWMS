@@ -3,6 +3,12 @@
  */
 (function (root) {
   const dict = {
+    'Stacked pallets? Scan the next one to take it along': 'Gestapelde pallets? Scan de volgende om deze mee te nemen',
+    'taken over by': 'overgenomen door',
+    'Next drop': 'Volgende afzetlocatie',
+    'On the forks': 'Op de vorken',
+    'Report problem': 'Probleem melden',
+    'Change mode': 'Modus wijzigen',
     'Sign in to the warehouse. Each role opens its own view.': 'Meld u aan bij het magazijn. Elke rol opent zijn eigen scherm.',
     'Username': 'Gebruikersnaam',
     'Password': 'Wachtwoord',

@@ -236,7 +236,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
             `sorted_device=${encodeURIComponent(claimed.deviceId)}; Path=/; SameSite=Lax; Max-Age=${claimed.maxAge}`,
           ];
           return send(200, { user: claimed.user, deviceId: claimed.deviceId, idleHours: Math.round(auth.deviceIdleMs / 36e5 * 10) / 10 }, 'application/json; charset=utf-8', { 'set-cookie': cookies });
-        } catch (e) { return send(400, { error: e.message }); }
+        } catch (e) { return send(e.status === 429 ? 429 : 400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/devices/paired') {
         if (!actor || !auth.can(actor, 'devices.manage')) return send(403, { error: 'Missing permission: devices.manage' });

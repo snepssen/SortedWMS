@@ -65,3 +65,18 @@ test('a paired device in use stays signed in past 4 hours and past a day; the co
   t += 4 * 60 * 60 * 1000 + 1;
   assert.equal(auth.userFromRequest(phone), null);
 });
+
+test('pairing failure budget expires and issuance audit omits the code', () => {
+  let t = 1000;
+  const db = new DatabaseSync(':memory:');
+  const auth = createAuth(db, { now: () => t });
+  const user = auth.insertUser({ username: 'rf', password: 'sorted-rf', role: 'picker', displayName: 'RF' });
+  auth.createPairToken({ userId: user.id, createdBy: user.id });
+  assert.equal(Object.hasOwn(auth.audit(1)[0].detail, 'code'), false);
+  const refused = () => auth.claimPair({ code: '', ip: 'local-terminal' });
+  for (let i = 0; i < 5; i++) assert.throws(refused, /not valid/);
+  assert.throws(refused, { status: 429 });
+  t += 5 * 60000;
+  assert.throws(refused, /not valid/);
+  db.close();
+});

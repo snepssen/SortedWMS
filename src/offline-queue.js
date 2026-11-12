@@ -21,6 +21,30 @@
     function save(data) {
       storage.setItem(key, JSON.stringify(data));
     }
+    let running;
+    async function drain(send) {
+      let sent = 0;
+      for (;;) {
+        const { pending, conflicts } = load();
+        const item = pending[0];
+        if (conflicts.length || !item) return { pending: pending.length, conflicts, stopped: conflicts.length ? 'conflict' : null, sent };
+        let result;
+        try {
+          result = await send(item);
+        } catch (e) {
+          if (e.network) return { pending: load().pending.length, conflicts, stopped: 'offline', sent };
+          result = { ok: false, text: e.message };
+        }
+        // Another scan may have joined the queue while the request was in flight.
+        const latest = load();
+        if (latest.pending[0]?.id !== item.id) continue;
+        latest.pending.shift();
+        if (result && (result.ok === false || result.conflict)) {
+          latest.conflicts.push({ ...item, error: result.text || result.error || 'Rejected', at: Date.now() });
+        } else sent++;
+        save(latest);
+      }
+    }
     return {
       enqueue(item) {
         const data = load();
@@ -31,41 +55,18 @@
       snapshot() {
         return load();
       },
+      discardSequence() {
+        if (load().conflicts.length) save({ pending: [], conflicts: [] });
+      },
       discardConflict(index) {
         const data = load();
         data.conflicts.splice(Number(index), 1);
         save(data);
         return data.conflicts;
       },
-      async flush(send) {
-        const data = load();
-        let sent = 0;
-        while (data.pending.length) {
-          const item = data.pending[0];
-          let res;
-          try {
-            res = await send(item);
-          } catch (e) {
-            if (e && e.network) {
-              save(data);
-              return { pending: data.pending.length, conflicts: data.conflicts.slice(), stopped: 'offline', sent };
-            }
-            data.pending.shift();
-            data.conflicts.push({ ...item, error: e.message || 'Rejected', at: Date.now() });
-            save(data);
-            return { pending: data.pending.length, conflicts: data.conflicts.slice(), stopped: 'conflict', sent };
-          }
-          if (res && (res.ok === false || res.conflict)) {
-            data.pending.shift();
-            data.conflicts.push({ ...item, error: res.text || res.error || 'The warehouse refused this scan', at: Date.now() });
-            save(data);
-            return { pending: data.pending.length, conflicts: data.conflicts.slice(), stopped: 'conflict', sent };
-          }
-          data.pending.shift();
-          sent++;
-          save(data);
-        }
-        return { pending: 0, conflicts: data.conflicts.slice(), stopped: null, sent };
+      flush(send) {
+        if (!running) running = drain(send).finally(() => { running = null; });
+        return running;
       },
     };
   }

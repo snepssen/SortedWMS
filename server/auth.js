@@ -120,6 +120,7 @@ function cookies(req) {
 
 function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS } = {}) {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS pair_failures (source TEXT PRIMARY KEY, failures INTEGER NOT NULL, until_ms INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
@@ -573,7 +574,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     if (!code) throw new Error('Could not make a pairing code');
     const expires = now() + PAIR_MS;
     db.prepare('INSERT INTO pair_tokens (token_hash, code, user_id, created_by, expires_at, require_secret) VALUES (?, ?, ?, ?, ?, ?)').run(tokenHash(token), code, user.id, Number(createdBy) || user.id, expires, requireSecret ? 1 : 0);
-    record('device-pair-issued', user.username, { code, requireSecret: Boolean(requireSecret) });
+    record('device-pair-issued', user.username, { requireSecret: Boolean(requireSecret) });
     return { token, code, expiresAt: expires, user: rowToUser(user) };
   }
 
@@ -591,18 +592,30 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
   }
 
   function claimPair({ token, code, secret, userAgent, ip } = {}) {
+    const source = String(ip || 'local');
+    db.prepare('DELETE FROM pair_failures WHERE until_ms <= ?').run(now());
+    const failures = db.prepare('SELECT failures FROM pair_failures WHERE source = ?').get(source);
+    if (failures && failures.failures >= MAX_FAILS) {
+      throw Object.assign(new Error('Too many pairing attempts. Try again later.'), { status: 429 });
+    }
+    function refused(reason) {
+      db.prepare(`INSERT INTO pair_failures VALUES (?, 1, ?) ON CONFLICT(source)
+        DO UPDATE SET failures = failures + 1`).run(source, now() + PAIR_MS);
+      throw new Error(reason);
+    }
     const row = token
       ? db.prepare('SELECT * FROM pair_tokens WHERE token_hash = ?').get(tokenHash(token))
       : db.prepare('SELECT * FROM pair_tokens WHERE code = ? AND used_at IS NULL ORDER BY expires_at DESC').get(String(code || ''));
-    if (!row) throw new Error('That pairing code is not valid');
-    if (row.used_at) throw new Error('That pairing code was already used');
-    if (row.expires_at <= now()) throw new Error('That pairing code has expired');
+    if (!row) refused('That pairing code is not valid');
+    if (row.used_at) refused('That pairing code was already used');
+    if (row.expires_at <= now()) refused('That pairing code has expired');
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
-    if (!user || !user.active) throw new Error('That user is not active');
+    if (!user || !user.active) refused('That user is not active');
     if (row.require_secret) {
       const pinOk = user.terminal_pin && verifyPassword(secret, user.terminal_pin);
-      if (!verifyPassword(secret, user.password_hash) && !pinOk) throw new Error('Password or PIN does not match');
+      if (!verifyPassword(secret, user.password_hash) && !pinOk) refused('Password or PIN does not match');
     }
+    db.prepare('DELETE FROM pair_failures WHERE source = ?').run(source);
     db.prepare('UPDATE pair_tokens SET used_at = ? WHERE token_hash = ?').run(now(), row.token_hash);
     const deviceId = randomBytes(18).toString('base64url');
     const ua = String(userAgent || '');

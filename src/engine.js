@@ -1069,6 +1069,24 @@
       if (patch.stackMaxMm !== undefined && !(Number.isInteger(patch.stackMaxMm) && patch.stackMaxMm >= 0 && patch.stackMaxMm <= 20000)) {
         throw new Error('Highest stack is a height in mm from 0 (off) to 20000');
       }
+      if (patch.stackClearances !== undefined) {
+        if (!Array.isArray(patch.stackClearances)) throw new Error('Stack clearances must be a list');
+        const endpoint = (value) => value === '*' ? '*' : this.resolve(String(value || '').trim());
+        const stackClearances = patch.stackClearances.map((rule) => {
+          if (!rule || !Number.isInteger(rule.mm) || rule.mm < 1 || rule.mm > 20000) throw new Error('Clearance must be 1 to 20000 mm');
+          if (rule.kind === 'truck' && Object.hasOwn(this.trucks, rule.truck)) {
+            return { kind: 'truck', truck: rule.truck, mm: rule.mm };
+          }
+          if (rule.kind === 'door' && typeof rule.name === 'string' && rule.name.trim()) {
+            const from = endpoint(rule.from), to = endpoint(rule.to);
+            if (from !== to && [from, to].every((loc) => loc === '*' || Object.hasOwn(this.locations, loc))) {
+              return { kind: 'door', name: rule.name.trim(), from, to, mm: rule.mm };
+            }
+          }
+          throw new Error('Choose a known truck, or name a door and enter its two route endpoints (one may be *)');
+        });
+        patch = { ...patch, stackClearances };
+      }
       if (patch.palletBaseMm !== undefined && !(Number.isInteger(patch.palletBaseMm) && patch.palletBaseMm >= 0 && patch.palletBaseMm <= 1000)) {
         throw new Error('Empty pallet height is in mm, from 0 to 1000');
       }
@@ -1644,6 +1662,12 @@
       if (code !== task.to) {
         const why = this._overrideProblem(truck, task, code);
         if (why) return this._fail(truck, why);
+        const carried = this._carried(truck);
+        if (carried.length) {
+          const others = carried.map((id) => this.tasks[id]);
+          const error = this._stackProblem(truck, [task, ...others], [truck.position, code, ...others.map((t) => t.to)]);
+          if (error) return this._fail(truck, error);
+        }
         this._moveSlot(task, code);
         this.log(`${truck.id} chose ${code} instead of the suggested slot for job #${task.id}`, { truckId, taskId: task.id });
       }
@@ -2045,6 +2069,13 @@
 
       // Transfer: pallet first, then where it now stands.
       if (pallet) {
+        if (truck.transferSscc && truck.transferSscc !== code) {
+          return this._fail(truck, `Finish the transfer of …${truck.transferSscc.slice(-6)} or cancel it first`);
+        }
+        if (this.config.stackMaxMm && !truck.transferSscc) {
+          const pickup = this._unexpectedPallet(truck, pallet, null, 'transfer');
+          if (pickup) return pickup;
+        }
         truck.transferSscc = pallet.sscc;
         const where = pallet.loc ? `system has it at ${pallet.loc}` : 'system had lost it';
         return this._say(truck, true, `…${pallet.sscc.slice(-6)} ${pallet.itemNo} (${where}). Scan the location it goes to`);
@@ -2142,7 +2173,7 @@
     lookup(raw) {
       const gs1 = GS1.parse(String(raw));
       const code = (gs1 && gs1.sscc) || this.resolve(raw);
-      if (this.pallets[code]) return this._palletLookup(this.pallets[code]);
+      if (this.pallets[code]) return this._palletLookup(this.pallets[code], true);
       if (this.locations[code]) return this._locationLookup(this.locations[code]);
       const item = (gs1 && gs1.gtin && this.findItem(gs1.gtin)) || this.findItem(raw);
       if (item) return this._itemLookup(item);
@@ -2164,11 +2195,16 @@
       return f;
     }
 
-    _palletLookup(p) {
+    _carrierOf(sscc) {
+      return Object.values(this.trucks).find((truck) => truck.load === sscc ||
+        (truck.carried || []).some((id) => this.tasks[id]?.sscc === sscc && this.tasks[id].truckId === truck.id));
+    }
+
+    _palletLookup(p, withHistory = false) {
       const item = this.items[p.itemNo];
       const lines = [`Batch ${p.batch} · BB ${dmy(p.expiry)} · ${p.qty} cs`];
       const live = this._liveTaskFor(p.sscc);
-      const carrier = Object.values(this.trucks).find((t) => t.load === p.sscc);
+      const carrier = this._carrierOf(p.sscc);
       let belongsAt = null;
       if (p.status === 'shipped') {
         const sh = (this.shipments || []).find((x) => x.pallets.some((y) => y.sscc === p.sscc));
@@ -2191,6 +2227,16 @@
       }
       const flags = this._palletFlags(p).filter((f) => f !== 'location unknown');
       if (flags.length) lines.push(flags.join(' · '));
+      if (withHistory) {
+        const history = this.holders?.[p.holderId]?.history || this.movements || [];
+        let count = 0;
+        for (const move of history) {
+          if (move.sscc !== p.sscc) continue;
+          const route = [move.from, move.to].filter(Boolean).join(' → ');
+          lines.push(`${this.formatLocal(move.t)} · ${move.event} · ${move.truck || move.by}${route ? ' · ' + route : ''}`);
+          if (++count === 5) break;
+        }
+      }
       return this._lookupResult('pallet', `…${p.sscc.slice(-6)} ${item.itemNo} ${item.name}`, lines, { pallet: p, belongsAt, task: live || null });
     }
 
@@ -2220,7 +2266,7 @@
       const canShip = pallets.filter((p) => p.status !== 'missing' && this.shipState(p) === 'ok' && !p.orderId).length;
       const lines = [pallets.length ? `${pallets.length} pallet(s) · ${canShip} free to ship · next to ship first` : 'No stock'];
       for (const p of pallets.slice(0, 50)) {
-        const carrier = Object.values(this.trucks).find((t) => t.load === p.sscc);
+        const carrier = this._carrierOf(p.sscc);
         const where = carrier ? `${carrier.id} forks` : p.loc || (p.missingFrom ? `unknown (last ${p.missingFrom})` : 'unknown');
         const flags = this._palletFlags(p).filter((f) => f !== 'location unknown');
         lines.push(`${where} · ${p.sscc} · ${p.batch} · BB ${dmy(p.expiry)}${flags.length ? ` · ${flags.join(' · ')}` : ''}`);
@@ -2441,11 +2487,12 @@
      * One stock movement. `holder` is the license plate (PAL, MASTER, ST, INB, OUT)
      * when the pallet has one. The same row is copied onto that holder's history.
      */
-    recordMovement({ holder = null, sscc = null, from = null, to = null, qty = null, event = 'moved', by = null, note = null } = {}) {
+    recordMovement({ holder = null, sscc = null, from = null, to = null, qty = null, event = 'moved', by = null, note = null, truck = null } = {}) {
       const entry = {
         t: this.now(), by: by || this._actor || 'unknown', holder: holder || null, sscc: sscc || null,
         from: from || null, to: to || null, qty: qty == null ? null : qty, event, note: note || null,
       };
+      if (truck) entry.truck = truck;
       this.movements = this.movements || [];
       this.movements.unshift(entry);
       if (this.movements.length > 2000) this.movements.length = 2000;
@@ -2796,9 +2843,10 @@
       return task;
     }
 
-    _truckTakes(truck, task) {
+    _truckTakes(truck, task, { scanned = false } = {}) {
       const types = TRUCK_MODES[truck.mode].types;
-      if (types && !types.includes(task.type)) return false;
+      const transferPickup = scanned && truck.mode === 'transfer' && STACKABLE.has(task.type);
+      if (!transferPickup && types && !types.includes(task.type)) return false;
       if (truck.mode === 'pick' && task.orderId !== truck.orderId) return false;
       if (typeof this._dutyAllows === 'function' && !this._dutyAllows(truck, task)) return false;
       if (task.type === 'COUNT' && !task.category) return true; // an empty location without a category: anyone can count it
@@ -2898,8 +2946,13 @@
       this.log(`Job #${task.id}: picked …${scanned.sscc.slice(-6)} instead of …${old.sscc.slice(-6)} (same batch)`, { taskId: task.id });
     }
 
+    _recordPickup(pallet, truck, from) {
+      this.recordMovement({ holder: pallet.holderId, sscc: pallet.sscc, from, event: 'lifted', truck: truck.id, by: this._actor || truck.id });
+    }
+
     _pickUp(truck, task) {
       const pallet = this.pallets[task.sscc];
+      this._recordPickup(pallet, truck, task.from);
       this._remove(pallet);
       truck.load = pallet.sscc;
       truck.position = task.from;
@@ -2921,7 +2974,7 @@
       const buries = to.kind === 'block' && this._laneFit(to.lane, pallet).buries;
       const fromLoc = task.from;
       this._place(pallet, task.to);
-      if (typeof this.recordMovement === 'function') this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: fromLoc, to: task.to, qty: pallet.qty, event: task.type === 'PICK' ? 'picked' : 'moved', by: this._actor || truck.id });
+      if (typeof this.recordMovement === 'function') this.recordMovement({ holder: pallet.holderId || null, sscc: pallet.sscc, from: fromLoc, to: task.to, qty: pallet.qty, event: task.type === 'PICK' ? 'picked' : 'moved', truck: truck.id, by: this._actor || truck.id });
       this._quarantinePlacement(pallet, truck.id);
       if (buries) {
         this.log(`⚠ ${to.lane}: batch ${pallet.batch} now stands in front of stock with an earlier best-before`, { taskId: task.id });
@@ -3418,7 +3471,7 @@
         && !(loc.kind === 'rack' && loc.aisle !== this.occupiedAisle(truck) && this._capacityLeft(loc.aisle, truck.id) <= 0);
 
       // Lifted in a stack by another truck and set down: it is whoever scans it next.
-      if (mine && this._canTakeOver(truck, live)) {
+      if (mine && this._canTakeOver(truck, live) && this._truckTakes(truck, live, { scanned: true })) {
         const from = live.truckId;
         if (current) this._unassign(current);
         this._takeOver(truck, live);
@@ -3434,13 +3487,19 @@
         return this._say(truck, true, `Taken over from ${from}: job #${live.id} ${TASK_TYPES[live.type].short}. Take it to ${live.to}${back}`);
       }
       if (live && live.status === 'active') return this._say(truck, false, `${info.text}\nThat's job #${live.id} on ${live.truckId}`);
-      if (liftable && live && live.status === 'open' && live.type !== 'CHECK' && this.config.enabled[live.type] && this._truckTakes(truck, live)) {
+      if (liftable && live && live.status === 'open' && live.type !== 'CHECK' && this.config.enabled[live.type] && this._truckTakes(truck, live, { scanned: true })) {
         return this._takeInstead(truck, live, current, 'Pick it');
       }
       if (liftable && !live) {
         const task = this._jobFor(pallet);
+        if (task && via === 'transfer' && (!this.config.enabled[task.type] || !this._truckTakes(truck, task, { scanned: true }))) {
+          this._cancelQuiet(task);
+          return this._fail(truck, 'This pallet needs another truck or duty');
+        }
         if (task) return this._takeInstead(truck, task, current, task.type === 'PUTAWAY' ? 'Put it away' : 'Relocate it', { fresh: true });
       }
+      // Transfer retains its existing pallet/location correction when there is no pickup.
+      if (via === 'transfer') return null;
       // Stay empty and wait for the location scan.
       truck.pendingSscc = pallet.sscc;
       truck.pendingVia = via;
@@ -3483,23 +3542,33 @@
     /** A pallet's height with its goods in mm (empty pallet + goods), or null when its item has no height. */
     stackHeightOf(pallet) {
       const item = pallet && this.items[pallet.itemNo];
-      if (!item || item.heightMm == null) return null;
+      if (!item || !(item.heightMm > 0)) return null;
       const frac = item.palletQty ? (Number(pallet.qty) || item.palletQty) / item.palletQty : 1;
-      return Math.round((this.config.palletBaseMm ?? 144) + item.heightMm * frac);
+      return Math.ceil((this.config.palletBaseMm ?? 144) + item.heightMm * Math.max(1, frac));
     }
 
     /** Why these pallets can't go up as one stack, or null. */
-    _stackProblem(ssccs) {
-      const max = Number(this.config.stackMaxMm) || 0;
+    _stackProblem(truck, jobs, stops) {
+      let max = Number(this.config.stackMaxMm) || 0;
       if (!max) return 'Stacked pickup is off. Take one pallet at a time';
       let total = 0;
-      for (const sscc of ssccs) {
+      for (const { sscc } of jobs) {
         const p = this.pallets[sscc];
         const h = this.stackHeightOf(p);
         if (h == null) return `${p.itemNo} has no height on its item card. Take it separately`;
         total += h;
       }
-      if (total > max) return `The stack would be ${total} mm, over the ${max} mm limit. Take it separately`;
+      let limiter = '';
+      for (const rule of this.config.stackClearances || []) {
+        if (rule.mm >= max) continue;
+        const matches = rule.kind === 'truck' ? rule.truck === truck.id :
+          [rule.from, rule.to].every((loc) => loc === '*' || stops.includes(loc));
+        if (matches) {
+          max = rule.mm;
+          limiter = rule.kind === 'truck' ? ` on ${truck.id}` : ` at ${rule.name}`;
+        }
+      }
+      if (total > max) return `The stack would be ${total} mm, over the ${max} mm limit${limiter}. Take it separately`;
       return null;
     }
 
@@ -3524,8 +3593,12 @@
         }
         from.carried = this._carried(from).filter((id) => id !== job.id);
         const left = from.taskId && this.tasks[from.taskId];
-        this._say(from, false, `${short} taken over by ${truck.id}${left ? `. Next drop: …${left.sscc.slice(-6)} to ${left.to}` : ''}`);
+        this._say(from, true, `${short} taken over by ${truck.id}${left ? `. Next drop: …${left.sscc.slice(-6)} to ${left.to}` : ''}`);
+        from.message.handoff = { pallet: short, toTruck: truck.id };
       }
+
+      this.recordMovement({ holder: this.pallets[job.sscc].holderId, sscc: job.sscc, from: job.truckId, to: truck.id,
+        event: 'handoff', truck: truck.id, by: this._actor || truck.id });
       job.truckId = truck.id;
       this.log(`${truck.id} took over ${short} (job #${job.id}) from ${from ? from.id : 'another truck'}`, { truckId: truck.id, taskId: job.id });
     }
@@ -3570,6 +3643,7 @@
       const short = `…${pallet.sscc.slice(-6)}`;
       const live = this._liveTaskFor(pallet.sscc);
       const takeover = this._canTakeOver(truck, live);
+      if (takeover && !this._truckTakes(truck, live, { scanned: true })) return this._fail(truck, 'This job needs another truck or duty');
       if (!takeover && pallet.loc !== truck.position) return null;
       if (task.splitQty || (live && live.splitQty)) return this._fail(truck, 'A split top-up goes on its own, not in a stack');
       const category = this.items[pallet.itemNo].category;
@@ -3578,7 +3652,7 @@
       let fresh = false;
       if (!takeover) {
         if (live && live.status === 'active') return this._fail(truck, `${short} is job #${live.id} on ${live.truckId}`);
-        if (live && (live.status !== 'open' || !STACKABLE.has(live.type) || this.config.enabled[live.type] === false || !this._truckTakes(truck, live))) {
+        if (live && (live.status !== 'open' || !STACKABLE.has(live.type) || this.config.enabled[live.type] === false || !this._truckTakes(truck, live, { scanned: true }))) {
           return this._fail(truck, `${short} has job #${live.id} (${TASK_TYPES[live.type].short}${live.status === 'held' ? ', on hold' : ''}): not for this stack`);
         }
         if (!live) {
@@ -3587,7 +3661,10 @@
           fresh = true;
         }
       }
-      const why = this._stackProblem([task.sscc, ...this._carried(truck).map((id) => this.tasks[id].sscc), pallet.sscc]);
+      const jobs = [task, ...this._carried(truck).map((id) => this.tasks[id]), job];
+      const hasDoors = this.config.stackClearances?.some((rule) => rule.kind === 'door');
+      const stops = hasDoors ? [truck.position, ...jobs.map((t) => t.to || this._candidateSlot(t)?.code)] : [];
+      const why = this._stackProblem(truck, jobs, stops);
       if (why) {
         if (fresh) this._cancelQuiet(job);
         return this._fail(truck, why);
@@ -3602,6 +3679,7 @@
         job.status = 'active';
         job.truckId = truck.id;
         job.dispatchReason = 'Stacked pickup';
+        this._recordPickup(pallet, truck, job.from);
         this._remove(pallet);
         this.log(`${truck.id} ← job #${job.id} ${TASK_TYPES[job.type].short} (stacked on job #${task.id})`, { truckId: truck.id, taskId: job.id });
       }
@@ -4061,8 +4139,12 @@
       return best;
     }
 
+    _candidateSlot(task) {
+      return this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground, noBury: task.noBury, rackOnly: task.rackOnly });
+    }
+
     _reserveSlot(task) {
-      const slot = this._findSlot(this.pallets[task.sscc], task.from, { ground: task.ground, noBury: task.noBury, rackOnly: task.rackOnly });
+      const slot = this._candidateSlot(task);
       if (!slot) return false;
       slot.reservedBy = task.id;
       task.to = slot.code;
