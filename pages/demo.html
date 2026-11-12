@@ -6,10 +6,11 @@
 <meta name="description" content="A made-up distribution centre run on SortedWMS in your browser: bots work every role, and you can take over any of them.">
 <title>SortedWMS demo</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
   /* One theme for this page and every screen in it: theme.js sets data-theme from the Theme picker (Auto follows the device). */
-  :root { --bg: #f3f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #5d6b76; --acc: #1769c2; --ok: #0f7a45; --bad: #b42318; --you: #9a3412; --chip: #eef2f5; --on-acc: #fff; }
-  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --you: #f0875a; --chip: #222c36; --on-acc: #0b1620; }
+  :root { --you: #9a3412; }
+  :root[data-theme="dark"] { --you: #f0875a; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
   header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
@@ -65,6 +66,18 @@
     #rolePick { display: block; }
     header { position: static; }
     iframe { height: 80vh; min-height: 420px; }
+  }
+  .role.on { box-shadow: inset 3px 0 var(--acc); }
+  .clock { font-family: ui-monospace, monospace; }
+  .speed { padding: 3px; border: 1px solid var(--line); border-radius: 10px; }
+  .speed button:not(.on) { background: transparent; border-color: transparent; }
+  .next { border-inline-start: 3px solid var(--acc); }
+  .stats { padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .feed li { padding-block: 5px; }
+  @media (max-width: 520px) {
+    .wrap { padding: 10px; }
+    .next span { min-width: 0; flex-basis: 100%; }
+    .news li { flex-wrap: wrap; }
   }
 </style>
 </head>
@@ -216,7 +229,11 @@
     const clock = window.SortedLocal.clock;
     const now = clock.now();
     $('clock').textContent = `${day(now)} ${fmt(now)}`;
-    document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === clock.speed));
+    document.querySelectorAll('[data-speed]').forEach((b) => {
+      const active = Number(b.dataset.speed) === clock.speed;
+      b.classList.toggle('on', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
     const mine = you();
     const status = Object.fromEntries(runner.status(mine).map((s) => [s.id, s]));
     let group = '';
@@ -225,7 +242,7 @@
       const s = status[r.id];
       const tag = !BOTS.has(r.id) ? '' : mine.has(r.id) ? '<span class="tag you">You</span>' : '<span class="tag bot">Bot</span>';
       const sub = !BOTS.has(r.id) ? '' : mine.has(r.id) ? 'Waiting for you' : (s && s.doing) || 'Nothing to do';
-      return `${head}<button class="role${r.id === current ? ' on' : ''}" data-role="${esc(r.id)}"><b>${esc(r.title)} ${tag}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+      return `${head}<button class="role${r.id === current ? ' on' : ''}" aria-pressed="${r.id === current}" data-role="${esc(r.id)}"><b>${esc(r.title)} ${tag}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
     }).join(''));
     put('rolePick', ROLES.map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.title)}${BOTS.has(r.id) ? (mine.has(r.id) ? ' (you)' : ' (bot)') : ''}</option>`).join(''));
 

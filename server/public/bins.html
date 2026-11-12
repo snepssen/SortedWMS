@@ -9,10 +9,8 @@
 <script src="/locales/en.js"></script>
 <script src="/locales/nl.js"></script>
 <script src="/src/i18n.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  /* Dark unless the theme setting says light: easier on the eyes in a cold store and on a battery. */
-  :root, :root[data-theme="dark"] { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; --field: #0b0f12; --chip: #26303a; --on-acc: #04121f; --on-bad: #1a0505; }
-  :root[data-theme="light"] { --bg: #f4f6f8; --card: #fff; --line: #d5dde4; --ink: #17202a; --dim: #5d6b76; --ok: #0f7a45; --bad: #b42318; --warn: #8a5a00; --acc: #1769c2; --field: #fff; --chip: #e6ebef; --on-acc: #fff; --on-bad: #fff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
@@ -55,19 +53,25 @@
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--dim); font-weight: 600; }
+  .steps span.now { background: var(--chip); box-shadow: inset 0 -2px var(--acc); }
+  #job { border-inline-start: 4px solid var(--acc); }
+  @media (min-width: 720px) {
+    header { padding-inline: max(16px, calc((100% - 42rem) / 2)); }
+    main { gap: 14px; }
+  }
 </style>
 <script src="camera.js"></script>
 <script src="src/offline-queue.js"></script>
 </head>
-<body>
+<body class="scanner">
 <header><b>Bins</b><span class="who" id="who"></span><select data-theme-picker></select><a href="app" id="back">App</a></header>
 <div id="net" aria-live="polite"></div>
 <nav class="modes" id="modes"></nav>
 <main>
   <div class="card" id="job"></div>
-  <form class="scan" id="scanForm" autocomplete="off"><label><input id="scanIn" placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"></label><button class="primary">Enter</button></form>
+  <form class="scan" id="scanForm" autocomplete="off"><label><input id="scanIn" aria-label="Scan" placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"></label><button class="primary">Enter</button></form>
   <div id="extra"></div>
-  <div id="say"></div>
+  <div id="say" role="status"></div>
 </main>
 <script>
 (function () {
@@ -628,7 +632,7 @@
 
   function drawModes() {
     const allowed = MODES.filter(([, , ok]) => ok());
-    $('modes').innerHTML = allowed.map(([id, label]) => `<button type="button" data-mode="${id}" class="${id === mode ? 'on' : ''}">${label}</button>`).join('');
+    $('modes').innerHTML = allowed.map(([id, label]) => `<button type="button" data-mode="${id}" aria-pressed="${id === mode}" class="${id === mode ? 'on' : ''}">${label}</button>`).join('');
   }
   async function setMode(next) {
     mode = next;

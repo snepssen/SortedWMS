@@ -18,7 +18,7 @@
   css.textContent = `
     .cam-row { display: flex; gap: 4px; align-items: center; }
     .cam-row > input { flex: 1 1 auto; min-width: 0; }
-    .cam-row > .cam-btn { flex: none; width: auto; min-height: 0; font: 16px/1 system-ui, sans-serif; padding: 6px 8px; border-radius: 8px; border: 1px solid #bbb; background: #fff; color: #000; cursor: pointer; }
+    .cam-row > .cam-btn { flex: none; width: auto; min-height: 40px; min-width: 40px; font: 16px/1 system-ui, sans-serif; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #bbb); background: var(--card, white); color: var(--ink, black); cursor: pointer; }
     .cam-wrap { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.85); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
     .cam-wrap video { width: min(100%, 640px); max-height: 70vh; border-radius: 12px; background: #000; }
     .cam-wrap .cam-aim { position: absolute; width: min(70%, 420px); height: 22%; border: 3px solid #4ade80; border-radius: 10px; pointer-events: none; }

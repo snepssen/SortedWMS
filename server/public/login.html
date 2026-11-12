@@ -8,9 +8,8 @@
 <script src="/locales/en.js"></script>
 <script src="/locales/nl.js"></script>
 <script src="/src/i18n.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  :root { --bg: #eef2f4; --card: #fff; --ink: #17202a; --dim: #5c6b76; --line: #d5dee6; --acc: #1769c2; --field: #fff; --on-acc: #fff; --bad: #a32620; }
-  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --acc: #59a9ff; --field: #10161b; --on-acc: #0b1620; --bad: #ff6b63; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
   main { width: min(440px, calc(100% - 28px)); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 22px 16px; }
@@ -27,9 +26,12 @@
   .hint { margin-top: 16px; }
   .theme { display: flex; justify-content: flex-end; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); margin: 12px 0 0; }
   .theme select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+  #demo { border-block: 1px solid var(--line); padding: 10px 0; }
+  #demo summary { cursor: pointer; font-weight: 600; }
+  #demo p { margin: 8px 0; }
 </style>
 </head>
-<body>
+<body class="entry">
 <main>
   <h1>SortedWMS</h1>
   <p>Sign in to the warehouse. Each role opens its own view.</p>
@@ -39,8 +41,9 @@
     <button type="submit">Sign in</button>
     <p class="err" id="err" role="alert"></p>
   </form>
-  <div class="hint" id="demo">
-    <p>Demo accounts. The password is <code>sorted-</code> plus the username (<code>sorted-admin</code>, <code>sorted-tech</code>, …).</p>
+  <details class="hint" id="demo">
+    <summary>Demo accounts</summary>
+    <p>The password is <code>sorted-</code> plus the username (<code>sorted-admin</code>, <code>sorted-tech</code>, …).</p>
     <table>
       <tr><th>Username</th><th>Role</th></tr>
       <tr><td><code>admin</code></td><td>Administrator</td></tr>
@@ -51,7 +54,7 @@
       <tr><td><code>picker</code></td><td>Picker (pick waves, whole pallets to the dock)</td></tr>
       <tr><td><code>stock</code></td><td>Stock / inventory (counts, corrections, transfers, Auto-Shift)</td></tr>
     </table>
-  </div>
+  </details>
   <div class="theme">Theme <select data-theme-picker></select></div>
 </main>
 <script>

@@ -1,0 +1,117 @@
+/* Shared surfaces and controls for warehouse screens. */
+:root {
+  --bg: #f0f4f5;
+  --card: #fff;
+  --field: #fff;
+  --line: #cbd6da;
+  --ink: #172e38;
+  --dim: #4d626c;
+  --chip: #e7eef0;
+  --acc: #126576;
+  --on-acc: #fff;
+  --ok: #12653e;
+  --warn: #855500;
+  --bad: #aa302d;
+  --on-bad: #fff;
+  --shadow: 0 2px 6px rgb(22 49 61 / 5%);
+}
+:root[data-theme="dark"] {
+  --bg: #10191e;
+  --card: #1a272e;
+  --field: #142027;
+  --line: #384b55;
+  --ink: #edf4f6;
+  --dim: #a9bcc5;
+  --chip: #263941;
+  --acc: #78d3df;
+  --on-acc: #092229;
+  --ok: #7cdda7;
+  --warn: #ffc169;
+  --bad: #ff958e;
+  --on-bad: #30120f;
+  --shadow: 0 2px 6px rgb(0 0 0 / 14%);
+}
+:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+:where(input, select, button, textarea) { max-width: 100%; }
+:where(input, progress) { accent-color: var(--acc); }
+:where(button:disabled) { cursor: default; }
+h1, h2 { letter-spacing: -.025em; }
+:where(summary, button, a) { touch-action: manipulation; }
+:where(header, .card, section, .sheet) { min-width: 0; }
+header { background: var(--card); }
+:where(.card, section, .kpi) { box-shadow: var(--shadow); }
+:where(td, .count, .big, .timer, .stack, .kpi b) { font-variant-numeric: tabular-nums; }
+select[data-theme-picker] {
+  width: auto;
+  max-width: 100%;
+  font: inherit;
+  color: var(--ink);
+  background-color: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .4em .55em;
+}
+@media (hover: hover) {
+  :where(button:not(:disabled), a.btn, .cards a.card, summary):hover {
+    outline: 1px solid currentColor;
+    outline-offset: -2px;
+  }
+}
+
+/* Office workspaces share navigation, metrics and dense data tables. */
+.workspace header { gap: 8px 14px; border-bottom: 1px solid var(--line); }
+.workspace header h1 { font-size: 1.25rem; }
+.workspace #nav {
+  display: flex;
+  flex: 1 1 100%;
+  order: 2;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding: 8px 0 2px;
+}
+.workspace #nav button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font-weight: 600;
+}
+.workspace #nav button.on {
+  background: var(--chip);
+  color: var(--ink);
+  box-shadow: inset 0 -3px var(--acc);
+}
+.workspace .table { overflow-x: auto; }
+.workspace th { background: var(--chip); color: var(--ink); }
+.workspace th, .workspace td { padding: 8px 10px; }
+.workspace .kpi { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; }
+.workspace .kpi b { font-size: 1.8rem; line-height: 1.2; margin-bottom: 4px; }
+.workspace section h2 { font-size: 1.1rem; line-height: 1.3; }
+.workspace .form :is(label, input, select) { min-width: 0; max-width: 100%; }
+@media (max-width: 720px) {
+  .workspace #nav { flex-wrap: nowrap; overflow-x: auto; padding: 7px 3px; scrollbar-width: thin; }
+  .workspace #nav button { flex: none; }
+}
+
+.scanner main, .scanner .modePicker, .scanner nav.modes {
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+}
+.scanner .scan { align-items: center; }
+.scanner .scan :is(label, input, .cam-row) { min-width: 0; }
+.scanner .scan input { min-height: 44px; }
+.scanner .scan input:focus { border-color: var(--acc); }
+.scanner .kicker { letter-spacing: .075em; }
+.scanner .big { overflow-wrap: anywhere; }
+.scanner .modes button.on { box-shadow: inset 0 -3px var(--acc); }
+.entry main {
+  border-top: 4px solid var(--acc);
+  box-shadow: var(--shadow);
+  padding: clamp(18px, 5vw, 32px);
+}
+.entry h1 { font-size: 1.65rem; }
+.entry input { min-height: 44px; }
+.entry label { color: var(--ink); font-weight: 600; }
+.entry .err:empty { min-height: 0; margin: 0; }
+.entry .err:not(:empty) { border-inline-start: 3px solid var(--bad); padding-inline-start: 10px; }

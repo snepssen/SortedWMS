@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS office</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  :root { --bg: #f4f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #66737f; --acc: #1769c2; --ok: #138a4a; --bad: #c62f28; --warn: #a96500; --chip: #eef2f5; --on-acc: #fff }
-  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c34; --on-acc: #08121c }
   * { box-sizing: border-box; }
   a { color: var(--acc); }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -48,13 +47,13 @@
   @media (max-width: 600px) { main { padding: 10px; } .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
-<body>
+<body class="workspace">
 <header>
   <h1>SortedWMS office</h1>
-  <nav id="nav"></nav>
   <span class="hint">Screens: <a href="station.html">Station</a> · <a href="desk.html">Receiving desk</a> · <a href="card.html">Command card</a></span>
   <span class="hint" id="status"></span>
   <select data-theme-picker></select>
+  <nav id="nav" aria-label="Floor views"></nav>
 </header>
 <main id="main"></main>
 <script>
@@ -93,7 +92,7 @@
   }
   const val = (id) => ($(id).value || '').trim();
   const catOptions = (sel, none) => (none ? `<option value="">no category</option>` : '') + Object.entries(S.categories).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
-  const table = (heads, rows) => `<div class="table"><table><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.join('') || `<tr><td colspan="${heads.length}" class="hint">Nothing here</td></tr>`}</table></div>`;
+  const table = (heads, rows) => `<div class="table"><table><thead><tr>${heads.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td colspan="${heads.length}" class="hint">Nothing here</td></tr>`}</tbody></table></div>`;
   function csv(text) {
     const lines = text.trim().split(/\r?\n/).filter(Boolean);
     const split = (l) => l.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, ''));
@@ -139,7 +138,15 @@
   function renderNav() {
     const entries = Object.entries(TABS).filter(([k]) => modOn(TAB_MODULE[k]));
     if (!entries.some(([k]) => k === tab)) tab = (entries[0] || ['floor'])[0];
-    $('#nav').innerHTML = entries.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? 'on' : ''}">${t.label}</button>`).join('');
+    const nav = $('#nav');
+    const previous = nav.querySelector('[aria-current="page"]');
+    const restoreFocus = nav.contains(document.activeElement);
+    nav.innerHTML = entries.map(([k, t]) => `<button data-tab="${k}" aria-current="${k === tab ? 'page' : 'false'}" class="${k === tab ? 'on' : ''}">${t.label}</button>`).join('');
+    const current = nav.querySelector('[aria-current="page"]');
+    if (current && nav.scrollWidth > nav.clientWidth && previous?.dataset.tab !== tab) {
+      nav.scrollLeft += current.getBoundingClientRect().left - nav.getBoundingClientRect().left;
+    }
+    if (restoreFocus) current?.focus({ preventScroll: true });
     document.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; ls.set('tab', tab); renderNav(); draw(); }));
   }
 

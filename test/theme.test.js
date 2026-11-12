@@ -7,11 +7,12 @@ const pub = (f) => fs.readFileSync(path.join(__dirname, '..', 'server', 'public'
 const SCREENS = ['app.html', 'admin.html', 'bins.html', 'desk.html', 'handheld.html', 'keys.html', 'loading.html', 'login.html', 'setup.html', 'station.html'];
 
 test('every screen follows the one theme setting: theme.js in the head, a light and a dark palette, a picker', () => {
+  assert.match(pub('ui.css'), /\[data-theme="dark"\]/);
   for (const f of SCREENS) {
     const html = pub(f);
     const head = html.slice(0, html.indexOf('</head>') > 0 ? html.indexOf('</head>') : html.indexOf('<style>') + 1);
     assert.match(head, /<script src="theme\.js"><\/script>/, `${f} loads theme.js in its head`);
-    assert.match(html, /\[data-theme="dark"\]/, `${f} has a dark palette`);
+    assert.match(head, /href="ui\.css"/, `${f} loads the shared palette`);
     assert.doesNotMatch(html, /prefers-color-scheme/, `${f} leaves the device setting to theme.js`);
     assert.match(html, /data-theme-picker|SortedTheme\.html\(\)/, `${f} offers the choice`);
   }

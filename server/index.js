@@ -24,6 +24,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
   const api = createApi({ store, printers, hardware, backups });
   const pages = {
+    '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
     '/handheld': 'server/public/handheld.html', '/bins': 'server/public/bins.html', '/camera.js': 'server/public/camera.js', '/src/messages.js': 'src/messages.js', '/src/intake.js': 'src/intake.js', '/theme.js': 'server/public/theme.js', '/admin': 'server/public/admin.html', '/card': 'server/public/card.html', '/card.html': 'server/public/card.html',
     '/keys': 'server/public/keys.html', '/keys.html': 'server/public/keys.html',
@@ -33,7 +34,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     '/src/engine.js': 'src/engine.js', '/src/gs1.js': 'src/gs1.js', '/src/labels.js': 'src/labels.js', '/src/locations.js': 'src/locations.js', '/src/presets.js': 'src/presets.js', '/src/operations.js': 'src/operations.js', '/src/bins.js': 'src/bins.js', '/src/waves.js': 'src/waves.js', '/src/corrections.js': 'src/corrections.js', '/src/sheets.js': 'src/sheets.js', '/src/renames.js': 'src/renames.js', '/src/serials.js': 'src/serials.js', '/src/abc.js': 'src/abc.js', '/src/item-value.js': 'src/item-value.js', '/src/reports.js': 'src/reports.js', '/src/i18n.js': 'src/i18n.js', '/locales/en.js': 'locales/en.js', '/locales/nl.js': 'locales/nl.js', '/i18n-boot.js': 'server/public/i18n-boot.js', '/src/offline-queue.js': 'src/offline-queue.js', '/src/foundation.js': 'src/foundation.js', '/src/barcode.js': 'src/barcode.js',
     '/app.html': 'server/public/app.html',
   };
-  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+  const types = { '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');

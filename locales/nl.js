@@ -3,6 +3,9 @@
  */
 (function (root) {
   const dict = {
+    'Workspace options': 'Werkruimteopties',
+    'Choose a demo role.': 'Kies een demorol.',
+    'Demo accounts': 'Demoaccounts',
     'Stacked pallets? Scan the next one to take it along': 'Gestapelde pallets? Scan de volgende om deze mee te nemen',
     'taken over by': 'overgenomen door',
     'Next drop': 'Volgende afzetlocatie',
