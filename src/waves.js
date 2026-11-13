@@ -10,7 +10,8 @@
  *      pallets, for the man-up. The pallet stays in its slot.
  *   3. The rest, less than a box: from the bins when they hold all of it;
  *      else from a box already opened on a pallet; only then a new box is
- *      opened. A small pick is never split between a bin and a box.
+ *      opened. Configured unit pick faces can supply a partial remainder,
+ *      with the shortage waiting for a later replenishment and wave.
  *
  * A pallet remembers how much is left in its opened box (pallet.openBox), so
  * the next small pick of that item takes from it instead of opening another.
@@ -84,7 +85,7 @@
      * What the racks and bins can still give, after the open tasks. A plan
      * works on a copy of this and only keeps it when the order is taken.
      */
-    proto._waveStock = function () {
+    proto._waveStock = function ({ forDemand = false } = {}) {
       const live = typeof this._liveMap === 'function' ? this._liveMap() : new Map();
       const pallets = new Map();
       for (const p of this._livePallets()) {
@@ -92,10 +93,13 @@
         const job = live.get(p.sscc);
         // Short-dated pallets stay in: an order that takes fewer days left may use them.
         const state = this.shipState(p);
-        if (!p.loc || p.orderId || (state !== 'ok' && state !== 'short') || p.qualityHold || p.quarantine || (job && !(job.type === 'SHIFT' && job.status === 'open'))) continue;
-        const loc = this.locations[p.loc];
+        const from = p.loc || (forDemand && job?.reason === 'replenish' ? job.from : null);
+        const availableJob = !job || (job.type === 'SHIFT' && job.status === 'open') || (forDemand && job.reason === 'replenish');
+        if (!from || p.orderId || !['ok', 'short'].includes(state) || p.qualityHold || p.quarantine || !availableJob) continue;
+        if (this.replenishmentVersion === 1 && !forDemand && job?.reason === 'replenish') continue;
+        const loc = this.locations[from];
         if (!loc || loc.kind !== 'rack' || loc.structural || loc.blocked) continue;
-        pallets.set(p.sscc, { sscc: p.sscc, itemNo: p.itemNo, loc: p.loc, batch: p.batch, expiry: p.expiry, allowShort: Boolean(p.allowShort), receivedAt: p.receivedAt, qty: p.qty, free: p.qty, open: p.openBox || 0, whole: true });
+        pallets.set(p.sscc, { sscc: p.sscc, itemNo: p.itemNo, loc: from, batch: p.batch, expiry: p.expiry, allowShort: Boolean(p.allowShort), receivedAt: p.receivedAt, qty: p.qty, free: p.qty, open: p.openBox || 0, whole: true });
       }
       // Loose stock by lot: one row per bin, item, batch and best-before.
       const bins = new Map();
@@ -112,12 +116,38 @@
           bins.set(key, row);
         }
       }
+      // Replenished mezzanine plates participate in the same walking-pick pool.
+      if (this.replenishmentVersion === 1) for (const holder of Object.values(this.holders || {})) {
+        const loc = this.locations[holder.loc];
+        if (!loc?.replenishment || loc.kind !== 'mezzanine' || holder.sscc || loc.blocked || loc.checkHold || loc.quarantine || ['quarantine', 'return'].includes(loc.role)) continue;
+        for (const line of holder.contents || []) {
+          if (line.qty <= 0 || this._lotState(line.itemNo, line, 0) !== 'ok') continue;
+          const key = `holder|${holder.id}|${line.itemNo}`;
+          bins.set(key, { itemNo: line.itemNo, loc: loc.code, batch: line.batch || null, expiry: line.expiry || null,
+            holderId: holder.id, free: line.qty, since: holder.createdAt || 0 });
+        }
+      }
+      if (this.replenishmentVersion === 1 && !forDemand) for (const task of this._liveTasks()) {
+        const loc = this.locations[task.to];
+        const pallet = this.pallets[task.sscc];
+        if (task.reason !== 'replenish' || !task.splitQty || !['open', 'active'].includes(task.status) ||
+            !loc?.replenishment || !['bin', 'mezzanine'].includes(loc.kind) || loc.blocked || loc.checkHold ||
+            loc.quarantine || ['quarantine', 'return'].includes(loc.role) || !pallet || this.shipState(pallet) !== 'ok') continue;
+        bins.set(`incoming|${task.id}`, { itemNo: pallet.itemNo, loc: loc.code,
+          batch: loc.kind === 'bin' && !this.feature('lotExpiry') ? null : pallet.batch || null,
+          expiry: loc.kind === 'bin' && !this.feature('lotExpiry') ? null : pallet.expiry || null, replenishmentId: task.id,
+          free: task.splitQty, since: task.createdAt });
+      }
       const planned = new Map();
       for (const t of this._openWaveTasks()) {
         planned.set(`${t.orderId}|${t.itemNo}`, (planned.get(`${t.orderId}|${t.itemNo}`) || 0) + t.qty);
         if (t.kind === 'bin') {
           // Tasks planned before lots were tracked name only the bin.
-          const b = 'batch' in t ? bins.get(lotKey(t.itemNo, t.loc, t.batch, t.expiry)) : [...bins.values()].find((r) => r.itemNo === t.itemNo && r.loc === t.loc);
+          const predecessor = t.replenishmentId && this.tasks[t.replenishmentId];
+          const holderId = t.holderId || predecessor?.replenishedHolder;
+          const key = predecessor && predecessor.status !== 'done' ? `incoming|${predecessor.id}`
+            : holderId ? `holder|${holderId}|${t.itemNo}` : lotKey(t.itemNo, t.loc, t.batch, t.expiry);
+          const b = 'batch' in t ? bins.get(key) : [...bins.values()].find((r) => r.itemNo === t.itemNo && r.loc === t.loc);
           if (b) b.free -= t.qty;
           continue;
         }
@@ -196,13 +226,19 @@
         if (!left) continue;
         // 3. The rest: bins that hold all of it, else an opened box, else a new box.
         const bins = rows.bins.map((k) => stock.bins.get(k)).filter((b) => b && b.free > 0 && fits(b)).sort(byAge);
-        if (bins.reduce((s, b) => s + b.free, 0) >= left) {
+        const binQuantity = bins.reduce((s, b) => s + b.free, 0);
+        const partialFace = this.replenishmentVersion === 1 && binQuantity > 0 &&
+          bins.some((b) => this.locations[b.loc]?.replenishment?.mode === 'units');
+        if (binQuantity >= left || partialFace) {
           for (const b of bins) {
             if (!left) break;
             const take = Math.min(left, b.free);
-            add({ kind: 'bin', role: 'picker', qty: take, loc: b.loc, batch: b.batch, expiry: b.expiry });
+            add({ kind: 'bin', role: 'picker', qty: take, loc: b.loc, batch: b.batch, expiry: b.expiry,
+              ...(b.holderId ? { holderId: b.holderId } : {}),
+              ...(b.replenishmentId ? { replenishmentId: b.replenishmentId } : {}) });
             b.free -= take;
           }
+          if (left > 0) short.push({ orderId: order.id, itemNo: line.itemNo, qty: left });
           continue;
         }
         const opened = racks().find((p) => p.open >= left);
@@ -226,6 +262,52 @@
         if (left > 0) short.push({ orderId: order.id, itemNo: line.itemNo, qty: left });
       }
       return { tasks, short, opensBox: tasks.some((t) => t.box === 'new') };
+    };
+
+    /** Demand for the next wave, respecting pallet/box allocation before small picks. */
+    proto.replenishmentDemand = function () {
+      const demand = new Map();
+      const reservedPallets = new Set();
+      const result = { faces: demand, reservedPallets };
+      if (this.replenishmentVersion !== 1 || !this.module('waves')) return result;
+      const add = (code, orderId, qty) => {
+        if (!this.locations[code]?.replenishment || qty <= 0) return;
+        const rows = demand.get(code) || [];
+        const row = rows.find((r) => r.orderId === orderId);
+        if (row) row.qty += qty;
+        else rows.push({ orderId, qty });
+        demand.set(code, rows);
+      };
+      for (const task of this._openWaveTasks()) if (task.kind === 'bin') add(task.loc, task.orderId, task.qty);
+      const stock = this._waveStock({ forDemand: true });
+      const queue = this._liveOrders().filter((o) => o.status !== 'shipped')
+        .sort((a, b) => a.createdAt - b.createdAt || String(a.id).localeCompare(String(b.id)))
+        .slice(0, this.waveSettings().maxOrders);
+      for (const order of queue) {
+        const trial = copyFor(stock, order);
+        const plan = this._planOrder(order, trial);
+        keep(stock, trial);
+        for (const task of [...plan.tasks, ...plan.short]) {
+          if (task.kind === 'pallet' || task.box === 'whole') {
+            if (task.sscc) reservedPallets.add(task.sscc);
+            continue;
+          }
+          if (this.items[task.itemNo]?.serialized) continue;
+          const face = this.locations[task.loc]?.replenishment ? this.locations[task.loc]
+            : this._pickFaces().find((l) => l.replenishment.itemNo === task.itemNo &&
+              l.replenishment.mode !== 'pallet' && ['bin', 'mezzanine'].includes(l.kind));
+          if (face) add(face.code, order.id, task.qty);
+        }
+      }
+      return result;
+    };
+
+    proto.waveTaskReadiness = function (task) {
+      if (!task.replenishmentId) return { ready: true, waitingFor: null };
+      const predecessor = this.tasks[task.replenishmentId];
+      if (predecessor?.status === 'done') return { ready: true, waitingFor: null };
+      return { ready: false, waitingFor: task.replenishmentId,
+        waitingReason: predecessor?.status === 'cancelled' ? 'Replenishment was cancelled' : 'Waiting for the replenishment drop' };
     };
 
     /** Orders with piece lines still to plan, oldest first. */
@@ -307,7 +389,16 @@
 
     /** The queue drops into a new wave when no wave is active. Called on the clock tick and when a wave finishes. */
     proto.autoWave = function () {
-      if (!this.module('waves') || !this.waveSettings().auto || this.activeWave()) return null;
+      if (!this.module('waves') || !this.waveSettings().auto) return null;
+      // A cancelled predecessor releases its unpicked demand for planning again.
+      for (const task of this._openWaveTasks()) {
+        if (task.replenishmentId && this.tasks[task.replenishmentId]?.status === 'cancelled') {
+          task.status = 'cancelled';
+          task.cancelReason = 'Replenishment cancelled';
+          this.log(`Wave task ${task.id} released after replenishment #${task.replenishmentId} was cancelled`);
+        }
+      }
+      if (this.activeWave()) return null;
       return this._buildWave({ auto: true, by: 'system' });
     };
 
@@ -331,7 +422,10 @@
     proto.confirmWaveTask = function ({ task: taskId, scan = null, serials = null, by } = {}) {
       const { wave, task } = this._waveTask(taskId);
       if (task.status !== 'open') throw new Error(`Task ${task.id} is ${task.status}`);
+      const readiness = this.waveTaskReadiness(task);
+      if (!readiness.ready) throw new Error(`${readiness.waitingReason} (#${readiness.waitingFor})`);
       const actor = by || this._actor || 'picker';
+      if (this.replenishmentVersion === 1 && task.claimedBy && task.claimedBy !== actor) throw new Error(`Task ${task.id} is ${task.claimedBy}'s`);
       if (scan != null && scan !== '') {
         const s = String(scan).trim().toUpperCase();
         const ok = task.sscc ? (s === task.sscc || this.resolve(scan) === task.loc) : this.resolve(scan) === task.loc;
@@ -343,7 +437,16 @@
       if (!line || (line.picked || 0) + task.qty > line.units) throw new Error(`Order ${order.id} does not need ${task.qty} more ${task.itemNo}`);
       if (task.kind === 'bin') {
         const lot = 'batch' in task ? { batch: task.batch, expiry: task.expiry || null } : {};
-        this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, ...lot, orderId: order.id, serials, by: actor, at: task.dropTo || null });
+        const predecessor = task.replenishmentId && this.tasks[task.replenishmentId];
+        const holderId = task.holderId || predecessor?.replenishedHolder;
+        if (holderId) {
+          const holder = this.holders[holderId];
+          if (!holder || holder.loc !== task.loc) throw new Error('The replenished plate is no longer at the pick face');
+          const content = holder.contents?.find((c) => Number(c.qty) > 0);
+          if (!content || content.itemNo !== task.itemNo || (content.batch || null) !== task.batch ||
+              (content.expiry || null) !== task.expiry) throw new Error('The replenished plate no longer matches the reserved item and lot');
+          this.pickHolder({ id: holderId, orderId: order.id, qty: task.qty, by: actor });
+        } else this.binTake({ loc: task.loc, itemNo: task.itemNo, qty: task.qty, ...lot, orderId: order.id, serials, by: actor, at: task.dropTo || null });
       } else {
         const pallet = this.pallets[task.sscc];
         if (!pallet || pallet.loc !== task.loc) throw new Error(`Pallet …${task.sscc.slice(-6)} is no longer at ${task.loc}`);
@@ -387,6 +490,7 @@
       task.status = 'done';
       task.doneBy = actor;
       task.doneAt = this.now();
+      if (this.replenishmentVersion === 1) this.planReplenishment();
       this.log(`Wave task ${task.id} done: ${task.qty} ${task.itemNo} from ${task.loc}${task.dropTo ? ` to ${task.dropTo}` : ''}`);
       if (!wave.tasks.some((t) => t.status === 'open')) {
         wave.completedAt = this.now();
@@ -410,12 +514,12 @@
      * cart pickers), in walking order (by location). With `for`, only tasks
      * nobody else has claimed, the person's own claims first.
      */
-    proto.waveTasks = function ({ kind = null, for: who = null } = {}) {
+    proto.waveTasks = function ({ kind = null, for: who = null, readyOnly = false } = {}) {
       const near = (a, b) => String(a.loc).localeCompare(String(b.loc), undefined, { numeric: true }) || (a.id < b.id ? -1 : 1);
       return this._openWaveTasks()
-        .filter((t) => (!kind || t.kind === kind) && (!who || !t.claimedBy || t.claimedBy === who))
+        .filter((t) => (!kind || t.kind === kind) && (!who || !t.claimedBy || t.claimedBy === who) && (!readyOnly || this.waveTaskReadiness(t).ready))
         .sort((a, b) => (who ? (b.claimedBy === who) - (a.claimedBy === who) : 0) || near(a, b))
-        .map((t) => ({ ...t, name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null, packs: this.items[t.itemNo] ? this.items[t.itemNo].packs || [] : [], serialized: Boolean(this.items[t.itemNo] && this.items[t.itemNo].serialized) }));
+        .map((t) => ({ ...t, ...this.waveTaskReadiness(t), name: this.items[t.itemNo] ? this.items[t.itemNo].name : '', unit: this.items[t.itemNo] ? this.items[t.itemNo].uom : null, packs: this.items[t.itemNo] ? this.items[t.itemNo].packs || [] : [], serialized: Boolean(this.items[t.itemNo] && this.items[t.itemNo].serialized) }));
     };
 
     /** A picker takes a task, so nobody else walks to it. */
@@ -423,6 +527,7 @@
       const { task } = this._waveTask(taskId);
       if (task.status !== 'open') throw new Error(`Task ${task.id} is ${task.status}`);
       const who = by || this._actor || 'picker';
+      if (!this.waveTaskReadiness(task).ready) throw new Error('Waiting for the replenishment drop');
       if (task.claimedBy && task.claimedBy !== who) throw new Error(`${task.claimedBy} is already on task ${task.id}`);
       task.claimedBy = who;
       task.claimedAt = this.now();

@@ -238,8 +238,14 @@
     bulkLocations: (wh, a) => wh.bulkLocations(a),
     completeSetup: (wh) => wh.completeSetup(),
 
+    enableDemandReplenishment: (wh) => {
+      wh.replenishmentVersion = 1;
+      wh.log('Demand-driven replenishment enabled');
+      return true;
+    },
+
     // Clock tick: dwell timers, waiting trucks, escalations
-    tick: (wh) => { wh.dispatch(); if (typeof wh.autoWave === 'function') wh.autoWave(); },
+    tick: (wh) => { if (wh.replenishmentVersion === 1) wh.planReplenishment(); wh.dispatch(); if (typeof wh.autoWave === 'function') wh.autoWave(); },
   };
 
   return { COMMANDS };

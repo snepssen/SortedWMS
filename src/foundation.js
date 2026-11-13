@@ -831,13 +831,15 @@
       if (this._assertNotHeld) this._assertNotHeld(loc.code, `Plate ${holder.id}`);
       const line = (holder.contents || []).find((c) => Number(c.qty) > 0) || holder.contents[0];
       const available = line ? Number(line.qty) || 0 : 0;
+      const order = orderId && this.orders[String(orderId)];
+      if (this.replenishmentVersion === 1 && this._lotState(line?.itemNo, line || {}, order ? this._minDaysFor(order, line?.itemNo) : 0) !== 'ok') throw new Error('This plate is held, expired or too short-dated');
+
       const take = qty == null || qty === '' ? available : Number(qty);
       if (!Number.isInteger(take) || take < 1) throw new Error('Pick quantity must be a whole number above 0');
       if (take > available) throw new Error(`${holder.id} has ${available}, not ${take}`);
       const actor = by || this._actor || 'operator';
       let note = null;
       if (orderId) {
-        const order = this.orders[String(orderId)];
         if (!order) throw new Error(`No order ${orderId}`);
         if (order.status === 'shipped') throw new Error(`Order ${order.id} is shipped`);
         const itemNo = line && line.itemNo;

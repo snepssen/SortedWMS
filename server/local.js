@@ -61,9 +61,10 @@
 
     load() {
       const saved = read();
-      this.data = saved && saved.rows ? saved : { createdAt: this.now(), rows: [] };
+      this.data = saved && saved.rows ? saved : { createdAt: this.now(), rows: [], replenishmentVersion: 1 };
       this.replayT = this.data.createdAt;
       this.wh = buildWarehouse(this.site, this.clock);
+      this.wh.replenishmentVersion = this.data.replenishmentVersion || 0;
       this.applied = 0;
       this._apply();
     }
@@ -92,6 +93,7 @@
     exec(op, args = {}, by = 'unknown') {
       if (!COMMANDS[op]) throw new Error(`Unknown command ${op}`);
       this.sync();
+      if (op !== 'enableDemandReplenishment' && this.wh.replenishmentVersion !== 1) this.exec('enableDemandReplenishment', {}, 'system');
       const rows = this.data.rows;
       const t = Math.max(this.now(), rows.length ? rows[rows.length - 1].t : 0);
       this.replayT = t;
@@ -112,6 +114,7 @@
 
     tick() {
       this.sync();
+      if (this.wh.replenishmentVersion !== 1) this.exec('enableDemandReplenishment', {}, 'system');
       const before = this.wh.events[0];
       const t = this.now();
       this.replayT = t;
