@@ -1059,13 +1059,20 @@
       if (!item) throw new Error(`Unknown item ${itemNo}`);
       const dest = this._loc(this.resolve(toCode));
       const topUp = Boolean(opts.topUp);
+      if (this.replenishmentVersion === 1) {
+        if (dest.blocked || dest.checkHold || dest.quarantine || ['quarantine', 'return'].includes(dest.role)) throw new Error('The replenishment destination is blocked or held');
+        if (dest.reservedBy) throw new Error('Another movement has reserved the replenishment destination');
+      }
       if (dest.structural) throw new Error(`${dest.code} cannot hold stock`);
       if (!topUp && dest.kind !== 'rack' && dest.kind !== 'bin') throw new Error('Replenish into a rack slot or a bin');
       if (topUp && !['rack', 'bin', 'mezzanine'].includes(dest.kind)) throw new Error('Replenish into a rack slot, a bin or a mezzanine');
       if (dest.kind === 'rack' && dest.sscc) throw new Error(`${dest.code} is not empty`);
       if (dest.kind === 'bin' && dest.pallets.length && (!topUp || dest.pallets.some((id) => this.pallets[id] && this.pallets[id].itemNo !== item.itemNo))) throw new Error(`${dest.code} is not empty`);
       if (dest.category && dest.category !== item.category) throw new Error(`${dest.code} is ${this.categories[dest.category] || dest.category}, not ${this.categories[item.category]}`);
-      const source = this._fefo(itemNo).find((p) => p.loc !== dest.code);
+      const reserved = this.replenishmentVersion === 1
+        ? new Set(this._openWaveTasks().filter((t) => t.sscc).map((t) => t.sscc)) : new Set();
+      const source = this._fefo(itemNo).find((p) => p.loc !== dest.code &&
+        (this.replenishmentVersion !== 1 || (!reserved.has(p.sscc) && this._liveTaskFor(p.sscc)?.reason !== 'replenish')));
       if (!source) throw new Error(`No free stock of ${itemNo} to replenish`);
       if (!this._fits(dest, source)) throw new Error(`Pallet …${source.sscc.slice(-6)} does not fit ${dest.code}`);
       const task = this._newTask({ type: 'SHIFT', reason: 'replenish', sscc: source.sscc, from: source.loc, to: dest.code, category: item.category });

@@ -205,3 +205,11 @@ test('demand larger than the face capacity can progress through successive small
   assert.equal(next.tasks[0].qty, 5);
   assert.ok(next.tasks[0].replenishmentId);
 });
+
+test('manual replenishment cannot take a source reserved by the automatic planner', () => {
+  const { w } = warehouse({ stock: 0 });
+  w.planReplenishment();
+  w.createLocation({ code: 'OTHER', kind: 'bin' });
+  assert.throws(() => w.replenish('PART', 'OTHER'), /No free stock/);
+  assert.equal(w._liveTasks().filter((t) => t.reason === 'replenish').length, 1);
+});
