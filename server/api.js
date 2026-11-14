@@ -585,6 +585,23 @@
       raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
     }));
     on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    on('GET', '/api/alerts/low-stock.csv', () => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...wh().lowStock().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
+    }));
+    on('GET', '/api/notify', () => (alerts ? alerts.status(currentActor) : { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' }));
+    on('POST', '/api/notify/settings', (_, q, b) => {
+      if (!alerts) return { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' };
+      alerts.save(b || {}, currentActor);
+      return { ok: true };
+    });
+    on('POST', '/api/notify/test', () => (alerts ? alerts.testSend(currentActor) : { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' }));
+    on('GET', '/api/notify/inbox', () => (alerts ? alerts.inbox(currentActor) : { unread: [] }));
+    on('POST', '/api/notify/read', (_, q, b) => (alerts ? alerts.markRead(currentActor, b.ids || []) : { unread: [] }));
+    on('POST', '/api/notify/subscribe', (_, q, b) => {
+      if (!alerts) return { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' };
+      return alerts.subscribe(currentActor, b || {});
+    });
     on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: q.clientId || null }));
     on('GET', '/api/reports/billing.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',

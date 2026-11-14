@@ -348,6 +348,12 @@ function main() {
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
+  const alerts = require('./alerts').createAlerts({ store, log: (line) => console.log(line) });
+  store.afterCommand = (op) => {
+    if (store.wh && store.wh.module && !store.wh.module('alerts')) return;
+    alerts.onCommand(op);
+  };
+  const stopAlerts = alerts.start();
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
   const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite });

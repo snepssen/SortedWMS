@@ -1,8 +1,8 @@
 # Changelog
 
-## Local daily copy
+## Reorder list uses available stock
 
-The plain copy in `data/backups` stays on until an encrypted off-site target has one verified backup. After that, Backups can keep the local copy encrypted with the same passphrase, or turn it off. Old plain `.db` files are removed only when an administrator confirms. They are never deleted by the schedule.
+`/api/alerts/low-stock` and its CSV use the same available-stock check as the alerts: on hand minus allocated, held and reserved. The list and the CSV show both on hand and available. An item can now appear while stock is still in the building, if enough of it is already allocated, held or reserved. Previously the list compared on-hand stock only.
 
 ## Stacked pickup
 

@@ -109,6 +109,7 @@
       <button id="pairBtn" type="button">Connect a phone</button>
       <label>Theme <select data-theme-picker></select></label>
       <label>Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
+      <button id="alertBell" type="button" hidden>Alerts</button>
       <button id="out" type="button">Sign out</button>
     </div>
   </details>
@@ -128,8 +129,8 @@
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
-    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports']],
+    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
@@ -287,6 +288,19 @@
       nav.scrollLeft += current.getBoundingClientRect().left - nav.getBoundingClientRect().left;
     }
     if (restoreFocus) current?.focus({ preventScroll: true });
+    refreshBell();
+  }
+  async function refreshBell() {
+    const btn = document.getElementById('alertBell');
+    if (!btn) return;
+    if (!can('alerts.read') || !modOn('alerts')) { btn.hidden = true; return; }
+    try {
+      const box = await api('GET', '/api/notify/inbox');
+      const n = (box.unread || []).length;
+      btn.hidden = false;
+      btn.textContent = n ? `Alerts ${n}` : 'Alerts';
+      btn.classList.toggle('on', panel === 'alerts');
+    } catch (e) { btn.hidden = true; }
   }
 
   let pairTimer = null;
@@ -1128,6 +1142,8 @@
   };
   $('#pairBtn').onclick = () => { document.querySelector('.workspace-options').open = false; panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
+  const bell = document.getElementById('alertBell');
+  if (bell) bell.onclick = () => { panel = 'alerts'; history.replaceState(null, '', '#alerts'); draw(); };
   $('#main').onclick = async (e) => {
     const saveModules = e.target.closest('#saveModules');
     if (saveModules) {
