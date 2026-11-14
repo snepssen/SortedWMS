@@ -167,7 +167,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null }) {
+  function createApi({ store, printers, hardware, backups = null, offsite = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -614,6 +614,27 @@
     }));
     on('GET', '/api/backup', () => store.exportBackup());
     on('GET', '/api/backups', () => (backups ? { dir: backups.dir, backups: backups.list().map(({ file, bytes, at }) => ({ file, bytes, at })) } : { dir: null, backups: [] }));
+    on('GET', '/api/offsite', () => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      return offsite.status();
+    });
+    on('POST', '/api/offsite/settings', (_, q, b) => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      offsite.save(b || {});
+      return { ok: true };
+    });
+    on('POST', '/api/offsite/run', () => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      return offsite.run('admin');
+    });
+    on('POST', '/api/offsite/restore', (_, q, b) => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      return offsite.restore({ targetId: b.targetId, name: b.name, file: b.file || null });
+    });
+    on('POST', '/api/offsite/prune-plain', (_, q, b) => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      return offsite.prunePlain({ confirm: b.confirm === true });
+    });
     on('POST', '/api/backups', () => {
       if (!backups) return { status: 400, error: 'Backups are made by the server. Start it with ./start.sh' };
       const made = backups.now();

@@ -76,22 +76,35 @@ function restore(file, dbFile, { now = Date.now() } = {}) {
   return { restored: file, into: dbFile, kept, ...found };
 }
 
-/** The daily backup the server runs: one now if the newest is a day old, then a check every hour. */
-function schedule(store, dir, { keep = 14, log = console.log, every = 3600000 } = {}) {
-  const due = () => {
-    const newest = listBackups(dir)[0];
-    if (newest && Date.now() - newest.at < DAY) return;
-    try {
-      const made = backup(store.db, dir, { keep });
-      log(`Backup ${made.file} (${Math.round(made.bytes / 1024)} KB) in ${dir}`);
-    } catch (e) {
-      log(`Backup failed: ${e.message}`);
+/**
+ * The daily local copy. `mode()` is `plain` (the default), `encrypted`, or `off`.
+ * With no mode function this stays the plain daily file, so an install that has
+ * not chosen otherwise keeps its backups.
+ */
+function schedule(store, dir, { keep = 14, log = console.log, every = 3600000, mode = null, writeEncrypted = null } = {}) {
+  const run = (force) => {
+    const which = typeof mode === 'function' ? mode() : 'plain';
+    if (which === 'off') {
+      if (!force) return null;
+      throw new Error('The plain daily copy is off. Turn it on, or keep an encrypted local copy, from Off-site backups.');
     }
+    if (which === 'encrypted') {
+      if (typeof writeEncrypted !== 'function') throw new Error('An encrypted local copy needs Off-site backups');
+      return writeEncrypted({ dir, keep, log, force });
+    }
+    const newest = listBackups(dir)[0];
+    if (!force && newest && Date.now() - newest.at < DAY) return null;
+    const made = backup(store.db, dir, { keep });
+    log(`Backup ${made.file} (${Math.round(made.bytes / 1024)} KB) in ${dir}`);
+    return made;
+  };
+  const due = () => {
+    try { run(false); } catch (e) { log(`Backup failed: ${e.message}`); }
   };
   due();
   const timer = setInterval(due, every);
   if (timer.unref) timer.unref();
-  return { stop: () => clearInterval(timer), now: () => backup(store.db, dir, { keep }), list: () => listBackups(dir), dir };
+  return { stop: () => clearInterval(timer), now: () => run(true), list: () => listBackups(dir), dir };
 }
 
 module.exports = { backup, restore, inspect, listBackups, schedule, stamp };

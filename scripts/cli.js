@@ -6,7 +6,8 @@
  *   ./start.sh sample <kind>   start with sample data: home, maker or 3pl
  *   ./start.sh backup          copy the database into data/backups now
  *   ./start.sh backups         list the backups
- *   ./start.sh restore <file>  put a backup in place (server stopped)
+ *   ./start.sh restore <file>  put a backup in place (server stopped). An encrypted
+ *                              off-site file is decrypted first.
  *   ./start.sh setup           check what SortedWMS needs, offer to install it
  *
  * PORT, SORTED_DB, SORTED_SITE and SORTED_BACKUP_DIR work as for the server.
@@ -68,11 +69,40 @@ async function main() {
     if (!file) throw new Error('Name the backup to restore: ./start.sh restore <file> (./start.sh backups lists them)');
     if (!fs.existsSync(file) && fs.existsSync(path.join(backupDir, file))) file = path.join(backupDir, file);
     if (await portBusy(port)) throw new Error(`SortedWMS is running on port ${port}. Stop it first, then restore`);
-    const found = backups.inspect(file);
-    const answer = await ask(`Replace ${dbFile} with ${path.basename(file)} (${found.changes} changes, ${found.users} users)? The current file is kept beside it. [Y/n] `);
-    if (/^n/i.test(answer)) { console.log('Nothing changed.'); return; }
-    const done = backups.restore(file, dbFile);
-    console.log(`Restored. ${done.kept ? `The previous database is kept as ${done.kept}.` : ''} Start SortedWMS again to use it.`);
+    const { decryptToFile } = require('../server/backup-offsite');
+    const fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(4);
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    let cleanup = null;
+    if (head.toString() === 'SWBK') {
+      const secretsFile = path.join(path.dirname(dbFile), 'offsite-secrets.json');
+      let saved = '';
+      if (fs.existsSync(secretsFile)) {
+        try { saved = JSON.parse(fs.readFileSync(secretsFile, 'utf8')).passphrase || ''; } catch (e) { saved = ''; }
+      }
+      const passphrase = process.env.SORTED_BACKUP_PASSPHRASE || saved;
+      if (!passphrase) throw new Error('This backup is encrypted. Set SORTED_BACKUP_PASSPHRASE, or save the passphrase in Off-site backups on this machine. It is not stored in the backup.');
+      console.log('Encrypted backup. The passphrase is read from the environment or the saved setting, and is not printed.');
+      const opened = decryptToFile(file, passphrase);
+      file = opened.file;
+      cleanup = opened.dir;
+    }
+    try {
+      const found = backups.inspect(file);
+      const answer = await ask(`Replace ${dbFile} with ${path.basename(rest[0])} (${found.changes} changes, ${found.users} users)? The current file is kept beside it. [Y/n] `);
+      if (/^n/i.test(answer)) { console.log('Nothing changed.'); return; }
+      const done = backups.restore(file, dbFile);
+      const siteFile = process.env.SORTED_SITE || path.join(ROOT, 'server', 'site.blank.json');
+      const site = JSON.parse(fs.readFileSync(siteFile, 'utf8'));
+      const { Store } = require('../server/store');
+      const store = new Store({ file: dbFile, site });
+      for (const line of store.upgradeLines) console.log(line);
+      store.close();
+      console.log(`Restored. ${done.kept ? `The previous database is kept as ${done.kept}.` : ''} Start SortedWMS again to use it.`);
+    } finally {
+      if (cleanup) fs.rmSync(cleanup, { recursive: true, force: true });
+    }
     return;
   }
   if (cmd === 'setup') {

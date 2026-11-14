@@ -16,6 +16,7 @@ const PERMISSIONS = [
   ['roles.write', 'Edit what a role is allowed to do'],
   ['settings.read', 'View system settings'],
   ['settings.write', 'Change system settings'],
+  ['backups.offsite', 'Run and restore off-site backups'],
   ['modules.write', 'Switch warehouse modules on or off'],
   ['audit.read', 'View the audit log'],
   ['clients.read', 'View clients'],
@@ -81,7 +82,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -197,6 +198,11 @@ const RULES = [
   ['POST', '/api/modules/:id/settings', 'modules.write'],
   ['GET', '/api/backups', 'settings.write'],
   ['POST', '/api/backups', 'settings.write'],
+  ['GET', '/api/offsite', 'backups.offsite'],
+  ['POST', '/api/offsite/settings', 'backups.offsite'],
+  ['POST', '/api/offsite/run', 'backups.offsite'],
+  ['POST', '/api/offsite/restore', 'backups.offsite'],
+  ['POST', '/api/offsite/prune-plain', 'backups.offsite'],
   ['GET', '/api/modules', 'wms.read'],
   ['POST', '/api/setup/complete', 'settings.write'],
   ['POST', '/api/locations/preview', 'settings.write'],
