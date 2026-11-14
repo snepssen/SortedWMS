@@ -5,8 +5,19 @@ const os = require('node:os');
 const path = require('node:path');
 const registry = require('../modules/registry');
 const { Store } = require('../server/store');
+const { ALL, DEFAULTS } = require('../server/permissions');
 
-const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'documents', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves', 'woocommerce'];
+const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'bom', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'documents', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'photos', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'user-audit', 'waves', 'woocommerce'];
+
+test('core module permissions can be assigned and role defaults name known permissions', () => {
+  for (const mod of registry.modules()) {
+    for (const permission of mod.permissions || []) assert.ok(ALL.includes(permission.id), `${mod.id}: ${permission.id}`);
+  }
+  for (const [role, permissions] of Object.entries(DEFAULTS)) {
+    for (const permission of permissions) assert.ok(ALL.includes(permission), `${role}: ${permission}`);
+  }
+  assert.ok(DEFAULTS.office.includes('bom.write'));
+});
 
 test('core modules declare the manifest fields and the presets agree with the original seven', () => {
   const list = registry.modules();

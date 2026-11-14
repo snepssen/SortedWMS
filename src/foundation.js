@@ -1341,6 +1341,13 @@
       return globalThis.SortedReports;
     }
 
+    function loadPhotos() {
+      if (typeof require === 'function') {
+        try { return require('./photos'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedPhotos;
+    }
+
     function loadBom() {
       if (typeof require === 'function') {
         try { return require('./bom'); } catch (e) { /* browser */ }
@@ -1642,6 +1649,8 @@
     if (reports && reports.install) reports.install(Warehouse);
     const bom = loadBom();
     if (bom && bom.install) bom.install(Warehouse);
+    const photos = loadPhotos();
+    if (photos && photos.install) photos.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

@@ -51,6 +51,8 @@ test('documents use the warehouse local date and a client cannot read another st
   assert.equal(denied.status, 404);
   const own = await api.handle('GET', '/api/documents/statement/CL-B', {}, 'client', null, { role: 'client', clientId: 'CL-A' });
   assert.equal(own.status, 403);
+  const unbound = await api.handle('GET', '/api/documents/statement/CL-A', {}, 'unbound-client', null, { role: 'client' });
+  assert.equal(unbound.status, 403);
   const ok = await api.handle('GET', '/api/documents/delivery-note/SO1', {}, 'office', null, { role: 'office' });
   assert.equal(ok.contentType, 'application/pdf');
   assert.match(ok.body.toString('latin1'), /^%PDF-1\.4/);

@@ -78,6 +78,11 @@ test('a client sees only its own photos, and the text terminal has none', () => 
   app.handle('POST', '/api/items/OTHER/photos', { data: png.toString('base64') }, 'office');
   const own = app.handle('GET', '/api/photos', {}, 'client', null, { role: 'client', clientId: 'CL-A' });
   assert.deepEqual(own.body.map((p) => p.itemNo), ['SKU']);
+  const photo = own.body[0];
+  const unbound = { role: 'client' };
+  assert.deepEqual(app.handle('GET', '/api/photos', {}, 'unbound-client', null, unbound).body, []);
+  assert.equal(app.handle('GET', `/api/items/SKU/photos/${photo.id}`, {}, 'unbound-client', null, unbound).status, 403);
+  assert.equal(app.handle('POST', '/api/items/SKU/photos', { data: png.toString('base64') }, 'unbound-client', null, unbound).status, 403);
   const denied = app.handle('GET', '/api/items/OTHER/photos/aaaaaaaaaaaaaaaa', {}, 'client', null, { role: 'client', clientId: 'CL-A' });
   assert.equal(denied.status, 403);
   const posted = app.handle('POST', '/api/items/OTHER/photos', { data: png.toString('base64') }, 'client', null, { role: 'client', clientId: 'CL-A' });
