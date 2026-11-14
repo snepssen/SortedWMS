@@ -67,6 +67,7 @@ const PERMISSIONS = [
   ['alerts.read', 'See low-stock alerts'],
   ['alerts.write', 'Change alert settings and send a test'],
   ['intake.write', 'Send orders and ASNs in from another system'],
+  ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -381,6 +382,13 @@ const RULES = [
   ['GET', '/api/orders', 'orders.read'],
   ['GET', '/api/deliveries', 'inbound.read'],
   ['GET', '/api/stock', 'stock.read'],
+  ['GET', '/api/woocommerce', 'woocommerce.manage'],
+  ['GET', '/api/woocommerce/map/:id', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/shops', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/map', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/sync', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/catalog', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/stock', 'woocommerce.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

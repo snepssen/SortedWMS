@@ -731,6 +731,13 @@
       contentType: 'text/csv; charset=utf-8',
       raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
     }));
+    on('GET', '/api/woocommerce', () => (woo ? { ...woo.status(), mappings: null } : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('GET', '/api/woocommerce/map/:id', ({ id }) => (woo ? woo.mappings(id) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/shops', (_, q, b) => (woo ? woo.saveShop(b || {}) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/map', (_, q, b) => (woo ? woo.mapSku(b.shopId, b.sku, b.itemNo, b) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/sync', (_, q, b) => (woo ? woo.pull(b.shopId) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/catalog', (_, q, b) => (woo ? woo.pullProducts(b.shopId) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/stock', () => (woo ? woo.flushStock() : { status: 400, error: 'WooCommerce runs on the server' }));
     on('GET', '/api/hardware', () => (hardware ? hardware.recent() : { settings: { scanner: 'wedge', printer: 'simulated' }, scans: [], jobs: [], printers: printers.list ? printers.list() : [], modes: { scanner: ['wedge', 'manual', 'simulated'], printer: ['simulated', 'network', 'browser'] } }));
     on('POST', '/api/hardware/mode', (_, q, b) => (hardware ? hardware.setMode(b) : { status: 400, error: 'Hardware service is not configured' }));
     on('POST', '/api/hardware/scan', async (_, q, b, by) => {
