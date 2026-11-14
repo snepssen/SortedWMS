@@ -20,9 +20,9 @@ const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware, backups });
+  const api = createApi({ store, printers, hardware, backups, offsite });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -335,12 +335,14 @@ function main() {
   }
   // A copy of the database a day, the newest 14 kept. SORTED_BACKUPS=0 turns it off.
   const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups'), { keep: Number(process.env.SORTED_BACKUP_KEEP) || 14 });
+  const offsite = require('./backup-offsite').createOffsite({ store, log: (line) => console.log(line) });
+  const stopOffsite = offsite.start();
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
@@ -383,7 +385,7 @@ function main() {
     if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
     if (process.env.SORTED_OUTBOX) console.log(`Outbox folder for messages: ${process.env.SORTED_OUTBOX}`);
   });
-  const stop = () => { clearInterval(tick); stopOutbox(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); stopOutbox(); stopOffsite(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }

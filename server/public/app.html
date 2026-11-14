@@ -122,7 +122,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
@@ -136,7 +136,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -144,7 +144,7 @@
     return PANEL_FALLBACK[id] || null;
   }
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['offsite', 'Backups', 'backups.offsite'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -657,6 +657,67 @@
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
     },
+    async offsite() {
+      const s = await api('GET', '/api/offsite');
+      const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+      const when = (t) => {
+        if (!t) return '—';
+        try { return new Intl.DateTimeFormat(undefined, { timeZone: s.timeZone, dateStyle: 'short', timeStyle: 'short' }).format(new Date(t)); }
+        catch (e) { return new Date(t).toLocaleString(); }
+      };
+      const passNote = s.passphraseFromEnv
+        ? 'The passphrase comes from the environment. It is not shown here.'
+        : s.passphraseSet
+          ? 'A passphrase is saved. It is not shown again. Type a new one only to replace it.'
+          : 'Set a passphrase. It is saved on this machine and is not shown again.';
+      const last = `<div class="kpi"><b>${s.last ? (s.last.ok ? 'OK' : 'Failed') : '—'}</b><span>Last run${s.last ? ` ${esc(when(s.last.at))}` : ''}</span></div>`;
+      const targetBlocks = (s.targets || []).map((t) => {
+        const where = t.kind === 'folder' ? esc(t.path) : t.kind === 's3' ? `${esc(t.bucket)} · ${esc(t.endpoint)}` : esc(t.url);
+        const files = (t.files || []).map((f) => `<tr><td><code>${esc(f.name)}</code></td><td>${kb(f.bytes)}</td><td>${esc(when(f.at))}</td><td><button type="button" data-act="offsite-restore" data-target="${esc(t.id)}" data-file="${esc(f.name)}">Restore</button></td></tr>`).join('');
+        return `<section><h2>${esc(t.kind)} <span class="dim">${esc(t.id)}</span></h2><p class="hint">${where}${t.credentialsSet ? ' · credentials saved' : ''}${t.error ? ` · <span class="bad">${esc(t.error)}</span>` : ''}</p>
+          ${table(['File', 'Size', 'Taken', ''], files ? [files] : [])}
+          <p><button type="button" data-act="offsite-drop" data-id="${esc(t.id)}">Remove target</button></p></section>`;
+      }).join('');
+      return `<section><h2>Off-site backups</h2><p class="hint">The database is encrypted on this machine, then copied to a folder, S3-compatible storage, or WebDAV. The file includes password hashes, the same as the daily copy under Settings. The passphrase is not in the file, the export, or the log.</p>
+        <div class="kpis">${last}<div class="kpi"><b>${s.mode === 'interval' ? `${esc(s.intervalHours)} h` : esc(s.dailyTime)}</b><span>Next run ${esc(when(s.nextRun))} · ${esc(s.timeZone || '')}</span></div><div class="kpi"><b>${(s.targets || []).length}</b><span>Targets</span></div></div>
+        ${s.last ? `<p class="${s.last.ok ? 'msg ok' : 'msg bad'}">${esc(s.last.summary)}</p>` : ''}
+        <form class="form" data-act="offsite-run"><button class="primary">Back up now</button></form></section>
+        <section><h2>Schedule</h2><p class="hint">${esc(passNote)} Times use this warehouse's timezone.</p>
+        <form class="form" data-act="offsite-settings">
+          <label>When<select name="mode"><option value="daily" ${s.mode === 'daily' ? 'selected' : ''}>Daily</option><option value="interval" ${s.mode === 'interval' ? 'selected' : ''}>Every few hours</option></select></label>
+          <label>Daily time<input name="dailyTime" value="${esc(s.dailyTime)}" placeholder="02:30"></label>
+          <label>Hours between<input name="intervalHours" type="number" min="1" max="168" value="${esc(s.intervalHours)}"></label>
+          <label>Keep daily<input name="retainDaily" type="number" min="0" max="100" value="${esc(s.retainDaily)}"></label>
+          <label>Keep weekly<input name="retainWeekly" type="number" min="0" max="100" value="${esc(s.retainWeekly)}"></label>
+          <label>Keep monthly<input name="retainMonthly" type="number" min="0" max="100" value="${esc(s.retainMonthly)}"></label>
+          <label><input type="checkbox" name="testDecrypt" ${s.testDecrypt ? 'checked' : ''}> Decrypt once after upload to check the file</label>
+          <label>Passphrase<input name="passphrase" type="password" autocomplete="new-password" placeholder="${s.passphraseSet ? 'saved' : 'at least 8 characters'}"></label>
+          <button class="primary">Save schedule</button>
+        </form>
+        ${s.passphraseSet && !s.passphraseFromEnv ? '<p><button type="button" data-act="offsite-clear">Remove saved passphrase</button></p>' : ''}</section>
+        ${targetBlocks || '<section><h2>Targets</h2><p class="dim">No off-site target yet.</p></section>'}
+        <section><h2>Add a target</h2>
+        <form class="form" data-act="offsite-target">
+          <label>Kind<select name="kind" id="offsiteKind"><option value="folder">Folder</option><option value="s3">S3</option><option value="webdav">WebDAV</option></select></label>
+          <div data-offsite-kind="folder"><label>Folder path<input name="path" placeholder="/mnt/backups/sorted"></label></div>
+          <div data-offsite-kind="s3" hidden>
+            <label>Endpoint<input name="endpoint" placeholder="https://s3.amazonaws.com"></label>
+            <label>Bucket<input name="bucket"></label>
+            <label>Region<input name="region" value="us-east-1"></label>
+            <label>Prefix<input name="prefix" placeholder="main"></label>
+            <label><input type="checkbox" name="pathStyle"> Path-style (MinIO)</label>
+            <label>Access key<input name="accessKeyId" autocomplete="off" placeholder="not shown again"></label>
+            <label>Secret key<input name="secretAccessKey" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <div data-offsite-kind="webdav" hidden>
+            <label>HTTPS address<input name="url" placeholder="https://cloud.example/remote.php/dav/files/user/sorted/"></label>
+            <label>User<input name="username" autocomplete="off" placeholder="not shown again"></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <button class="primary">Add target</button>
+        </form>
+        <p class="hint">WebDAV uses HTTPS and basic authentication. S3 signing works with AWS, Backblaze B2, MinIO and Wasabi. Credentials are saved on this machine and are not shown again.</p></section>`;
+    },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
       const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -1136,6 +1197,9 @@
       if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
+      if (act === 'offsite-restore') { if (!confirm('Replace this warehouse with that backup? The current database is copied first.')) return; await api('POST', '/api/offsite/restore', { targetId: b.dataset.target, name: b.dataset.file }); return draw(); }
+      if (act === 'offsite-drop') { await api('POST', '/api/offsite/settings', { removeTarget: b.dataset.id }); return draw(); }
+      if (act === 'offsite-clear') { await api('POST', '/api/offsite/settings', { clearPassphrase: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -1151,6 +1215,7 @@
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
     if (e.target.id === 'tariffClient') { history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'offsiteKind') { for (const el of document.querySelectorAll('[data-offsite-kind]')) el.hidden = el.dataset.offsiteKind !== e.target.value; }
     if (e.target.id === 'countryPick') {
       const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
       const field = document.getElementById('timeZone');
@@ -1373,6 +1438,20 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'offsite-run') return api('POST', '/api/offsite/run', {});
+    if (name === 'offsite-settings') {
+      const body = { mode: data.mode, dailyTime: data.dailyTime, intervalHours: Number(data.intervalHours), retainDaily: Number(data.retainDaily), retainWeekly: Number(data.retainWeekly), retainMonthly: Number(data.retainMonthly), testDecrypt: data.testDecrypt === 'on' };
+      if (data.passphrase) body.passphrase = data.passphrase;
+      return api('POST', '/api/offsite/settings', body);
+    }
+    if (name === 'offsite-target') {
+      const target = { kind: data.kind, path: data.path, endpoint: data.endpoint, bucket: data.bucket, region: data.region, prefix: data.prefix, pathStyle: data.pathStyle === 'on', url: data.url };
+      if (data.accessKeyId) target.accessKeyId = data.accessKeyId;
+      if (data.secretAccessKey) target.secretAccessKey = data.secretAccessKey;
+      if (data.username) target.username = data.username;
+      if (data.password) target.password = data.password;
+      return api('POST', '/api/offsite/settings', { target });
+    }
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
