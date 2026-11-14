@@ -334,6 +334,8 @@
     'This is a test alert from SortedWMS.': 'This is a test alert from SortedWMS.',
     'Backup failed: {summary}': 'Backup failed: {summary}',
     'Shop sync: {summary}': 'Shop sync: {summary}',
+    'Bills of materials': 'Bills of materials',
+    'Build kit': 'Build kit',
     '{item} is at or below its reorder point: {available} available, reorder point {point}.': '{item} is at or below its reorder point: {available} available, reorder point {point}.',
     '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.',
     '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} is back above its reorder point: {available} available, reorder point {point}.',

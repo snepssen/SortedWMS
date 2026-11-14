@@ -1,5 +1,9 @@
 # Changelog
 
+## Bills of materials
+
+A client item can have a bill of materials. Building a kit consumes the components from bins and puts the kit item back in stock. A kitting task whose output item has a bill of materials uses those components and, when the task is done, puts one kit at KIT-OUT. Lots and serials are used only while those modules are on. Switching bills of materials off keeps the recipes and refuses a new one.
+
 ## Sendcloud on the module list
 
 Sendcloud is in the core module list again, so its upgrade runs once and the registry tests match the modules on disk. The settings screen, the API, and the signed status webhook are wired on the server. A failed label still raises `shop.sync`.

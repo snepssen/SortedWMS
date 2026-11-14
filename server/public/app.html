@@ -125,7 +125,7 @@
   const NAV = {
     administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['shopify', 'Shopify'], ['woocommerce', 'WooCommerce'], ['etsy', 'Etsy'], ['sendcloud', 'Sendcloud'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels'], ['bom', 'Bills of materials']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
@@ -137,7 +137,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite', shopify: 'shopify', woocommerce: 'woocommerce', etsy: 'etsy', sendcloud: 'sendcloud' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite', shopify: 'shopify', woocommerce: 'woocommerce', etsy: 'etsy', sendcloud: 'sendcloud', bom: 'bom' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -798,6 +798,11 @@
           <button class="primary">Add target</button>
         </form>
         <p class="hint">WebDAV uses HTTPS and basic authentication. S3 signing works with AWS, Backblaze B2, MinIO and Wasabi. Credentials are saved on this machine and are not shown again.</p></section>`;
+    },
+    async bom() {
+      return `<section><h2>Bills of materials</h2><p class="hint">Components belong to the same client as the kit. A build consumes them and puts the kit into a bin. Lots and serials are used when those modules are on.</p>
+        <form class="form" data-act="bom-save"><label>Kit item<input name="itemNo" required></label><label>Components<input name="lines" required placeholder="PLUG 2, BASE 1"></label><button class="primary">Save</button></form>
+        <form class="form" data-act="bom-build"><label>Kit item<input name="itemNo" required></label><label>Qty<input name="qty" type="number" min="1" value="1"></label><label>Bin<input name="loc" required></label><button>Build kit</button></form></section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
@@ -1527,6 +1532,8 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'bom-save') return api('POST', '/api/boms', { itemNo: data.itemNo, lines: String(data.lines || '').split(',').map((part) => { const [itemNo, qty] = part.trim().split(/\s+/); return { itemNo, qty: Number(qty || 1) }; }).filter((line) => line.itemNo) });
+    if (name === 'bom-build') return api('POST', '/api/boms/build', { itemNo: data.itemNo, qty: Number(data.qty || 1), loc: data.loc });
     if (name === 'shopify-shop') return api('POST', '/api/shopify/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
     if (name === 'shopify-map') return api('POST', '/api/shopify/map', data);
     if (name === 'shopify-sync') return api('POST', '/api/shopify/sync', data);

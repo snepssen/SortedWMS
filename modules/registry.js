@@ -124,7 +124,12 @@
       if (!byId.has(key)) throw new Error(`Unknown module ${key}`);
       next[key] = Boolean(value);
     }
-    const on = (id) => next[id] !== false;
+    // A missing key is on, except a module that stays off until someone turns it on.
+    const on = (id) => {
+      if (Object.prototype.hasOwnProperty.call(next, id)) return next[id] !== false;
+      const mod = byId.get(id);
+      return !(mod && mod.defaultOn === false);
+    };
     if (options.enableDependencies) {
       let changed = true;
       while (changed) {
