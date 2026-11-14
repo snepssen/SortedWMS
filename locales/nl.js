@@ -363,6 +363,19 @@
     '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} op {face} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
     '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} staat weer boven het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
     'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).': 'Herinnering: {item} staat nog op of onder het bestelpunt ({available} beschikbaar, bestelpunt {point}).',
+    'Delivery note': 'Leverbon',
+    'Pick list': 'Paklijst',
+    'Packing list': 'Inpaklijst',
+    'Statement': 'Rekening',
+    'Lane': 'Baan',
+    'Lines': 'Regels',
+    'Shipment': 'Zending',
+    'Qty': 'Aantal',
+    'Picked': 'Gepickt',
+    'No carton yet': 'Nog geen doos',
+    'to': 'tot',
+    'Total': 'Totaal',
+    'Documents': 'Documenten',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.nl = dict; }
