@@ -6,7 +6,7 @@ const path = require('node:path');
 const registry = require('../modules/registry');
 const { Store } = require('../server/store');
 
-const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves', 'woocommerce'];
+const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'bom', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves', 'woocommerce'];
 
 test('core modules declare the manifest fields and the presets agree with the original seven', () => {
   const list = registry.modules();
@@ -36,6 +36,7 @@ test('core modules declare the manifest fields and the presets agree with the or
   }
   const maker = registry.presetModules('small-maker');
   assert.equal(maker.kitting, true);
+  assert.equal(registry.resolveChange(list, {}, { kitting: false }).kitting, false);
   assert.equal(maker.trucks, false);
   const described = registry.describe(null);
   assert.equal(described.find((mod) => mod.id === 'returns').label, 'Returns');

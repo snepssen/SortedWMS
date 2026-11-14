@@ -918,9 +918,10 @@
       const station = this.valStations.find((s) => s.id === stationId);
       if (!station) throw new Error(`Unknown kitting station ${stationId}`);
       const kit = this.kits[station.kitId];
+      const bomNeed = typeof this._bomNeed === 'function' ? this._bomNeed(kit) : null;
       const job = {
         id: (this.valJobs[0] ? this.valJobs[0].id : 0) + 1, stationId, kitId: kit.id, kitName: kit.name,
-        need: [{ itemNo: kit.base.itemNo, qty: kit.base.qty, role: 'base' }, ...kit.components.map((c) => ({ itemNo: c.itemNo, qty: c.qty, role: 'component' }))],
+        need: bomNeed || [{ itemNo: kit.base.itemNo, qty: kit.base.qty, role: 'base' }, ...kit.components.map((c) => ({ itemNo: c.itemNo, qty: c.qty, role: 'component' }))],
         got: [], status: 'open', startedAt: this.now(), by: by || this._actor || 'operator', workOrderId: null, orderId: null,
       };
       if (workOrderId) {
@@ -952,11 +953,13 @@
         if (!content) throw new Error(`${holder.id} has no ${item.itemNo} left`);
         content.qty -= 1;
         this.recordMovement({ holder: holder.id, from: holder.loc, to: stationId, qty: 1, event: 'kitted', by: actor, note: `Kit ${job.kitId}` });
+        job._lot = content.batch || content.expiry ? { batch: content.batch || null, expiry: content.expiry || null } : job._lot;
       } else if (job.workOrderId) throw new Error('Scan the component license plate so stock is consumed');
-      job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role });
+      job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role, batch: job._lot ? job._lot.batch : null, expiry: job._lot ? job._lot.expiry : null });
       const done = job.need.every((n) => job.got.filter((g) => g.itemNo === n.itemNo).length >= n.qty);
       if (done && job.workOrderId && typeof this._advanceWorkOrder === 'function') this._advanceWorkOrder(job, actor);
       else if (done) job.status = 'done';
+      if (done && typeof this._bomFinish === 'function') this._bomFinish(job, actor);
       this.log(`${stationId}: scanned ${item.itemNo}${job.status === 'done' ? ', kit complete' : ''}`);
       return job;
     };
@@ -1311,6 +1314,13 @@
       return globalThis.SortedReports;
     }
 
+    function loadBom() {
+      if (typeof require === 'function') {
+        try { return require('./bom'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedBom;
+    }
+
     function loadAbc() {
       if (typeof require === 'function') {
         try { return require('./abc'); } catch (e) { /* browser */ }
@@ -1603,6 +1613,8 @@
     if (itemValue && itemValue.install) itemValue.install(Warehouse);
     const reports = loadReports();
     if (reports && reports.install) reports.install(Warehouse);
+    const bom = loadBom();
+    if (bom && bom.install) bom.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();

@@ -71,6 +71,7 @@ const PERMISSIONS = [
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
   ['etsy.manage', 'Connect Etsy shops and map SKUs'],
   ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
+  ['bom.write', 'Edit bills of materials and build kits'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -98,7 +99,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read', 'bom.write',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -270,6 +271,8 @@ const RULES = [
   ['POST', '/api/cartons/:id/pack', 'outbound.write'],
   ['POST', '/api/cartons/:id/close', 'outbound.write'],
   ['POST', '/api/work-orders', 'val.execute'],
+  ['POST', '/api/boms', 'bom.write'],
+  ['POST', '/api/boms/build', 'bom.write'],
   ['POST', '/api/pick-faces', 'putaway.execute'],
   ['GET', '/api/replenishment', 'stock.read'],
   ['POST', '/api/replenishment/plan', 'replenish.execute'],

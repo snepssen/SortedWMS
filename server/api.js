@@ -570,6 +570,8 @@
     on('GET', '/api/cartons/:id/slip.html', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().packingSlipHtml(decodeURIComponent(id)) }));
     on('POST', '/api/cartons/:id/close', ({ id }, q, b, by) => run('closeCarton', { carton: decodeURIComponent(id), ...b }, by));
     on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
+    on('POST', '/api/boms', (_, q, b, by) => run('setBom', b, by));
+    on('POST', '/api/boms/build', (_, q, b, by) => run('buildKit', b, by));
     on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));
     on('GET', '/api/replenishment', () => wh().replenishmentStatus().filter((r) => {
       const own = ownClient();
