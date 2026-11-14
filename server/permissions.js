@@ -70,6 +70,7 @@ const PERMISSIONS = [
   ['shopify.manage', 'Connect Shopify shops and map SKUs'],
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
   ['etsy.manage', 'Connect Etsy shops and map SKUs'],
+  ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -87,7 +88,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite', 'shopify.manage', 'woocommerce.manage', 'etsy.manage']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite', 'shopify.manage', 'woocommerce.manage', 'etsy.manage', 'sendcloud.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -406,6 +407,11 @@ const RULES = [
   ['POST', '/api/etsy/catalog', 'etsy.manage'],
   ['POST', '/api/etsy/stock', 'etsy.manage'],
   ['POST', '/api/etsy/connect', 'etsy.manage'],
+  ['GET', '/api/sendcloud', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/account', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

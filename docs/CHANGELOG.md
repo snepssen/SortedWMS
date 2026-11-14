@@ -1,5 +1,9 @@
 # Changelog
 
+## Sendcloud on the module list
+
+Sendcloud is in the core module list again, so its upgrade runs once and the registry tests match the modules on disk. The settings screen, the API, and the signed status webhook are wired on the server. A failed label still raises `shop.sync`.
+
 ## Shop sync alerts
 
 Alerts accept `shop.sync`. A failed Shopify, WooCommerce or Etsy sync raises one, and the next successful sync for that shop raises one recovery. The note is not held for the digest or for quiet hours. A client login does not see it. Sendcloud uses the same type for a label that could not be bought.
