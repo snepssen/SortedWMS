@@ -1535,6 +1535,22 @@
       if (data.password) target.password = data.password;
       return api('POST', '/api/offsite/settings', { target });
     }
+    if (name === 'shopify-shop') return api('POST', '/api/shopify/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
+    if (name === 'shopify-map') return api('POST', '/api/shopify/map', data);
+    if (name === 'shopify-sync') return api('POST', '/api/shopify/sync', data);
+    if (name === 'shopify-catalog') return api('POST', '/api/shopify/catalog', data);
+    if (name === 'woo-shop') return api('POST', '/api/woocommerce/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
+    if (name === 'woo-map') return api('POST', '/api/woocommerce/map', data);
+    if (name === 'woo-sync') return api('POST', '/api/woocommerce/sync', data);
+    if (name === 'woo-catalog') return api('POST', '/api/woocommerce/catalog', data);
+    if (name === 'etsy-shop') return api('POST', '/api/etsy/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
+    if (name === 'etsy-map') return api('POST', '/api/etsy/map', data);
+    if (name === 'etsy-sync') return api('POST', '/api/etsy/sync', data);
+    if (name === 'etsy-catalog') return api('POST', '/api/etsy/catalog', data);
+    if (name === 'sendcloud-account') return api('POST', '/api/sendcloud/account', data);
+    if (name === 'sendcloud-rule') return api('POST', '/api/sendcloud/rules', { ...data, minKg: Number(data.minKg), maxKg: Number(data.maxKg) });
+    if (name === 'sendcloud-label') return api('POST', '/api/sendcloud/label', data);
+    if (name === 'sendcloud-return') return api('POST', '/api/sendcloud/return', { ...data, weightKg: Number(data.weightKg || 1) });
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });

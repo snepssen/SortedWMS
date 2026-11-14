@@ -51,6 +51,8 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 - Orders and ASNs in: one intake, JSON or CSV, safe to send twice, the sender's reference carried through; and a drop folder.
 - Confirmations out: goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments, in a numbered log a system reads from where it left off, or pushed to it by signed webhooks or an outbox folder.
 - WooCommerce: processing orders in (webhook or poll, safe to send twice), SKU mapping, stock and tracking back. See [connectors/WOOCOMMERCE.md](connectors/WOOCOMMERCE.md).
+- Etsy: paid unshipped receipts in (poll, and an optional signed webhook), OAuth with PKCE back to this WMS, SKU mapping, stock and tracking back. See [connectors/ETSY.md](connectors/ETSY.md).
+- Sendcloud: a label from a packed shipment, carrier rules by client, country and weight, the PDF kept and a tracking line printed, tracking on the delivery note, signed status webhooks, return labels when Returns is on. See [connectors/SENDCLOUD.md](connectors/SENDCLOUD.md).
 
 ## Next
 
