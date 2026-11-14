@@ -54,6 +54,20 @@ test('documents use the warehouse local date and a client cannot read another st
   const ok = await api.handle('GET', '/api/documents/delivery-note/SO1', {}, 'office', null, { role: 'office' });
   assert.equal(ok.contentType, 'application/pdf');
   assert.match(ok.body.toString('latin1'), /^%PDF-1\.4/);
+  for (const kind of ['delivery-note', 'pick-list', 'packing-list']) {
+    const url = `/api/documents/${kind}/SO1`;
+    const denied = await api.handle('GET', url, {}, 'client-b', null, { role: 'client', clientId: 'CL-B' });
+    assert.equal(denied.status, 403, kind);
+    const missingClient = await api.handle('GET', url, {}, 'unbound-client', null, { role: 'client' });
+    assert.equal(missingClient.status, 403, kind);
+    const allowed = await api.handle('GET', url, {}, 'client-a', null, { role: 'client', clientId: 'CL-A' });
+    assert.equal(allowed.status, 200, kind);
+    assert.equal(allowed.contentType, 'application/pdf');
+    const office = await api.handle('GET', url, {}, 'office', null, { role: 'office' });
+    assert.equal(office.status, 200, kind);
+  }
+  const hiddenHtml = await api.handle('GET', '/api/orders/SO1/delivery-note', {}, 'client-b', null, { role: 'client', clientId: 'CL-B' });
+  assert.equal(hiddenHtml.status, 403);
   const labels = fs.readFileSync(path.join(__dirname, '..', 'src', 'labels.js'), 'utf8');
   assert.match(labels, /function shippingLabel/);
   assert.match(labels, /\^XA/);
