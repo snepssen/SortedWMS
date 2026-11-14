@@ -359,6 +359,8 @@
     'This is a test alert from SortedWMS.': 'Dit is een testmelding van SortedWMS.',
     'Backup failed: {summary}': 'Back-up mislukt: {summary}',
     'Shop sync: {summary}': 'Winkel-sync: {summary}',
+    'Bills of materials': 'Stuklijsten',
+    'Build kit': 'Kit bouwen',
     '{item} is at or below its reorder point: {available} available, reorder point {point}.': '{item} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
     '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} op {face} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
     '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} staat weer boven het bestelpunt: {available} beschikbaar, bestelpunt {point}.',

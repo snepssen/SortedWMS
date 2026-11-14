@@ -185,6 +185,8 @@
     setHolderSeries: (wh, a) => wh.setHolderSeries(req(a.series, 'series')),
     setTechnical: (wh, a) => wh.setTechnical(a.patch || a),
     addKit: (wh, a) => wh.addKit(a),
+    setBom: (wh, a) => wh.setBom(a),
+    buildKit: (wh, a, by) => wh.buildKit({ ...a, by }),
     addValStation: (wh, a) => wh.addValStation(a),
     startVal: (wh, a, by) => wh.startVal({ stationId: req(a.stationId, 'stationId'), workOrderId: a.workOrderId || null, by }),
     scanVal: (wh, a, by) => wh.scanVal({ stationId: req(a.stationId, 'stationId'), code: req(a.code, 'code'), by }),

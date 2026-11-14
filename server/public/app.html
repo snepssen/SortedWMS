@@ -1540,6 +1540,8 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'bom-save') return api('POST', '/api/boms', { itemNo: data.itemNo, lines: String(data.lines || '').split(',').map((part) => { const [itemNo, qty] = part.trim().split(/\s+/); return { itemNo, qty: Number(qty || 1) }; }).filter((line) => line.itemNo) });
+    if (name === 'bom-build') return api('POST', '/api/boms/build', { itemNo: data.itemNo, qty: Number(data.qty || 1), loc: data.loc });
     if (name === 'shopify-shop') return api('POST', '/api/shopify/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
     if (name === 'shopify-map') return api('POST', '/api/shopify/map', data);
     if (name === 'shopify-sync') return api('POST', '/api/shopify/sync', data);

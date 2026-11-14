@@ -36,6 +36,7 @@ test('core modules declare the manifest fields and the presets agree with the or
   }
   const maker = registry.presetModules('small-maker');
   assert.equal(maker.kitting, true);
+  assert.equal(registry.resolveChange(list, {}, { kitting: false }).kitting, false);
   assert.equal(maker.trucks, false);
   const described = registry.describe(null);
   assert.equal(described.find((mod) => mod.id === 'returns').label, 'Returns');
