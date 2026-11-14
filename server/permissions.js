@@ -64,6 +64,7 @@ const PERMISSIONS = [
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
   ['intake.write', 'Send orders and ASNs in from another system'],
+  ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -81,7 +82,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'woocommerce.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -366,6 +367,13 @@ const RULES = [
   ['GET', '/api/orders', 'orders.read'],
   ['GET', '/api/deliveries', 'inbound.read'],
   ['GET', '/api/stock', 'stock.read'],
+  ['GET', '/api/woocommerce', 'woocommerce.manage'],
+  ['GET', '/api/woocommerce/map/:id', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/shops', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/map', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/sync', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/catalog', 'woocommerce.manage'],
+  ['POST', '/api/woocommerce/stock', 'woocommerce.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

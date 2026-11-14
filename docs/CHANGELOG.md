@@ -1,5 +1,9 @@
 # Changelog
 
+## WooCommerce
+
+A warehouse can connect one or more WooCommerce shops, per client or for the whole building. Orders in status processing come in by a signed webhook or by polling, through the same intake as every other system, so sending one twice does not book it twice. Shop SKUs map to items, including a suggestion when the SKU or barcode already matches. Available stock (on hand minus allocated, held and reserved, then minus a per-shop buffer) is sent back, once per burst, and waits longer each time WooCommerce asks the warehouse to slow down. A shipped order is marked completed and its tracking number and carrier are written on the order. The consumer key, secret and webhook secret are saved beside the database and are never shown again. See [connectors/WOOCOMMERCE.md](connectors/WOOCOMMERCE.md).
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.

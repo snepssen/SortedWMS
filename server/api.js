@@ -167,7 +167,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null }) {
+  function createApi({ store, printers, hardware, backups = null, woo = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -684,6 +684,13 @@
       contentType: 'text/csv; charset=utf-8',
       raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
     }));
+    on('GET', '/api/woocommerce', () => (woo ? { ...woo.status(), mappings: null } : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('GET', '/api/woocommerce/map/:id', ({ id }) => (woo ? woo.mappings(id) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/shops', (_, q, b) => (woo ? woo.saveShop(b || {}) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/map', (_, q, b) => (woo ? woo.mapSku(b.shopId, b.sku, b.itemNo, b) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/sync', (_, q, b) => (woo ? woo.pull(b.shopId) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/catalog', (_, q, b) => (woo ? woo.pullProducts(b.shopId) : { status: 400, error: 'WooCommerce runs on the server' }));
+    on('POST', '/api/woocommerce/stock', () => (woo ? woo.flushStock() : { status: 400, error: 'WooCommerce runs on the server' }));
     on('GET', '/api/hardware', () => (hardware ? hardware.recent() : { settings: { scanner: 'wedge', printer: 'simulated' }, scans: [], jobs: [], printers: printers.list ? printers.list() : [], modes: { scanner: ['wedge', 'manual', 'simulated'], printer: ['simulated', 'network', 'browser'] } }));
     on('POST', '/api/hardware/mode', (_, q, b) => (hardware ? hardware.setMode(b) : { status: 400, error: 'Hardware service is not configured' }));
     on('POST', '/api/hardware/scan', async (_, q, b, by) => {
@@ -727,10 +734,10 @@
       try {
         const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
         // Asking a printer goes over the network: those routes answer with a promise.
-        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: 400, body: { error: e.message } }));
+        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: e.status || 400, body: { error: e.message } }));
         return answer(out);
       } catch (e) {
-        return { status: 400, body: { error: e.message } };
+        return { status: e.status || 400, body: { error: e.message } };
       }
     }
 

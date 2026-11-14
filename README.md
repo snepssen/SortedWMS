@@ -10,7 +10,7 @@ Every screen has a **Theme** picker: Auto (follows the device), Light or Dark. T
 
 A fresh warehouse has temperature zones, lot and expiry, FEFO and high-value PAL/MASTER plates turned off, and one category, General. A preset turns on what that kind of building uses; anything can be switched later.
 
-Other systems connect with an API key: they send orders and ASNs in (JSON, CSV, or files in a drop folder; safe to send twice) and get what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log, by reading it or by signed webhooks and an outbox folder. See [docs/CONNECTIONS.md](docs/CONNECTIONS.md).
+Other systems connect with an API key: they send orders and ASNs in (JSON, CSV, or files in a drop folder; safe to send twice) and get what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log, by reading it or by signed webhooks and an outbox folder. See [docs/CONNECTIONS.md](docs/CONNECTIONS.md). A WooCommerce shop can be connected as a module: [docs/connectors/WOOCOMMERCE.md](docs/connectors/WOOCOMMERCE.md).
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
