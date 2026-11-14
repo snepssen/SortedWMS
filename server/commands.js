@@ -81,6 +81,7 @@
 
     // Master data and imports
     addItem: (wh, a) => wh.addItem(a),
+    addItemPhoto: (wh, a) => wh.addItemPhoto(a),
     approveItem: (wh, a) => wh.approveItem(req(a.itemNo, 'itemNo')),
     importItems: (wh, a) => {
       let n = 0;

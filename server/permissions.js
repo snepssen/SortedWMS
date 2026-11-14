@@ -71,6 +71,8 @@ const PERMISSIONS = [
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
   ['etsy.manage', 'Connect Etsy shops and map SKUs'],
   ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
+  ['photos.read', 'See item photos'],
+  ['photos.write', 'Upload item photos'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -98,7 +100,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read', 'photos.read', 'photos.write',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -121,7 +123,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch', 'alerts.read',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read', 'photos.read', 'photos.write'],
 };
 
 // null permission means the route is public.
@@ -412,6 +414,9 @@ const RULES = [
   ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
+  ['GET', '/api/photos', 'photos.read'],
+  ['GET', '/api/items/:itemNo/photos/:id', 'photos.read'],
+  ['POST', '/api/items/:itemNo/photos', 'photos.write'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({
