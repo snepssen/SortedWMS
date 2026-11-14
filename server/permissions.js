@@ -67,7 +67,9 @@ const PERMISSIONS = [
   ['alerts.read', 'See low-stock alerts'],
   ['alerts.write', 'Change alert settings and send a test'],
   ['intake.write', 'Send orders and ASNs in from another system'],
+  ['shopify.manage', 'Connect Shopify shops and map SKUs'],
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
+  ['etsy.manage', 'Connect Etsy shops and map SKUs'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -85,7 +87,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite', 'shopify.manage', 'woocommerce.manage', 'etsy.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -382,6 +384,13 @@ const RULES = [
   ['GET', '/api/orders', 'orders.read'],
   ['GET', '/api/deliveries', 'inbound.read'],
   ['GET', '/api/stock', 'stock.read'],
+  ['GET', '/api/shopify', 'shopify.manage'],
+  ['GET', '/api/shopify/map/:id', 'shopify.manage'],
+  ['POST', '/api/shopify/shops', 'shopify.manage'],
+  ['POST', '/api/shopify/map', 'shopify.manage'],
+  ['POST', '/api/shopify/sync', 'shopify.manage'],
+  ['POST', '/api/shopify/catalog', 'shopify.manage'],
+  ['POST', '/api/shopify/stock', 'shopify.manage'],
   ['GET', '/api/woocommerce', 'woocommerce.manage'],
   ['GET', '/api/woocommerce/map/:id', 'woocommerce.manage'],
   ['POST', '/api/woocommerce/shops', 'woocommerce.manage'],
@@ -389,6 +398,14 @@ const RULES = [
   ['POST', '/api/woocommerce/sync', 'woocommerce.manage'],
   ['POST', '/api/woocommerce/catalog', 'woocommerce.manage'],
   ['POST', '/api/woocommerce/stock', 'woocommerce.manage'],
+  ['GET', '/api/etsy', 'etsy.manage'],
+  ['GET', '/api/etsy/map/:id', 'etsy.manage'],
+  ['POST', '/api/etsy/shops', 'etsy.manage'],
+  ['POST', '/api/etsy/map', 'etsy.manage'],
+  ['POST', '/api/etsy/sync', 'etsy.manage'],
+  ['POST', '/api/etsy/catalog', 'etsy.manage'],
+  ['POST', '/api/etsy/stock', 'etsy.manage'],
+  ['POST', '/api/etsy/connect', 'etsy.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

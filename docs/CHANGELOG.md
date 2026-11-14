@@ -1,5 +1,11 @@
 # Changelog
 
+## Shop sync alerts
+
+Alerts accept `shop.sync`. A failed Shopify, WooCommerce or Etsy sync raises one, and the next successful sync for that shop raises one recovery. The note is not held for the digest or for quiet hours. A client login does not see it. Sendcloud uses the same type for a label that could not be bought.
+
+The three shop connectors had left two copies of the tracking command, and the second copy had swallowed the alert command, so the server did not start. There is one tracking command again, and one hook after a command. The Dutch alert lines that the merge had dropped are back.
+
 ## Reorder list uses available stock
 
 `/api/alerts/low-stock` and its CSV use the same available-stock check as the alerts: on hand minus allocated, held and reserved. The list and the CSV show both on hand and available. An item can now appear while stock is still in the building, if enough of it is already allocated, held or reserved. Previously the list compared on-hand stock only.

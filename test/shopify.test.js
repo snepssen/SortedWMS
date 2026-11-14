@@ -56,11 +56,9 @@ test('a Shopify webhook signature must match, and the same order is imported onc
   assert.equal(verifyWebhook(raw, 'nope', SECRET), false);
   const { store, shopify } = world();
   const seen = [];
-  const stop = registry.register({
-    id: 'alerts', name: 'Alerts', description: 'stub', version: 1,
-    upgrades: [{ version: 1, id: 'alerts-stub', up() {} }],
-    raise(s, event) { seen.push(event); },
-  });
+  const alertsMod = registry.get('alerts');
+  const previousRaise = alertsMod.raise;
+  alertsMod.raise = (s, event) => { seen.push(event); };
   try {
     store.wh.setModules({ alerts: true, shopify: true, connections: true });
     assert.throws(() => shopify.acceptWebhook('demo', raw, 'nope'), /signature/i);
@@ -79,7 +77,7 @@ test('a Shopify webhook signature must match, and the same order is imported onc
     const maps = shopify.mappings('demo');
     assert.equal(maps.find((m) => m.sku === 'MUG').itemNo, 'MUG');
     assert.equal(maps.find((m) => m.sku === 'OTHER').itemNo, 'MUG');
-  } finally { stop(); store.close(); }
+  } finally { alertsMod.raise = previousRaise; store.close(); }
 });
 
 test('stock pushes the available quantity minus the buffer, once per burst, and backs off when told', async () => {

@@ -18,7 +18,7 @@ const { DEFAULTS } = require('./permissions');
 const { belowReorder } = require('../src/operations');
 
 const DAY = 86400000;
-const KINDS = ['stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'];
+const KINDS = ['stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test', 'shop.sync'];
 
 function zoneFormat(timeZone) {
   try {
@@ -111,6 +111,7 @@ function sentence(lang, key, vars) {
 
 function describe(lang, event) {
   if (event.type === 'backup.failed') return sentence(lang, 'Backup failed: {summary}', event);
+  if (event.type === 'shop.sync') return sentence(lang, 'Shop sync: {summary}', event);
   if (event.type === 'alert.test') return sentence(lang, 'This is a test alert from SortedWMS.', event);
   if (event.type === 'stock.digest') return event.summary || sentence(lang, 'Low-stock digest', event);
   const face = event.face ? sentence(lang, '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.', { item: event.name || event.itemNo, face: event.face, available: event.available, point: event.reorderPoint }) : '';
@@ -434,7 +435,7 @@ function createAlerts({ store, secretsFile = undefined, env = process.env, log =
 
   function holdOrSend(event) {
     const cfg = readConfig();
-    const immediate = event.type === 'backup.failed' || event.type === 'alert.test';
+    const immediate = event.type === 'backup.failed' || event.type === 'alert.test' || event.type === 'shop.sync';
     if (!immediate && cfg.mode === 'digest') { enqueue(event, 'digest'); return; }
     if (!immediate && inQuiet(cfg, clock(), timeZone())) { enqueue(event, 'quiet'); return; }
     return dispatch(event);
@@ -621,7 +622,7 @@ function createAlerts({ store, secretsFile = undefined, env = process.env, log =
     const view = publicConfig(actor);
     view.last = sent(1)[0] || null;
     view.sent = actor && actor.role === 'client' ? sent(20).filter((row) => !row.recipient || row.summary) : sent(20);
-    if (actor && actor.role === 'client') view.sent = sent(20).filter((row) => row.kind !== 'backup.failed');
+    if (actor && actor.role === 'client') view.sent = sent(20).filter((row) => row.kind !== 'backup.failed' && row.kind !== 'shop.sync');
     view.inbox = actor ? inbox(actor) : { unread: [] };
     return view;
   }

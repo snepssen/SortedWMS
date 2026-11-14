@@ -157,14 +157,9 @@ test('a failed backup is journaled and raised only when alerts is on', async () 
   fs.writeFileSync(blocker, 'x');
   const store = new Store({ site });
   const seen = [];
-  const stop = registry.register({
-    id: 'alerts',
-    name: 'Alerts',
-    description: 'Stub for the off-site failure hook',
-    version: 1,
-    upgrades: [{ version: 1, id: 'alerts-stub', up() {} }],
-    raise(s, event) { seen.push(event); },
-  });
+  const alertsMod = registry.get('alerts');
+  const previousRaise = alertsMod.raise;
+  alertsMod.raise = (s, event) => { seen.push(event); };
   try {
     const offsite = createOffsite({ store, secretsFile: path.join(dir, 'secrets.json'), env: { SORTED_BACKUP_PASSPHRASE: PASSPHRASE }, log() {} });
     offsite.save({ target: { id: 'bad', kind: 'folder', path: path.join(blocker, 'backups') } });
@@ -179,7 +174,7 @@ test('a failed backup is journaled and raised only when alerts is on', async () 
     await assert.rejects(offsite.run('admin'));
     assert.equal(seen.length, 1, 'alerts is off, so the failure stays in the journal only');
   } finally {
-    stop();
+    alertsMod.raise = previousRaise;
     store.close();
   }
 });

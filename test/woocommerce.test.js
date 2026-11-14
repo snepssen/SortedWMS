@@ -60,11 +60,9 @@ test('a WooCommerce webhook signature must match, and the same order is imported
   assert.equal(verifyWebhook(raw, 'nope', HOOK), false);
   const { store, woo } = world();
   const seen = [];
-  const stop = registry.register({
-    id: 'alerts', name: 'Alerts', description: 'stub', version: 1,
-    upgrades: [{ version: 1, id: 'alerts-stub', up() {} }],
-    raise(s, event) { seen.push(event); },
-  });
+  const alertsMod = registry.get('alerts');
+  const previousRaise = alertsMod.raise;
+  alertsMod.raise = (s, event) => { seen.push(event); };
   try {
     store.wh.setModules({ alerts: true, woocommerce: true, connections: true });
     assert.throws(() => woo.acceptWebhook('demo', raw, 'nope'), /signature/i);
@@ -86,7 +84,7 @@ test('a WooCommerce webhook signature must match, and the same order is imported
     assert.equal(maps.find((m) => m.sku === 'MUG').itemNo, 'MUG');
     assert.equal(maps.find((m) => m.sku === 'OTHER').itemNo, 'MUG');
   } finally {
-    stop();
+    alertsMod.raise = previousRaise;
     store.close();
   }
 });

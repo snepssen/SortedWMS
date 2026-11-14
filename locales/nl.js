@@ -346,6 +346,23 @@
     'Remove old plain copies': 'Oude gewone kopieën weghalen',
     'An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.': 'Een versleutelde back-up is gecontroleerd. U kunt de gewone dagelijkse kopie uitzetten, of een lokale kopie houden die met hetzelfde wachtwoord is versleuteld.',
     'The plain daily copy stays on until an encrypted target has one verified backup.': 'De gewone dagelijkse kopie blijft aan tot een versleutelde bestemming één gecontroleerde back-up heeft.',
+    'Alerts': 'Meldingen',
+    'Send test': 'Test versturen',
+    'Save alerts': 'Meldingen opslaan',
+    'Subscribe': 'Aanmelden',
+    'Stop alerts': 'Meldingen stoppen',
+    'Mark read': 'Gelezen',
+    'As it happens': 'Meteen',
+    'Daily digest': 'Dagelijks overzicht',
+    'No unread alerts.': 'Geen ongelezen meldingen.',
+    'Low-stock digest': 'Overzicht lage voorraad',
+    'This is a test alert from SortedWMS.': 'Dit is een testmelding van SortedWMS.',
+    'Backup failed: {summary}': 'Back-up mislukt: {summary}',
+    'Shop sync: {summary}': 'Winkel-sync: {summary}',
+    '{item} is at or below its reorder point: {available} available, reorder point {point}.': '{item} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} op {face} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} staat weer boven het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).': 'Herinnering: {item} staat nog op of onder het bestelpunt ({available} beschikbaar, bestelpunt {point}).',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.nl = dict; }
