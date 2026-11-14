@@ -629,7 +629,24 @@
       if (!order) return { status: 404, error: `No order ${id}` };
       return order.shipment || { status: 404, error: 'No shipment' };
     });
-    on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
+    const orderDocument = (id, format) => {
+      const order = wh().orders[decodeURIComponent(id)];
+      if (!order) return { status: 404, error: 'No order' };
+      const own = ownClient();
+      if (own != null && order.clientId !== own) return { status: 403, error: 'A client can only see its own order documents' };
+      if (format === 'html') return { contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(order.id) };
+      return { contentType: 'application/pdf', raw: require('./documents')[format](wh(), order.id) };
+    };
+    on('GET', '/api/orders/:id/delivery-note', ({ id }) => orderDocument(id, 'html'));
+    on('GET', '/api/documents/delivery-note/:id', ({ id }) => orderDocument(id, 'deliveryNote'));
+    on('GET', '/api/documents/pick-list/:id', ({ id }) => orderDocument(id, 'pickList'));
+    on('GET', '/api/documents/packing-list/:id', ({ id }) => orderDocument(id, 'packingList'));
+    on('GET', '/api/documents/statement/:clientId', ({ clientId }, q) => {
+      const id = decodeURIComponent(clientId);
+      const own = ownClient();
+      if (own && own !== id.toUpperCase()) return { status: 403, error: 'A client can only see its own statement' };
+      return { contentType: 'application/pdf', raw: require('./documents').statement(wh(), id, { from: q.from || null, to: q.to || null }) };
+    });
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
     on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
