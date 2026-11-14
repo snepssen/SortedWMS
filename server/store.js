@@ -236,6 +236,12 @@ class Store {
     try { this.afterCommand(op); } catch (e) { /* the stock change stands */ }
   }
 
+  _after(op) {
+    if (op === 'noteTracking' || op === 'enableDemandReplenishment') return;
+    if (typeof this.afterCommand !== 'function') return;
+    try { this.afterCommand(op); } catch (e) { /* a connector must not undo the command */ }
+  }
+
   _journal(t, op, args, by) {
     const r = this._insert.run(t, op, JSON.stringify(args), by);
     this.lastId = Number(r.lastInsertRowid);

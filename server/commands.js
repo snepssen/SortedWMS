@@ -213,6 +213,13 @@
     addCategory: (wh, a) => wh.addCategory({ code: req(a.code, 'code'), name: a.name }),
     setModules: (wh, a) => wh.setModules(a.modules || a, { enableDependencies: Boolean(a.enableDependencies), disableDependents: Boolean(a.disableDependents) }),
     setModuleSettings: (wh, a) => wh.setModuleSettings(req(a.id, 'id'), a.settings || a.patch || {}),
+    noteTracking: (wh, a) => {
+      const order = wh.orders[String(req(a.orderId, 'orderId'))];
+      if (!order) throw new Error(`Unknown order ${a.orderId}`);
+      if (a.tracking) order.tracking = String(a.tracking).slice(0, 80);
+      if (a.trackingUrl) order.trackingUrl = String(a.trackingUrl).slice(0, 300);
+      if (a.carrier) order.carrierName = String(a.carrier).slice(0, 80);
+      return { id: order.id, tracking: order.tracking || null, trackingUrl: order.trackingUrl || null, carrier: order.carrierName || null };
     recordAlert: (wh, a) => {
       const type = String(a.type || '');
       if (!['stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'].includes(type)) throw new Error('Unknown alert');

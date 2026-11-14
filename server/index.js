@@ -62,6 +62,13 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     req.on('end', () => {
       let body;
       try { body = raw ? JSON.parse(raw) : {}; } catch (e) { return send(400, { error: 'Body is not JSON' }); }
+      if (shopify && req.method === 'POST' && url.pathname.startsWith('/api/shopify/webhook/')) {
+        const denied = registry.denial(store.wh, 'POST', url.pathname);
+        if (denied) return send(denied.status, denied.body);
+        const id = decodeURIComponent(url.pathname.split('/')[4] || '');
+        try { return send(200, shopify.acceptWebhook(id, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))); }
+        catch (e) { return send(e.status || 400, { error: e.message }); }
+      }
       const sharedOk = Boolean(token) && (req.headers['x-token'] === token || url.searchParams.get('token') === token);
       const sessionUser = auth ? auth.userFromRequest(req) : null;
       const access = permissionFor(req.method, url.pathname);
@@ -304,7 +311,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
 
       const requestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']).slice(0, 80) : null;
-      Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor)).then((out) => {
+      Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))).then((out) => {
         if (out.contentType) return send(out.status, out.body, out.contentType);
         send(out.status, out.body);
       });
@@ -348,6 +355,16 @@ function main() {
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
+  const shopify = require('./shopify').createShopify({ store, log: (line) => console.log(line) });
+  const previousAfter = store.afterCommand;
+  store.afterCommand = (op) => {
+    if (typeof previousAfter === 'function') previousAfter(op);
+    try { shopify.onCommand(op); } catch (e) { console.error('Shopify', e.message); }
+  };
+  const stopShopify = shopify.start();
+  const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
+  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, shopify });
   const alerts = require('./alerts').createAlerts({ store, log: (line) => console.log(line) });
   store.afterCommand = (op) => {
     if (store.wh && store.wh.module && !store.wh.module('alerts')) return;

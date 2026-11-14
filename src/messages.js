@@ -92,7 +92,8 @@
       const serials = this.serialsForOrder ? this.serialsForOrder(order.id).map((s) => ({ sn: s.sn, itemNo: s.itemNo, on: s.carton })) : [];
       this._emit('order.shipped', {
         orderId: order.id, ref: order.ref || null, customer: order.customer, lane: order.lane,
-        carrier: shipment.truck || null, trailer: shipment.trailer || null, seal: shipment.seal || null,
+        carrier: order.carrierName || shipment.truck || null, trailer: shipment.trailer || null, seal: shipment.seal || null,
+        tracking: order.tracking || null, trackingUrl: order.trackingUrl || null,
         shippedAt: iso(order.shippedAt || this.now()), lines, pallets, cartons, ...(serials.length ? { serials } : {}),
       }, order.clientId);
     };
