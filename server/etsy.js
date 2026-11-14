@@ -140,8 +140,10 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
   }
   function journal(shopId, ok, action, summary) {
     const safe = redact(summary);
+    const prev = shopId ? store.db.prepare('SELECT ok FROM etsy_log WHERE shop_id = ? ORDER BY id DESC LIMIT 1').get(shopId) : null;
     store.db.prepare('INSERT INTO etsy_log (site, shop_id, t, ok, action, summary) VALUES (?, ?, ?, ?, ?, ?)').run(siteId(), shopId, clock(), ok ? 1 : 0, action, safe);
     if (!ok) raise(safe);
+    else if (prev && !prev.ok) raise(`Recovered: ${safe}`);
     return { ok: Boolean(ok), action, summary: safe };
   }
   function raise(summary) {

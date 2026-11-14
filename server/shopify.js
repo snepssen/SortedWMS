@@ -151,8 +151,10 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
   }
   function journal(shopId, ok, action, summary) {
     const safe = redact(summary).slice(0, 500);
+    const prev = shopId ? store.db.prepare('SELECT ok FROM shopify_log WHERE shop_id = ? ORDER BY id DESC LIMIT 1').get(shopId) : null;
     store.db.prepare('INSERT INTO shopify_log (site, shop_id, t, ok, action, summary) VALUES (?, ?, ?, ?, ?, ?)').run(siteId(), shopId || null, clock(), ok ? 1 : 0, action, safe);
     if (!ok) raise(safe);
+    else if (prev && !prev.ok) raise(`Recovered: ${safe}`);
     return safe;
   }
   function raise(summary) {

@@ -26,7 +26,7 @@ Everything that is sent is written to the alert log on the Alerts page.
 
 ## Digest and quiet hours
 
-**As it happens** sends at the moment the level crosses. **Daily digest** holds the stock alerts and sends one message at a time of day in the warehouse timezone, including daylight saving. Quiet hours (for example 22:00 to 06:00, local) hold instant alerts until the window ends. A test message and a backup failure are not held.
+**As it happens** sends at the moment the level crosses. **Daily digest** holds the stock alerts and sends one message at a time of day in the warehouse timezone, including daylight saving. Quiet hours (for example 22:00 to 06:00, local) hold instant alerts until the window ends. A test message, a backup failure and a shop sync note are not held.
 
 ## Who receives them
 
@@ -35,3 +35,7 @@ Warehouse addresses get every alert. Each client has its own addresses, and a cl
 ## Backup failures
 
 When the off-site backups module is also on, a failed backup calls `alerts.raise` with `{ type: 'backup.failed', summary, site, at }`. The summary does not contain the passphrase or target credentials. The same channels send it, and it is journaled.
+
+## Shop sync
+
+Shopify, WooCommerce and Etsy call `alerts.raise` with `{ type: 'shop.sync', summary, site, at }` when a sync fails. The next successful sync for that shop sends one recovery, with the summary starting `Recovered:`. The note is not held for the digest or for quiet hours, and a client login does not see it. Sendcloud uses the same type for a label that could not be bought, once that module is on.

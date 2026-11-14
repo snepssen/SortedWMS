@@ -1,8 +1,10 @@
 # Changelog
 
-## Sendcloud
+## Shop sync alerts
 
-A packed order can buy a Sendcloud label. The weight and size come from the closed cartons. A rule picks the carrier and service from the client, the destination country and the weight. The label PDF is kept beside the database, and a short tracking label is sent to the existing print queue. The tracking number, carrier and URL are stored on the order, so the delivery note shows them and a shop connector can send them when the order ships. Parcel status webhooks are checked with `Sendcloud-Signature`. The same status sent twice is ignored. A return label is available when the Returns module is on. The API keys are saved beside the database and are never shown again. See [connectors/SENDCLOUD.md](connectors/SENDCLOUD.md).
+Alerts accept `shop.sync`. A failed Shopify, WooCommerce or Etsy sync raises one, and the next successful sync for that shop raises one recovery. The note is not held for the digest or for quiet hours. A client login does not see it. Sendcloud uses the same type for a label that could not be bought.
+
+The three shop connectors had left two copies of the tracking command, and the second copy had swallowed the alert command, so the server did not start. There is one tracking command again, and one hook after a command. The Dutch alert lines that the merge had dropped are back.
 
 ## Reorder list uses available stock
 

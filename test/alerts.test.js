@@ -263,6 +263,24 @@ test('a backup failure is raised on the alert channel, and the password stays ou
   w.store.close();
 });
 
+test('a shop sync error and the following recovery are both alerts', () => {
+  const w = world();
+  w.store.exec('setModules', { alerts: true }, 'office');
+  const mod = require('../modules/alerts');
+  const failed = mod.raise(w.store, { type: 'shop.sync', summary: 'Signature did not match', site: 'MAIN' });
+  assert.equal(failed.sent, true);
+  const row = w.store.db.prepare("SELECT kind, summary FROM alert_sent WHERE kind = 'shop.sync' ORDER BY id DESC LIMIT 1").get();
+  assert.match(row.summary, /Shop sync: Signature did not match/);
+  const recovered = mod.raise(w.store, { type: 'shop.sync', summary: 'Recovered: Imported 1, already had 0, skipped 0', site: 'MAIN' });
+  assert.equal(recovered.sent, true);
+  const notes = w.store.db.prepare("SELECT summary FROM alert_sent WHERE kind = 'shop.sync' ORDER BY id").all().map((row) => row.summary);
+  assert.ok(notes.some((summary) => /Signature did not match/.test(summary)));
+  assert.ok(notes.some((summary) => /Recovered/.test(summary)));
+  const client = w.alerts.status({ role: 'client', id: 2, clientId: 'CL-A', permissions: ['alerts.read'] });
+  assert.equal(client.sent.some((row) => row.kind === 'shop.sync'), false);
+  w.store.close();
+});
+
 test('the reorder list and its csv use available stock and show on hand beside it', async () => {
   const { belowReorder } = require('../src/operations');
   const w = world();
