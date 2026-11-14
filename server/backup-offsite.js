@@ -859,21 +859,24 @@ function decodeXml(value) {
 
 function copyDatabase(store, file) {
   const src = new DatabaseSync(file, { readOnly: true });
-  const names = ['meta', 'journal', 'snapshots', 'extra_sites', 'extra_journal', 'sessions', 'role_permissions', 'users', 'upgrade_log', 'module_settings', 'auth_audit', 'webhooks', 'offsite_config', 'offsite_runs'];
+  const sourceTables = src.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+  const destinationTables = store.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+  const names = new Set([...sourceTables.map((t) => t.name), ...destinationTables.map((t) => t.name)]);
+  const quote = (name) => '"' + name.replace(/"/g, '""') + '"';
   const db = store.db;
   db.exec('BEGIN');
   try {
     for (const name of names) {
       const dest = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
       const from = src.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-      if (!dest) continue;
-      db.exec(`DELETE FROM ${name}`);
+      if (!dest && from) db.exec(sourceTables.find((t) => t.name === name).sql);
+      db.exec(`DELETE FROM ${quote(name)}`);
       if (!from) continue;
-      const rows = src.prepare(`SELECT * FROM ${name}`).all();
+      const rows = src.prepare(`SELECT * FROM ${quote(name)}`).all();
       if (!rows.length) continue;
-      const have = new Set(db.prepare(`PRAGMA table_info(${name})`).all().map((col) => col.name));
+      const have = new Set(db.prepare(`PRAGMA table_info(${quote(name)})`).all().map((col) => col.name));
       const cols = Object.keys(rows[0]).filter((col) => have.has(col));
-      const stmt = db.prepare(`INSERT INTO ${name} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
+      const stmt = db.prepare(`INSERT INTO ${quote(name)} (${cols.map(quote).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
       for (const row of rows) stmt.run(...cols.map((col) => row[col]));
     }
     db.exec('COMMIT');

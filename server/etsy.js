@@ -6,6 +6,9 @@
  */
 'use strict';
 
+const { createShopWorker } = require('./shop-worker');
+const { shopPages } = require('./shop-pages');
+
 const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
@@ -107,7 +110,7 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
   let stockTimer = null;
 
   function siteId() { return store.siteId || 'MAIN'; }
-  function warehouse() { return store.wh; }
+  function warehouse() { return store.warehouse(siteId()); }
   function loadSecrets() {
     if (!secretsPath) return { shops: { ...(memorySecrets.shops || {}) }, pending: { ...(memorySecrets.pending || {}) } };
     if (!fs.existsSync(secretsPath)) return { shops: {}, pending: {} };
@@ -176,6 +179,8 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
 
   function saveShop(input = {}) {
     const id = String(input.id || '').trim().toLowerCase();
+    const existingSite = store.db.prepare('SELECT site FROM etsy_shops WHERE id = ?').get(id);
+    if (existingSite && existingSite.site !== siteId()) throw new Error('That shop ID belongs to another warehouse');
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) throw new Error('A shop id uses lowercase letters, digits or hyphens');
     const etsyShopId = String(input.etsyShopId || input.shopId || '').trim();
     if (!/^\d{1,20}$/.test(etsyShopId)) throw new Error('The Etsy shop id is the number from the shop URL');
@@ -230,7 +235,14 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
     return { url: url.toString() };
   }
 
-  async function finishConnect({ code, state } = {}) {
+  async function finishConnect(args = {}) {
+    const pending = loadSecrets().pending[String(args.state || '')];
+    const shop = pending && store.db.prepare('SELECT site FROM etsy_shops WHERE id = ?').get(pending.shopId);
+    if (!shop) throw new Error('That Etsy sign-in has expired. Start it again.');
+    return store._withSite(shop.site, () => finishConnectHere(args));
+  }
+
+  async function finishConnectHere({ code, state } = {}) {
     const secrets = loadSecrets();
     const pending = secrets.pending[String(state || '')];
     if (!pending || clock() - pending.created > 15 * 60 * 1000) throw new Error('That Etsy sign-in has expired. Start it again.');
@@ -329,7 +341,7 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
     writeSecrets(secrets);
   }
 
-  async function callShop(shop, pathName, { method = 'GET', json = null, form = null } = {}) {
+  async function callShop(shop, pathName, { method = 'GET', json = null, form = null, response = false } = {}) {
     let sec = secretOf(shop.id);
     if (!sec.accessToken) throw new Error('Connect the Etsy shop first');
     if (sec.expiresAt && sec.expiresAt < clock() + 60000) {
@@ -349,16 +361,18 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
     const res = await withBackoff(run, { sleep, onWait: (wait) => journal(shop.id, false, 'rate-limit', `Waiting ${wait} ms`) });
     if (res.status < 200 || res.status >= 300) throw new Error(`Etsy answered HTTP ${res.status}`);
     const text = Buffer.isBuffer(res.body) ? res.body.toString('utf8') : String(res.body || '');
-    return text ? JSON.parse(text) : {};
+    const data = text ? JSON.parse(text) : {};
+    return response ? { data, headers: res.headers } : data;
   }
 
   async function pull(shopId) {
     const shop = shopOrThrow(shopId);
     try {
-      const page = await callShop(shop, `/shops/${shop.etsy_shop_id}/receipts?was_paid=true&was_shipped=false&limit=50`);
-      const receipts = page.results || [];
       let created = 0; let duplicate = 0; let skipped = 0;
-      for (const receipt of receipts) {
+      for await (const receipts of shopPages({
+        load: (path) => callShop(shop, path, { response: true }), path: `/shops/${shop.etsy_shop_id}/receipts?was_paid=true&was_shipped=false&limit=50`,
+        rows: (data) => data.results || [], mode: 'offset',
+      })) for (const receipt of receipts) {
         const result = takeOrder(shop, receipt);
         if (result.status === 'created') created++;
         else if (result.status === 'duplicate') duplicate++;
@@ -373,12 +387,13 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
 
   async function pullProducts(shopId) {
     const shop = shopOrThrow(shopId);
-    const page = await callShop(shop, `/shops/${shop.etsy_shop_id}/listings/active?limit=50`);
-    const listings = page.results || [];
     let n = 0;
     const stmt = store.db.prepare(`INSERT INTO etsy_catalog (shop_id, sku, title, barcode, listing_id, product_id) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(shop_id, sku) DO UPDATE SET title = excluded.title, barcode = excluded.barcode, listing_id = excluded.listing_id, product_id = excluded.product_id`);
-    for (const listing of listings) {
+    for await (const listings of shopPages({
+      load: (path) => callShop(shop, path, { response: true }), path: `/shops/${shop.etsy_shop_id}/listings/active?limit=50`,
+      rows: (data) => data.results || [], mode: 'offset',
+    })) for (const listing of listings) {
       let products = (listing.inventory && listing.inventory.products) || listing.products || [];
       if (!products.length) {
         const inv = await callShop(shop, `/listings/${listing.listing_id}/inventory`);
@@ -414,14 +429,38 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
 
   function queueStock(itemNo) {
     if (!warehouse().items[itemNo]) return;
-    pendingStock.set(itemNo, true);
+    const site = siteId();
+    const items = pendingStock.get(site) || new Set();
+    items.add(itemNo);
+    pendingStock.set(site, items);
     if (stockTimer) return;
     stockTimer = schedule(() => { stockTimer = null; return flushStock().catch((e) => log(redact(e.message))); }, debounceMs);
   }
 
-  async function flushStock() {
-    const items = [...pendingStock.keys()];
+  let stockFlushing = null;
+  function flushStock() {
+    if (stockFlushing) return stockFlushing;
+    stockFlushing = flushBatches().finally(() => { stockFlushing = null; });
+    return stockFlushing;
+  }
+
+  async function flushBatches() {
+    const batches = [...pendingStock];
     pendingStock.clear();
+    let failure = null;
+    for (const [site, items] of batches) {
+      try { await store._withSite(site, () => flushStockItems([...items])); }
+      catch (e) {
+        const waiting = pendingStock.get(site) || new Set();
+        for (const item of items) waiting.add(item);
+        pendingStock.set(site, waiting);
+        failure = e;
+      }
+    }
+    if (failure) throw failure;
+  }
+
+  async function flushStockItems(items) {
     for (const shop of shops()) {
       if (!shop.active) continue;
       const byListing = new Map();
@@ -462,6 +501,15 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
   }
 
   function acceptWebhook(shopId, raw, header) {
+    const shop = store.db.prepare('SELECT site FROM etsy_shops WHERE id = ?').get(String(shopId));
+    if (!shop) throw new Error('Unknown shop');
+    return store._withSite(shop.site, () => {
+      if (!warehouse().module('etsy')) throw new Error('The shop connector is switched off');
+      return acceptWebhookHere(shopId, raw, header);
+    });
+  }
+
+  function acceptWebhookHere(shopId, raw, header) {
     const shop = shopOrThrow(shopId);
     const sec = secretOf(shop.id);
     if (!verifyWebhook(raw, header, sec.webhookSecret)) {
@@ -484,38 +532,19 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
   }
 
   function onCommand(op) {
-    if (op === 'intake' || op === 'noteTracking' || op === 'enableDemandReplenishment') return;
+    if (op === 'noteTracking' || op === 'enableDemandReplenishment') return;
     const wh = warehouse();
     if (!wh || typeof wh.module === 'function' && !wh.module('etsy')) return;
     for (const itemNo of Object.keys(wh.items || {})) queueStock(itemNo);
   }
 
-  function start() {
-    const timer = setInterval(() => {
-      for (const shop of shops()) {
-        if (!shop.active || !secretOf(shop.id).accessToken) continue;
-        const key = `poll:${shop.id}`;
-        const row = store.db.prepare('SELECT value FROM etsy_meta WHERE site = ? AND key = ?').get(siteId(), key);
-        const last = row ? Number(row.value) : 0;
-        if (clock() - last < shop.poll_minutes * 60000) continue;
-        store.db.prepare('INSERT INTO etsy_meta (site, key, value) VALUES (?, ?, ?) ON CONFLICT(site, key) DO UPDATE SET value = excluded.value').run(siteId(), key, String(clock()));
-        pull(shop.id).catch((e) => log(redact(e.message)));
-      }
-      const wh = warehouse();
-      if (!wh || typeof wh.messageLog !== 'function') return;
-      const cursorKey = 'message-cursor';
-      const cur = store.db.prepare('SELECT value FROM etsy_meta WHERE site = ? AND key = ?').get(siteId(), cursorKey);
-      let after = cur ? Number(cur.value) : 0;
-      const page = wh.messageLog({ after, limit: 100, type: 'order.shipped' });
-      for (const message of page.messages) pushFulfilment(message).catch((e) => journal(null, false, 'fulfil', e.message));
-      if (page.next && page.next !== after) store.db.prepare('INSERT INTO etsy_meta (site, key, value) VALUES (?, ?, ?) ON CONFLICT(site, key) DO UPDATE SET value = excluded.value').run(siteId(), cursorKey, String(page.next));
-    }, 15000);
-    if (timer.unref) timer.unref();
-    return () => clearInterval(timer);
-  }
+  const worker = createShopWorker({ store, connector: 'etsy', metaTable: 'etsy_meta',
+    shops, pull, deliver: pushFulfilment, journal, now: clock });
+  const start = worker.start;
+
 
   return {
-    status, saveShop, mapSku, mappings, pull, pullProducts, takeOrder, acceptWebhook, flushStock, queueStock, pushFulfilment, onCommand, start, beginConnect, finishConnect,
+    run: worker.run, status, saveShop, mapSku, mappings, pull, pullProducts, takeOrder, acceptWebhook, flushStock, queueStock, pushFulfilment, onCommand, start, beginConnect, finishConnect,
     _setSchedule(fn) { schedule = fn; },
   };
 }

@@ -81,3 +81,5 @@ A new machine does not have the saved passphrase. Set `SORTED_BACKUP_PASSPHRASE`
 A failed run is written to the off-site log and to the audit log. The text does not include the passphrase or credentials. The page shows the last failure.
 
 When the **Alerts** module is installed and switched on, the same failure calls `alerts.raise` with `{ type: 'backup.failed', summary, site, at }`. The summary is the same redacted text. If Alerts is missing or switched off, the failure is still journaled and nothing else is sent.
+
+Restore copies module tables as well as warehouse history, including shop mappings, queued shipment updates and alert state. Tables added after the backup have their rows cleared. A module table present only in the backup is recreated before its rows are restored.

@@ -112,6 +112,11 @@ test('a folder target uploads, prunes, and restores, and the passphrase stays ou
     testDecrypt: true,
     target: { id: 'nas', kind: 'folder', path: folder },
   });
+  const moduleTables = ['shopify_meta', 'woo_meta', 'etsy_meta', 'alert_meta', 'restore_extension'];
+  for (const table of moduleTables) {
+    store.db.exec(`CREATE TABLE IF NOT EXISTS ${table} (site TEXT, key TEXT, value TEXT, PRIMARY KEY(site, key))`);
+    store.db.prepare(`INSERT INTO ${table} VALUES (?, ?, ?)`).run('MAIN', 'restore-check', 'at-backup');
+  }
   const made = await offsite.run('admin');
   assert.equal(made.file, 'sorted-2026-01-15-120000.db.enc');
   assert.equal(fs.existsSync(path.join(folder, 'sorted-2020-01-01-000000.db.enc')), false, 'the old daily copy is pruned');
@@ -138,7 +143,13 @@ test('a folder target uploads, prunes, and restores, and the passphrase stays ou
   const before = store.wh.config.aisleCap;
   store.exec('setConfig', { patch: { aisleCap: 9 } }, 'admin');
   assert.equal(store.wh.config.aisleCap, 9);
+  for (const table of moduleTables) store.db.prepare(`UPDATE ${table} SET value = ? WHERE key = ?`).run('after-backup', 'restore-check');
+  store.db.exec('DROP TABLE etsy_meta');
+  store.db.exec('CREATE TABLE later_module (id INTEGER PRIMARY KEY); INSERT INTO later_module VALUES (1)');
   const restored = await offsite.restore({ targetId: 'nas', name: made.file });
+  for (const table of moduleTables) assert.equal(store.db.prepare(`SELECT value FROM ${table} WHERE key = ?`).get('restore-check').value, 'at-backup');
+  assert.equal(store.db.prepare('SELECT count(*) AS n FROM later_module').get().n, 0);
+
   assert.equal(store.wh.config.aisleCap, before);
   assert.ok(restored.lines.some((line) => /Data upgrades/.test(line)));
   assert.equal(JSON.stringify(restored).includes(PASSPHRASE), false);
