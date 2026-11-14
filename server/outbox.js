@@ -20,7 +20,7 @@ const { createHmac, randomBytes } = require('crypto');
 
 const BATCH = 50;
 const MAX_WAIT = 15 * 60 * 1000;
-const TYPES = ['delivery.received', 'order.shipped', 'return.received', 'return.graded', 'stock.adjusted'];
+const TYPES = ['delivery.received', 'order.shipped', 'return.received', 'return.graded', 'stock.adjusted', 'stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'];
 
 function sign(secret, body) {
   return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;

@@ -22,6 +22,12 @@
     return n;
   }
 
+  /** Available quantity (on hand minus allocated, held and reserved) against the reorder point. */
+  function belowReorder(available, reorderPoint) {
+    if (reorderPoint == null || reorderPoint === '') return false;
+    return Number(available) <= Number(reorderPoint);
+  }
+
   /*
    * 3PL rate cards. A client keeps every version. A version starts on an
    * effective date, or from the beginning when it is the only card, and it
@@ -1656,7 +1662,7 @@
         rows.push({
           itemNo: item.itemNo, name: item.name, sku: item.itemNo, onHand, allocated, held, reserved, available,
           reorderPoint: item.reorderPoint == null ? null : item.reorderPoint,
-          low: item.reorderPoint != null && onHand <= item.reorderPoint,
+          low: belowReorder(available, item.reorderPoint),
         });
       }
       return rows.sort((a, b) => (a.itemNo < b.itemNo ? -1 : 1));
@@ -1698,5 +1704,5 @@
     };
   }
 
-  return { install };
+  return { install, belowReorder };
 });

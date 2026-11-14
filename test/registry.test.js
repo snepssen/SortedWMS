@@ -6,7 +6,7 @@ const path = require('node:path');
 const registry = require('../modules/registry');
 const { Store } = require('../server/store');
 
-const CORE = ['abc', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'food', 'item-value', 'kitting', 'lots', 'quarantine', 'reports', 'return-move', 'returns', 'serials', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves', 'woocommerce'];
+const CORE = ['abc', 'backup-offsite', 'billing', 'bins', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'food', 'item-value', 'kitting', 'lots', 'quarantine', 'reports', 'return-move', 'returns', 'serials', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'waves'];
 
 test('core modules declare the manifest fields and the presets agree with the original seven', () => {
   const list = registry.modules();

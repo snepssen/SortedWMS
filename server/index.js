@@ -20,9 +20,9 @@ const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, woo = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware, backups, woo });
+  const api = createApi({ store, printers, hardware, backups, offsite });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -62,11 +62,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     req.on('end', () => {
       let body;
       try { body = raw ? JSON.parse(raw) : {}; } catch (e) { return send(400, { error: 'Body is not JSON' }); }
-      if (woo && req.method === 'POST' && url.pathname.startsWith('/api/woocommerce/webhook/')) {
+      if (shopify && req.method === 'POST' && url.pathname.startsWith('/api/shopify/webhook/')) {
         const denied = registry.denial(store.wh, 'POST', url.pathname);
         if (denied) return send(denied.status, denied.body);
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
-        try { return send(200, woo.acceptWebhook(id, raw, String(req.headers['x-wc-webhook-signature'] || ''))); }
+        try { return send(200, shopify.acceptWebhook(id, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
       const sharedOk = Boolean(token) && (req.headers['x-token'] === token || url.searchParams.get('token') === token);
@@ -311,7 +311,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
 
       const requestId = req.headers['x-request-id'] ? String(req.headers['x-request-id']).slice(0, 80) : null;
-      Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor)).then((out) => {
+      Promise.resolve(api.handle(req.method, req.url, body, by, requestId, actor, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))).then((out) => {
         if (out.contentType) return send(out.status, out.body, out.contentType);
         send(out.status, out.body);
       });
@@ -340,21 +340,40 @@ function main() {
     const { loadSample } = require('./samples');
     console.log(loadSample(store, sample));
   }
-  // A copy of the database a day, the newest 14 kept. SORTED_BACKUPS=0 turns it off.
-  const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups'), { keep: Number(process.env.SORTED_BACKUP_KEEP) || 14 });
+  // A local copy once a day. Plain until an encrypted target has a verified run
+  // and an administrator chooses otherwise. SORTED_BACKUPS=0 turns it off.
+  const offsite = require('./backup-offsite').createOffsite({ store, log: (line) => console.log(line) });
+  const stopOffsite = offsite.start();
+  const backupDir = process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups');
+  const backupKeep = Number(process.env.SORTED_BACKUP_KEEP) || 14;
+  const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, backupDir, {
+    keep: backupKeep,
+    mode: () => offsite.localMode(),
+    writeEncrypted: (opts) => offsite.writeLocalEncrypted(opts),
+  });
+  if (backups) backups.list = () => offsite.listLocal(backupDir);
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
-  const woo = require('./woocommerce').createWoo({ store, log: (line) => console.log(line) });
+  const shopify = require('./shopify').createShopify({ store, log: (line) => console.log(line) });
   const previousAfter = store.afterCommand;
   store.afterCommand = (op) => {
     if (typeof previousAfter === 'function') previousAfter(op);
-    try { woo.onCommand(op); } catch (e) { console.error('WooCommerce', e.message); }
+    try { shopify.onCommand(op); } catch (e) { console.error('Shopify', e.message); }
   };
-  const stopWoo = woo.start();
+  const stopShopify = shopify.start();
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox, woo });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, shopify });
+  const alerts = require('./alerts').createAlerts({ store, log: (line) => console.log(line) });
+  store.afterCommand = (op) => {
+    if (store.wh && store.wh.module && !store.wh.module('alerts')) return;
+    alerts.onCommand(op);
+  };
+  const stopAlerts = alerts.start();
+  const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
+  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
@@ -397,7 +416,7 @@ function main() {
     if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
     if (process.env.SORTED_OUTBOX) console.log(`Outbox folder for messages: ${process.env.SORTED_OUTBOX}`);
   });
-  const stop = () => { clearInterval(tick); stopOutbox(); stopWoo(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); stopOutbox(); stopOffsite(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }
