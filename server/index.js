@@ -333,10 +333,18 @@ function main() {
     const { loadSample } = require('./samples');
     console.log(loadSample(store, sample));
   }
-  // A copy of the database a day, the newest 14 kept. SORTED_BACKUPS=0 turns it off.
-  const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups'), { keep: Number(process.env.SORTED_BACKUP_KEEP) || 14 });
+  // A local copy once a day. Plain until an encrypted target has a verified run
+  // and an administrator chooses otherwise. SORTED_BACKUPS=0 turns it off.
   const offsite = require('./backup-offsite').createOffsite({ store, log: (line) => console.log(line) });
   const stopOffsite = offsite.start();
+  const backupDir = process.env.SORTED_BACKUP_DIR || path.join(path.dirname(dbFile), 'backups');
+  const backupKeep = Number(process.env.SORTED_BACKUP_KEEP) || 14;
+  const backups = process.env.SORTED_BACKUPS === '0' ? null : require('./backups').schedule(store, backupDir, {
+    keep: backupKeep,
+    mode: () => offsite.localMode(),
+    writeEncrypted: (opts) => offsite.writeLocalEncrypted(opts),
+  });
+  if (backups) backups.list = () => offsite.listLocal(backupDir);
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });

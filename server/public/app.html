@@ -692,8 +692,15 @@
           <label>Keep monthly<input name="retainMonthly" type="number" min="0" max="100" value="${esc(s.retainMonthly)}"></label>
           <label><input type="checkbox" name="testDecrypt" ${s.testDecrypt ? 'checked' : ''}> Decrypt once after upload to check the file</label>
           <label>Passphrase<input name="passphrase" type="password" autocomplete="new-password" placeholder="${s.passphraseSet ? 'saved' : 'at least 8 characters'}"></label>
+          <label>Local daily copy<select name="localCopy">
+            <option value="plain" ${s.localCopy === 'plain' ? 'selected' : ''}>Plain file</option>
+            <option value="encrypted" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'encrypted' ? 'selected' : ''}>Encrypted file</option>
+            <option value="off" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'off' ? 'selected' : ''}>Off</option>
+          </select></label>
           <button class="primary">Save schedule</button>
         </form>
+        ${s.offerPlainOff ? '<p class="msg">An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.</p>' : '<p class="hint">The plain daily copy stays on until an encrypted target has one verified backup.</p>'}
+        ${s.plainCopies && s.effectiveLocalCopy !== 'plain' ? `<p><button type="button" data-act="offsite-prune-plain">Remove old plain copies</button> <span class="dim">${s.plainCopies} plain file${s.plainCopies === 1 ? '' : 's'} in the backup folder. They are kept until you confirm.</span></p>` : ''}
         ${s.passphraseSet && !s.passphraseFromEnv ? '<p><button type="button" data-act="offsite-clear">Remove saved passphrase</button></p>' : ''}</section>
         ${targetBlocks || '<section><h2>Targets</h2><p class="dim">No off-site target yet.</p></section>'}
         <section><h2>Add a target</h2>
@@ -721,7 +728,7 @@
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
       const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. Copy that folder somewhere else too: another disk, a USB stick or cloud storage. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
+      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. That plain copy stays on until Off-site backups has a verified encrypted copy and you choose otherwise. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
         ${bk.dir ? `<form class="form" data-act="backup-now"><button class="primary">Back up now</button></form>` : ''}
         ${table(['Backup', 'Size', 'Made'], bk.backups.map((b) => `<tr><td><code>${esc(b.file)}</code></td><td>${kb(b.bytes)}</td><td>${esc(new Date(b.at).toLocaleString())}</td></tr>`))}</section>` : '';
       return `${backupBox}<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
@@ -1200,6 +1207,7 @@
       if (act === 'offsite-restore') { if (!confirm('Replace this warehouse with that backup? The current database is copied first.')) return; await api('POST', '/api/offsite/restore', { targetId: b.dataset.target, name: b.dataset.file }); return draw(); }
       if (act === 'offsite-drop') { await api('POST', '/api/offsite/settings', { removeTarget: b.dataset.id }); return draw(); }
       if (act === 'offsite-clear') { await api('POST', '/api/offsite/settings', { clearPassphrase: true }); return draw(); }
+      if (act === 'offsite-prune-plain') { if (!confirm('Remove the plain database copies in the backup folder? Encrypted files stay.')) return; await api('POST', '/api/offsite/prune-plain', { confirm: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -1440,7 +1448,7 @@
     if (name === 'backup-now') return api('POST', '/api/backups', {});
     if (name === 'offsite-run') return api('POST', '/api/offsite/run', {});
     if (name === 'offsite-settings') {
-      const body = { mode: data.mode, dailyTime: data.dailyTime, intervalHours: Number(data.intervalHours), retainDaily: Number(data.retainDaily), retainWeekly: Number(data.retainWeekly), retainMonthly: Number(data.retainMonthly), testDecrypt: data.testDecrypt === 'on' };
+      const body = { mode: data.mode, dailyTime: data.dailyTime, intervalHours: Number(data.intervalHours), retainDaily: Number(data.retainDaily), retainWeekly: Number(data.retainWeekly), retainMonthly: Number(data.retainMonthly), testDecrypt: data.testDecrypt === 'on', localCopy: data.localCopy || 'plain' };
       if (data.passphrase) body.passphrase = data.passphrase;
       return api('POST', '/api/offsite/settings', body);
     }

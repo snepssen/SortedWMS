@@ -339,6 +339,13 @@
     'Targets': 'Bestemmingen',
     'Folder': 'Map',
     'Failed': 'Mislukt',
+    'Plain file': 'Gewoon bestand',
+    'Encrypted file': 'Versleuteld bestand',
+    'Off': 'Uit',
+    'Local daily copy': 'Dagelijkse lokale kopie',
+    'Remove old plain copies': 'Oude gewone kopieën weghalen',
+    'An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.': 'Een versleutelde back-up is gecontroleerd. U kunt de gewone dagelijkse kopie uitzetten, of een lokale kopie houden die met hetzelfde wachtwoord is versleuteld.',
+    'The plain daily copy stays on until an encrypted target has one verified backup.': 'De gewone dagelijkse kopie blijft aan tot een versleutelde bestemming één gecontroleerde back-up heeft.',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.nl = dict; }

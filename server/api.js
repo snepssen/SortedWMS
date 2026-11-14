@@ -631,6 +631,10 @@
       if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
       return offsite.restore({ targetId: b.targetId, name: b.name, file: b.file || null });
     });
+    on('POST', '/api/offsite/prune-plain', (_, q, b) => {
+      if (!offsite) return { status: 400, error: 'Off-site backups run on the server. Start it with ./start.sh' };
+      return offsite.prunePlain({ confirm: b.confirm === true });
+    });
     on('POST', '/api/backups', () => {
       if (!backups) return { status: 400, error: 'Backups are made by the server. Start it with ./start.sh' };
       const made = backups.now();

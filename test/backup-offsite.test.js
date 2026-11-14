@@ -274,6 +274,7 @@ test('the command line restores an encrypted backup and runs data upgrades', () 
 
 test('off-site routes need the backups permission and hide when the module is off', async () => {
   assert.equal(permissionFor('POST', '/api/offsite/run').permission, 'backups.offsite');
+  assert.equal(permissionFor('POST', '/api/offsite/prune-plain').permission, 'backups.offsite');
   assert.equal(permissionFor('GET', '/api/offsite').permission, 'backups.offsite');
   const store = new Store({ site });
   const offsite = createOffsite({ store, secretsFile: null, env: {}, log() {} });
@@ -285,5 +286,78 @@ test('off-site routes need the backups permission and hide when the module is of
   const open = await api.handle('GET', '/api/offsite', {}, 'admin');
   assert.equal(open.status, 200);
   assert.equal(open.body.passphraseSet, false);
+  assert.equal(open.body.localCopy, 'plain');
+  assert.equal(open.body.offerPlainOff, false);
+  store.close();
+});
+
+test('the plain daily copy stays until a verified encrypted backup, then it can be encrypted or turned off', async () => {
+  const dir = tmp();
+  const local = path.join(dir, 'local');
+  const folder = path.join(dir, 'nas');
+  fs.mkdirSync(local);
+  fs.mkdirSync(folder);
+  fs.writeFileSync(path.join(local, 'sorted-2020-01-01-000000.db'), Buffer.from('plain-old'));
+  const store = new Store({ site, backupDir: local, now: () => Date.parse('2026-06-01T12:00:00Z') });
+  store.exec('setConfig', { patch: { timeZone: 'UTC' } }, 'admin');
+  const offsite = createOffsite({
+    store,
+    secretsFile: path.join(dir, 'secrets.json'),
+    env: {},
+    log() {},
+    now: () => Date.parse('2026-06-01T12:00:00Z'),
+  });
+  const { schedule } = require('../server/backups');
+  assert.equal(offsite.localMode(), 'plain');
+  assert.throws(() => offsite.save({ localCopy: 'off' }), /plain daily copy/);
+  assert.throws(() => offsite.prunePlain({ confirm: false, dir: local }), /Confirm/);
+  assert.equal(fs.existsSync(path.join(local, 'sorted-2020-01-01-000000.db')), true);
+
+  offsite.save({ passphrase: PASSPHRASE, testDecrypt: true, target: { id: 'nas', kind: 'folder', path: folder } });
+  assert.equal((await offsite.status()).offerPlainOff, false);
+  await offsite.run('admin');
+  const offered = await offsite.status();
+  assert.equal(offered.offerPlainOff, true);
+  assert.equal(offered.localCopy, 'plain', 'a verified run does not turn the plain copy off');
+  assert.ok(offered.plainCopies >= 1);
+
+  offsite.save({ localCopy: 'encrypted' });
+  const plainBefore = fs.readdirSync(local).filter((name) => name.endsWith('.db') && !name.endsWith('.db.enc'));
+  const scheduled = schedule(store, local, {
+    keep: 5,
+    log() {},
+    every: 3600000,
+    mode: () => offsite.localMode(),
+    writeEncrypted: (opts) => offsite.writeLocalEncrypted(opts),
+  });
+  scheduled.stop();
+  const encName = fs.readdirSync(local).find((name) => name.endsWith('.db.enc'));
+  assert.ok(encName);
+  const opened = decrypt(fs.readFileSync(path.join(local, encName)), PASSPHRASE);
+  assert.equal(opened.subarray(0, 15).toString(), 'SQLite format 3');
+  assert.equal(opened.includes(Buffer.from(PASSPHRASE)), false);
+  assert.deepEqual(fs.readdirSync(local).filter((name) => name.endsWith('.db') && !name.endsWith('.db.enc')), plainBefore);
+
+  offsite.save({ localCopy: 'off' });
+  assert.equal(offsite.localMode(), 'off');
+  const lines = [];
+  const stopped = schedule(store, local, {
+    keep: 5,
+    log: (line) => lines.push(line),
+    every: 3600000,
+    mode: () => offsite.localMode(),
+    writeEncrypted: (opts) => offsite.writeLocalEncrypted(opts),
+  });
+  stopped.stop();
+  assert.equal(lines.length, 0);
+  assert.throws(() => stopped.now(), /plain daily copy is off/);
+  assert.equal(fs.existsSync(path.join(local, 'sorted-2020-01-01-000000.db')), true);
+  assert.throws(() => offsite.prunePlain({ confirm: false, dir: local }), /Confirm/);
+  assert.equal(fs.existsSync(path.join(local, 'sorted-2020-01-01-000000.db')), true);
+  const pruned = offsite.prunePlain({ confirm: true, dir: local });
+  assert.ok(pruned.removed >= 1);
+  assert.equal(fs.existsSync(path.join(local, 'sorted-2020-01-01-000000.db')), false);
+  assert.equal(fs.readdirSync(local).some((name) => name.endsWith('.db') && !name.endsWith('.db.enc')), false);
+  assert.equal(fs.existsSync(path.join(local, encName)), true);
   store.close();
 });

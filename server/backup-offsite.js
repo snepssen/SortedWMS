@@ -1,7 +1,8 @@
 /*
- * Encrypted off-site backups. The daily local copy stays as it is. This
- * module encrypts a consistent database copy and sends it to a folder, an
- * S3-compatible bucket, or a WebDAV folder.
+ * Encrypted off-site backups. The daily local copy stays a plain file until
+ * an encrypted target has a verified run and an administrator chooses
+ * otherwise. This module can then keep that local copy encrypted, or stop
+ * it. Old plain files are removed only when someone confirms.
  *
  * The passphrase and target credentials live beside the database, not in it,
  * so they are not in the export and not in the encrypted file. Password
@@ -163,8 +164,20 @@ function defaultConfig() {
     retainWeekly: 4,
     retainMonthly: 6,
     testDecrypt: false,
+    localCopy: 'plain',
     targets: [],
   };
+}
+
+const LOCAL_ENC = /^sorted-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.db\.enc$/;
+
+function listLocalEncrypted(dir) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((name) => LOCAL_ENC.test(name)).map((name) => {
+    const full = path.join(dir, name);
+    const st = fs.statSync(full);
+    return { file: name, path: full, bytes: st.size, at: st.mtimeMs, encrypted: true };
+  }).sort((a, b) => b.file.localeCompare(a.file));
 }
 
 function requestHttp({ method, url, headers, body, timeoutMs = 60000 }) {
@@ -375,6 +388,10 @@ function createOffsite({ store, secretsFile = undefined, env = process.env, tran
       retainWeekly: cfg.retainWeekly,
       retainMonthly: cfg.retainMonthly,
       testDecrypt: Boolean(cfg.testDecrypt),
+      localCopy: cfg.localCopy || 'plain',
+      effectiveLocalCopy: localMode(),
+      offerPlainOff: (cfg.localCopy || 'plain') === 'plain' && plainOptional(cfg),
+      plainCopies: plainFiles().length,
       last: sched.lastAttempt,
       lastSuccess: sched.lastSuccess,
       nextRun: sched.nextRun,
@@ -397,6 +414,11 @@ function createOffsite({ store, secretsFile = undefined, env = process.env, tran
     if (patch.retainWeekly != null) cfg.retainWeekly = whole(patch.retainWeekly, 'Weekly backups to keep', 0, 100);
     if (patch.retainMonthly != null) cfg.retainMonthly = whole(patch.retainMonthly, 'Monthly backups to keep', 0, 100);
     if (patch.testDecrypt != null) cfg.testDecrypt = Boolean(patch.testDecrypt);
+    if (patch.localCopy != null) {
+      if (!['plain', 'encrypted', 'off'].includes(patch.localCopy)) throw new Error('The local copy is plain, encrypted, or off');
+      if (patch.localCopy !== 'plain' && !plainOptional(cfg)) throw new Error('Keep the plain daily copy until an encrypted target has one verified backup');
+      cfg.localCopy = patch.localCopy;
+    }
     if (patch.clearPassphrase) secrets.passphrase = null;
     if (typeof patch.passphrase === 'string' && patch.passphrase) {
       if (patch.passphrase.length < 8 || patch.passphrase.length > 1024) throw new Error('The passphrase needs 8 to 1024 characters');
@@ -722,7 +744,91 @@ function createOffsite({ store, secretsFile = undefined, env = process.env, tran
     return () => clearInterval(timer);
   }
 
-  return { status, save, run, restore, start, enabled, scheduleOf, readConfig, secretsPath };
+  function hasVerifiedSuccess() {
+    const row = store.db.prepare("SELECT id FROM offsite_runs WHERE site = ? AND ok = 1 AND summary LIKE '%verified on%' LIMIT 1").get(siteId());
+    return Boolean(row);
+  }
+
+  /** Plain stays on until a target exists and one encrypted upload has been verified. */
+  function plainOptional(cfg = readConfig()) {
+    return Array.isArray(cfg.targets) && cfg.targets.length > 0 && hasVerifiedSuccess();
+  }
+
+  function localDir() {
+    if (store.backupDir) return store.backupDir;
+    if (store.file && store.file !== ':memory:') return path.join(path.dirname(store.file), 'backups');
+    return null;
+  }
+
+  function plainFiles(dir = localDir()) {
+    if (!dir) return [];
+    return require('./backups').listBackups(dir);
+  }
+
+  function localMode() {
+    const cfg = readConfig();
+    const chosen = cfg.localCopy || 'plain';
+    if (chosen === 'plain') return 'plain';
+    if (!plainOptional(cfg)) return 'plain';
+    return chosen;
+  }
+
+  function listLocal(dir = localDir()) {
+    if (!dir) return [];
+    const plain = plainFiles(dir).map((file) => ({ ...file, encrypted: false }));
+    return [...plain, ...listLocalEncrypted(dir)].sort((a, b) => String(b.file).localeCompare(String(a.file)));
+  }
+
+  /** A local copy encrypted with the same passphrase. Plain .db files are left where they are. */
+  function writeLocalEncrypted({ dir, keep = 14, log = () => {}, force = false } = {}) {
+    const folder = dir || localDir();
+    if (!folder) throw new Error('There is no local backup folder');
+    const newest = listLocalEncrypted(folder)[0];
+    if (!force && newest && Date.now() - newest.at < 86400000) return null;
+    const pass = passphrase();
+    if (!pass.value) throw new Error('Set a backup passphrase before an encrypted local copy');
+    fs.mkdirSync(folder, { recursive: true });
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sorted-local-'));
+    try {
+      const copy = require('./backups').backup(store.db, scratch, { keep: 2, now: clock() });
+      const enc = crypto.encrypt(fs.readFileSync(copy.path), pass.value);
+      const { stamp } = require('./backups');
+      let name = `sorted-${stamp(clock())}.db.enc`;
+      let dest = path.join(folder, name);
+      for (let n = 2; fs.existsSync(dest); n++) {
+        name = `sorted-${stamp(clock())}-${n}.db.enc`;
+        dest = path.join(folder, name);
+      }
+      const tmp = `${dest}.partial`;
+      fs.writeFileSync(tmp, enc, { mode: 0o600 });
+      fs.renameSync(tmp, dest);
+      const back = fs.readFileSync(dest);
+      if (back.length !== enc.length || sha256buf(back) !== sha256buf(enc)) throw new Error('Local encrypted copy did not match');
+      const plain = crypto.decrypt(back, pass.value);
+      if (!plain.subarray(0, 15).equals(Buffer.from('SQLite format 3'))) throw new Error('Local encrypted copy did not decrypt');
+      const extra = listLocalEncrypted(folder).slice(Math.max(1, keep));
+      for (const old of extra) fs.rmSync(old.path, { force: true });
+      const made = { file: name, path: dest, bytes: enc.length, encrypted: true };
+      log(`Encrypted local backup ${name} (${Math.max(1, Math.round(enc.length / 1024))} KB) in ${folder}`);
+      return made;
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Delete plain sorted-*.db files in the local folder. Never called from the
+   * schedule. `confirm` must be exactly true.
+   */
+  function prunePlain({ confirm = false, dir = null } = {}) {
+    if (confirm !== true) throw new Error('Confirm before removing the plain copies. They are not removed on their own.');
+    const folder = dir || localDir();
+    const files = plainFiles(folder);
+    for (const file of files) fs.rmSync(file.path, { force: true });
+    return { removed: files.length };
+  }
+
+  return { status, save, run, restore, start, enabled, scheduleOf, readConfig, secretsPath, localMode, writeLocalEncrypted, prunePlain, listLocal };
 }
 
 function parseS3List(xml) {

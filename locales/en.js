@@ -341,6 +341,13 @@
     'Targets': 'Targets',
     'Folder': 'Folder',
     'Failed': 'Failed',
+    'Plain file': 'Plain file',
+    'Encrypted file': 'Encrypted file',
+    'Off': 'Off',
+    'Local daily copy': 'Local daily copy',
+    'Remove old plain copies': 'Remove old plain copies',
+    'An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.': 'An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.',
+    'The plain daily copy stays on until an encrypted target has one verified backup.': 'The plain daily copy stays on until an encrypted target has one verified backup.',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.en = dict; }

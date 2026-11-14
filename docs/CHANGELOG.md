@@ -1,5 +1,9 @@
 # Changelog
 
+## Local daily copy
+
+The plain copy in `data/backups` stays on until an encrypted off-site target has one verified backup. After that, Backups can keep the local copy encrypted with the same passphrase, or turn it off. Old plain `.db` files are removed only when an administrator confirms. They are never deleted by the schedule.
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.

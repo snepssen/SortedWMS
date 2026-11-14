@@ -1,6 +1,6 @@
 # Off-site backups
 
-The server already keeps a plain copy of the database in `data/backups`, once a day, newest 14. That stays. The **Off-site backups** module encrypts a copy of the same kind and sends it somewhere else.
+The server keeps a copy of the database in `data/backups`, once a day, newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn the whole local copy off). That copy is a plain database file until you choose otherwise. The **Off-site backups** module encrypts a copy of the same kind and sends it somewhere else.
 
 Open **Backups** as an administrator (or the same page on the simple menu). The page shows the last success or failure, the next run, the files on each target, and **Back up now**.
 
@@ -11,6 +11,22 @@ Switching the module off stops new copies. It does not delete ones already sent.
 The encrypted file is the whole database, taken with SQLite `VACUUM INTO` while the floor keeps working. It includes users and their **password hashes**, the same as the local `.db` copy and the JSON export from Settings. It does not include the passphrase, and it does not include S3 or WebDAV credentials.
 
 Treat a backup like the live database. Anyone who can decrypt it can read the hashes.
+
+## The local daily copy
+
+Three choices, on the Backups page:
+
+| Local daily copy | What is written in `data/backups` |
+| --- | --- |
+| Plain file | `sorted-….db`, as before. This is the default. |
+| Encrypted file | `sorted-….db.enc`, with the same passphrase as the off-site copy. The file is decrypted once after it is written, to check it. |
+| Off | Nothing new. |
+
+The plain file stays the default for an install that has no encrypted target, and it stays on after you add a target. The page offers the other two choices only after a target is configured **and** one upload has been verified (size and hash, and the test decrypt when that is on). Choosing one does not delete anything.
+
+If the last target is removed, or there has never been a verified upload, the plain copy runs again even if the saved choice is Encrypted or Off. That way an upgrade, or a target that is not ready, cannot leave the warehouse with no backup.
+
+**Remove old plain copies** deletes `sorted-….db` in the backup folder. It does nothing unless you confirm, on the page or with `{ "confirm": true }` on `POST /api/offsite/prune-plain`. Encrypted files, and the live database, are left in place. Nothing in the schedule calls this.
 
 ## Passphrase
 

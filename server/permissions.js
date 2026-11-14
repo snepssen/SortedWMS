@@ -202,6 +202,7 @@ const RULES = [
   ['POST', '/api/offsite/settings', 'backups.offsite'],
   ['POST', '/api/offsite/run', 'backups.offsite'],
   ['POST', '/api/offsite/restore', 'backups.offsite'],
+  ['POST', '/api/offsite/prune-plain', 'backups.offsite'],
   ['GET', '/api/modules', 'wms.read'],
   ['POST', '/api/setup/complete', 'settings.write'],
   ['POST', '/api/locations/preview', 'settings.write'],
