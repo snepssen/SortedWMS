@@ -226,6 +226,14 @@ class Store {
     this.replayT = t;
     try { COMMANDS.tick(this.wh); } finally { this.replayT = null; }
     if (this.wh.events[0] !== before) this._journal(t, 'tick', {}, 'system');
+    this._after('tick');
+  }
+
+  /** After a command is stored. An alert must not undo the command. */
+  _after(op) {
+    if (op === 'recordAlert' || op === 'enableDemandReplenishment') return;
+    if (typeof this.afterCommand !== 'function') return;
+    try { this.afterCommand(op); } catch (e) { /* the stock change stands */ }
   }
 
   _after(op) {

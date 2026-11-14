@@ -16,6 +16,7 @@ const PERMISSIONS = [
   ['roles.write', 'Edit what a role is allowed to do'],
   ['settings.read', 'View system settings'],
   ['settings.write', 'Change system settings'],
+  ['backups.offsite', 'Run and restore off-site backups'],
   ['modules.write', 'Switch warehouse modules on or off'],
   ['audit.read', 'View the audit log'],
   ['clients.read', 'View clients'],
@@ -63,7 +64,8 @@ const PERMISSIONS = [
   ['devices.manage', 'See and revoke paired devices'],
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
-  ['shopify.manage', 'Connect Shopify shops and map SKUs'],
+  ['alerts.read', 'See low-stock alerts'],
+  ['alerts.write', 'Change alert settings and send a test'],
   ['intake.write', 'Send orders and ASNs in from another system'],
 ];
 
@@ -82,7 +84,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'shopify.manage']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'backups.offsite']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -92,7 +94,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -113,9 +115,9 @@ const DEFAULTS = {
   stock: [
     'counts.execute', 'moves.execute', 'stock.adjust', 'stock.create', 'stock.delete', 'stock.check', 'replenish.execute', 'reports.read',
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
-    'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch',
+    'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch', 'alerts.read',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read'],
 };
 
 // null permission means the route is public.
@@ -198,6 +200,11 @@ const RULES = [
   ['POST', '/api/modules/:id/settings', 'modules.write'],
   ['GET', '/api/backups', 'settings.write'],
   ['POST', '/api/backups', 'settings.write'],
+  ['GET', '/api/offsite', 'backups.offsite'],
+  ['POST', '/api/offsite/settings', 'backups.offsite'],
+  ['POST', '/api/offsite/run', 'backups.offsite'],
+  ['POST', '/api/offsite/restore', 'backups.offsite'],
+  ['POST', '/api/offsite/prune-plain', 'backups.offsite'],
   ['GET', '/api/modules', 'wms.read'],
   ['POST', '/api/setup/complete', 'settings.write'],
   ['POST', '/api/locations/preview', 'settings.write'],
@@ -270,13 +277,13 @@ const RULES = [
   ['GET', '/api/reports/availability.csv', 'reports.read'],
   ['GET', '/api/reports/availability.json', 'reports.read'],
   ['GET', '/api/alerts/low-stock', 'reports.read'],
-  ['GET', '/api/shopify', 'shopify.manage'],
-  ['GET', '/api/shopify/map/:id', 'shopify.manage'],
-  ['POST', '/api/shopify/shops', 'shopify.manage'],
-  ['POST', '/api/shopify/map', 'shopify.manage'],
-  ['POST', '/api/shopify/sync', 'shopify.manage'],
-  ['POST', '/api/shopify/catalog', 'shopify.manage'],
-  ['POST', '/api/shopify/stock', 'shopify.manage'],
+  ['GET', '/api/alerts/low-stock.csv', 'reports.read'],
+  ['GET', '/api/notify', 'alerts.read'],
+  ['POST', '/api/notify/settings', 'alerts.write'],
+  ['POST', '/api/notify/test', 'alerts.write'],
+  ['GET', '/api/notify/inbox', 'alerts.read'],
+  ['POST', '/api/notify/read', 'alerts.read'],
+  ['POST', '/api/notify/subscribe', 'alerts.read'],
   ['GET', '/api/reports/billing', 'reports.read'],
   ['GET', '/api/reports/billing.csv', 'reports.read'],
   ['GET', '/api/sites', 'wms.read'],
