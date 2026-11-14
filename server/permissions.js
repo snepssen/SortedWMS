@@ -71,6 +71,7 @@ const PERMISSIONS = [
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
   ['etsy.manage', 'Connect Etsy shops and map SKUs'],
   ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
+  ['documents.read', 'Open A4 documents'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -98,7 +99,7 @@ const DEFAULTS = {
     'orders.read', 'orders.write', 'inbound.read', 'inbound.write',
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
-    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read',
+    'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read', 'documents.read',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -121,7 +122,7 @@ const DEFAULTS = {
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
     'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch', 'alerts.read',
   ],
-  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read'],
+  client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read', 'documents.read'],
 };
 
 // null permission means the route is public.
@@ -301,6 +302,10 @@ const RULES = [
   ['POST', '/api/orders/:id/shipment/dispatch', 'outbound.write'],
   ['GET', '/api/orders/:id/shipment', 'orders.read'],
   ['GET', '/api/orders/:id/delivery-note', 'orders.read'],
+  ['GET', '/api/documents/delivery-note/:id', 'documents.read'],
+  ['GET', '/api/documents/pick-list/:id', 'documents.read'],
+  ['GET', '/api/documents/packing-list/:id', 'documents.read'],
+  ['GET', '/api/documents/statement/:clientId', 'documents.read'],
   ['POST', '/api/clients/:id/tariff', 'tariff.write'],
   ['POST', '/api/clients/:id/space', 'tariff.write'],
   ['GET', '/api/reports/invoice', 'reports.read'],

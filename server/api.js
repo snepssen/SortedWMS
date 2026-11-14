@@ -630,6 +630,15 @@
       return order.shipment || { status: 404, error: 'No shipment' };
     });
     on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
+    on('GET', '/api/documents/delivery-note/:id', ({ id }) => ({ contentType: 'application/pdf', raw: require('./documents').deliveryNote(wh(), decodeURIComponent(id)) }));
+    on('GET', '/api/documents/pick-list/:id', ({ id }) => ({ contentType: 'application/pdf', raw: require('./documents').pickList(wh(), decodeURIComponent(id)) }));
+    on('GET', '/api/documents/packing-list/:id', ({ id }) => ({ contentType: 'application/pdf', raw: require('./documents').packingList(wh(), decodeURIComponent(id)) }));
+    on('GET', '/api/documents/statement/:clientId', ({ clientId }, q) => {
+      const id = decodeURIComponent(clientId);
+      const own = ownClient();
+      if (own && own !== id.toUpperCase()) return { status: 403, error: 'A client can only see its own statement' };
+      return { contentType: 'application/pdf', raw: require('./documents').statement(wh(), id, { from: q.from || null, to: q.to || null }) };
+    });
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
     on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));

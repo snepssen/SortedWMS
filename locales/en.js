@@ -338,6 +338,19 @@
     '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.',
     '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} is back above its reorder point: {available} available, reorder point {point}.',
     'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).': 'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).',
+    'Delivery note': 'Delivery note',
+    'Pick list': 'Pick list',
+    'Packing list': 'Packing list',
+    'Statement': 'Statement',
+    'Lane': 'Lane',
+    'Lines': 'Lines',
+    'Shipment': 'Shipment',
+    'Qty': 'Qty',
+    'Picked': 'Picked',
+    'No carton yet': 'No carton yet',
+    'to': 'to',
+    'Total': 'Total',
+    'Documents': 'Documents',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.en = dict; }
