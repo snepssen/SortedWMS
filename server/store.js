@@ -214,7 +214,14 @@ class Store {
     }
     this.replayT = null;
     this._journal(t, op, args, by);
+    this._after(op);
     return result;
+  }
+
+  _after(op) {
+    if (op === 'noteTracking' || op === 'enableDemandReplenishment') return;
+    if (typeof this.afterCommand !== 'function') return;
+    try { this.afterCommand(op); } catch (e) { /* a connector must not undo the command */ }
   }
 
   /** Clock tick: journaled only when it changed something (timers ran out, a truck got a job). */

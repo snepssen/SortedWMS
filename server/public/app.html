@@ -122,7 +122,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['etsy', 'Etsy'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
@@ -136,7 +136,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', etsy: 'etsy' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -656,6 +656,20 @@
         <p id="moduleOffer"></p>
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
+    },
+    async etsy() {
+      const data = await api('GET', '/api/etsy');
+      const shopId = (data.shops[0] && data.shops[0].id) || '';
+      const maps = shopId ? await api('GET', '/api/etsy/map/' + encodeURIComponent(shopId)).catch(() => []) : [];
+      const rows = (data.shops || []).map((s) => `<tr><td>${esc(s.name)}<br><span class="dim">${esc(s.shopId)}</span></td><td>${esc(s.clientId || 'all')}</td><td>${s.connected ? 'connected' : 'not connected'}</td><td>${s.last ? esc(s.last.summary) : '—'}</td></tr>`);
+      const mapRows = (maps || []).map((m) => `<tr><td>${esc(m.sku)} <span class="dim">${esc(m.title || '')}</span></td><td>${esc(m.barcode || '')}</td><td>${esc(m.suggestion || '')}</td><td><form class="form" data-act="etsy-map" style="margin:0"><input type="hidden" name="shopId" value="${esc(shopId)}"><input type="hidden" name="sku" value="${esc(m.sku)}"><input name="itemNo" value="${esc(m.itemNo || m.suggestion || '')}" aria-label="Item" style="width:8em"><button>Save</button></form></td></tr>`);
+      const errs = (data.errors || []).map((e) => `<li>${esc(e.summary)}</li>`).join('');
+      return `<section><h2>Etsy</h2><p class="hint">Paid receipts that have not shipped come in by polling, through the same intake as every other system. Sending one twice does not book it twice. Connect opens Etsy in this browser and comes back here. The keystring and the token are not shown again.</p>
+        ${errs ? `<p class="msg bad">Recent errors</p><ul>${errs}</ul>` : ''}
+        ${table(['Shop', 'Client', 'Sign-in', 'Last'], rows)}
+        <form class="form" data-act="etsy-shop"><label>Id<input name="id" required placeholder="north"></label><label>Name<input name="name" placeholder="North Gadgets"></label><label>Etsy shop id<input name="etsyShopId" required placeholder="555"></label><label>Client<input name="clientId" placeholder="optional"></label><label>Buffer<input name="buffer" type="number" min="0" value="0"></label><label>Poll minutes<input name="pollMinutes" type="number" min="1" value="15"></label><label>Redirect<input name="redirectUri" required placeholder="https://wms.example.com/api/etsy/callback"></label><label>Keystring<input name="keystring" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Shared secret<input name="sharedSecret" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Webhook secret<input name="webhookSecret" type="password" autocomplete="new-password" placeholder="optional, not official"></label><button class="primary">Save shop</button></form>
+        ${shopId ? `<form class="form" data-act="etsy-connect"><input type="hidden" name="shopId" value="${esc(shopId)}"><button class="primary">Connect</button></form> <form class="form" data-act="etsy-sync"><input type="hidden" name="shopId" value="${esc(shopId)}"><button>Import orders</button></form> <form class="form" data-act="etsy-catalog"><input type="hidden" name="shopId" value="${esc(shopId)}"><button>Read SKUs</button></form>` : ''}</section>
+        <section><h2>SKU mapping</h2><p class="hint">A SKU or barcode that matches an item is filled in. Save the row to keep the link. Stock sent back is available stock minus the buffer.</p>${table(['SKU', 'Barcode', 'Suggested', 'Item'], mapRows)}</section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
@@ -1277,6 +1291,11 @@
       if (out) out.innerHTML = msg(`Put away …${r.sscc.slice(-6)} at ${r.to}`, true);
       return;
     }
+    if (form.dataset.act === 'etsy-connect') {
+      const out = await api('POST', '/api/etsy/connect', data);
+      if (out && out.url) location.assign(out.url);
+      return;
+    }
     if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
       if (form.dataset.act === 'station-scan') return sendStation(data.code, wedgeBurst ? 'wedge' : 'manual');
       await act(form.dataset.act, data);
@@ -1373,6 +1392,10 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'etsy-shop') return api('POST', '/api/etsy/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
+    if (name === 'etsy-map') return api('POST', '/api/etsy/map', data);
+    if (name === 'etsy-sync') return api('POST', '/api/etsy/sync', data);
+    if (name === 'etsy-catalog') return api('POST', '/api/etsy/catalog', data);
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });

@@ -64,6 +64,7 @@ const PERMISSIONS = [
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
   ['intake.write', 'Send orders and ASNs in from another system'],
+  ['etsy.manage', 'Connect Etsy shops and map SKUs'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -81,7 +82,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'etsy.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -366,6 +367,14 @@ const RULES = [
   ['GET', '/api/orders', 'orders.read'],
   ['GET', '/api/deliveries', 'inbound.read'],
   ['GET', '/api/stock', 'stock.read'],
+  ['GET', '/api/etsy', 'etsy.manage'],
+  ['GET', '/api/etsy/map/:id', 'etsy.manage'],
+  ['POST', '/api/etsy/shops', 'etsy.manage'],
+  ['POST', '/api/etsy/map', 'etsy.manage'],
+  ['POST', '/api/etsy/sync', 'etsy.manage'],
+  ['POST', '/api/etsy/catalog', 'etsy.manage'],
+  ['POST', '/api/etsy/stock', 'etsy.manage'],
+  ['POST', '/api/etsy/connect', 'etsy.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

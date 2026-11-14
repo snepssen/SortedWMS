@@ -1,5 +1,9 @@
 # Changelog
 
+## Etsy
+
+A warehouse can connect one or more Etsy shops, per client or for the whole building. Sign-in is OAuth 2 with PKCE: the browser goes to Etsy and comes back to this WMS. Paid receipts that have not shipped come in by polling, through the same intake as every other system, so sending one twice does not book it twice. Etsy does not sign order webhooks; an optional hex HMAC is checked when a webhook secret is saved, and a body that does not match is refused. Shop SKUs map to items. Available stock (on hand minus allocated, held and reserved, then minus a per-shop buffer) is sent back, once per burst, and waits longer each time Etsy asks the warehouse to slow down. A shipped order sends its tracking number and carrier. The keystring, shared secret and tokens are saved beside the database and are never shown again. See [connectors/ETSY.md](connectors/ETSY.md).
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.
