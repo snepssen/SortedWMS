@@ -10,7 +10,7 @@ Every screen has a **Theme** picker: Auto (follows the device), Light or Dark. T
 
 A fresh warehouse has temperature zones, lot and expiry, FEFO and high-value PAL/MASTER plates turned off, and one category, General. A preset turns on what that kind of building uses; anything can be switched later.
 
-Other systems connect with an API key: they send orders and ASNs in (JSON, CSV, or files in a drop folder; safe to send twice) and get what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log, by reading it or by signed webhooks and an outbox folder. See [docs/CONNECTIONS.md](docs/CONNECTIONS.md). An Etsy shop can be connected as a module: [docs/connectors/ETSY.md](docs/connectors/ETSY.md).
+Other systems connect with an API key: they send orders and ASNs in (JSON, CSV, or files in a drop folder; safe to send twice) and get what the warehouse confirms (goods received, orders shipped, returns, stock adjustments) from a numbered message log, by reading it or by signed webhooks and an outbox folder. See [docs/CONNECTIONS.md](docs/CONNECTIONS.md). A Shopify shop can be connected as a module: [docs/connectors/SHOPIFY.md](docs/connectors/SHOPIFY.md).
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -199,7 +199,7 @@ On top of the reach-truck rules already in `src/engine.js`:
 - **Replenishment.** A pick face keeps a minimum, a maximum and a trigger. In unit mode the move tops the face up to the maximum and splits that quantity from the source plate. Whole-pallet mode moves one full pallet. Plate numbers default to 7 digits and each series can set its own pad.
 - **Returns.** Look up the order and book what came back: never more than went out, several items at once, traced items by the serials that left on it. Grade all at once or a few at a time: restock into a bin or rack slot (waves pick it again), hold in quarantine to grade later, or scrap. Restocks and write-offs show on the stock-change report.
 - **Warehouses.** One install can hold more than one site. The header switches site. A user can be limited to some sites. Each site keeps its own plate counters. A transfer ships onto `IN-TRANSIT`, then the destination receives it. A refusal returns the stock to the original plate.
-- **Selling and 3PL.** An available-to-sell CSV or JSON feed per SKU and low-stock alerts from a reorder point. A client rate card prices storage, inbound, outbound and kitting, with volume tiers, seasons, a monthly minimum and a version for each effective date. Days, seasons and versions use the warehouse's timezone, including daylight saving. A card can prorate the minimum, surcharge by a percent or a fixed amount, and count tiers per calendar month or per version. Dedicated space (a cell, an aisle, a bay, a position, a height, or the whole building) is a flat fee. The invoice is CSV or printable HTML, and each line names the tier, season and version it used. Older versions stay read-only.
+- **Selling and 3PL.** An available-to-sell CSV or JSON feed per SKU and low-stock alerts from a reorder point. The alerts module sends those out when available stock (on hand minus allocated, held and reserved) reaches the reorder point: a signed webhook, email, or the bell, once per item until it recovers, or as a daily digest in the warehouse timezone. The reorder list uses that same available quantity and shows on hand beside it. A client login only hears about its own items. See [docs/ALERTS.md](docs/ALERTS.md). A client rate card prices storage, inbound, outbound and kitting, with volume tiers, seasons, a monthly minimum and a version for each effective date. Days, seasons and versions use the warehouse's timezone, including daylight saving. A card can prorate the minimum, surcharge by a percent or a fixed amount, and count tiers per calendar month or per version. Dedicated space (a cell, an aisle, a bay, a position, a height, or the whole building) is a flat fee. The invoice is CSV or printable HTML, and each line names the tier, season and version it used. Older versions stay read-only.
 - **Languages.** English is the default and Dutch is the second language. Each person can choose, and a warehouse has a default for anyone who has not. Numbers, dates and money follow that language; dates use the warehouse timezone. See [docs/I18N.md](docs/I18N.md).
 - **Client login.** A client sees only their items, stock and orders. They add items one by one (SKU, description, unit, size, weight, barcode text, value in the warehouse currency, and food, frozen or high-value when those features are on). They can edit and deactivate items. Approval is off unless the warehouse turns it on. Every change is journaled with the user.
 - **Item value.** Each item can carry a value in the warehouse currency (EUR unless you change it). The item form, the client item form, item import and ASN intake all set it. ABC by value and the stock-value report use it. While high-value plates are on, a role without “See and edit item value” does not see the amount. Turning the Item value module off hides it and leaves the stored amounts in place.
@@ -220,14 +220,14 @@ The server shares one source of truth between the role views, handheld, desk and
 ./start.sh sample home     # a home bin wall (also: maker, 3pl), each in its own data/sample-<kind>.db
 ./start.sh backup          # copy the database into data/backups now
 ./start.sh backups         # list the backups
-./start.sh restore <file>  # put a backup back, with SortedWMS stopped
+./start.sh restore <file>  # put a backup back, with SortedWMS stopped (encrypted files too)
 ./start.sh setup           # check what SortedWMS needs
 npm test
 ```
 
 Then open `http://localhost:8080/login`. Your own warehouse gets only the `admin` account, which chooses its own password at the first sign-in (or set `SORTED_ADMIN_PASSWORD` before the first start). The samples also get the accounts below, with the printed passwords.
 
-**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. Copy that folder somewhere else as well. `npm start` also works, on an empty building.
+**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. That copy is a plain database file until Off-site backups has a verified encrypted copy and you choose otherwise: keep the local copy encrypted with the same passphrase, or turn it off. Old plain files are removed only when you confirm. **Off-site backups** encrypts a copy and sends it to a folder, S3-compatible storage, or WebDAV, on a schedule in the warehouse's timezone. The passphrase is never shown again and is not in the file. The file does include password hashes, the same as the local copy and the JSON export. See [docs/BACKUPS.md](docs/BACKUPS.md). `npm start` also works, on an empty building.
 
 | Username | Password | View |
 | --- | --- | --- |
@@ -261,6 +261,7 @@ Settings, through environment variables:
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
 | `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, inbound, picker and stock accounts. |
 | `SORTED_MODULES` | none | Folder of extra module files. Same format as `modules/`. Nothing is downloaded. |
+| `SORTED_BACKUP_PASSPHRASE` | none | Passphrase for off-site backups. When set, it wins over the saved passphrase and is never printed. |
 
 **How big it gets.** `npm run load-test` builds a made-up warehouse of 14,000 locations, 2,000 items, 6,000 pallets, 8,000 bin lines and 2,000 orders through the real commands, then times what people wait on (`--scale 2` for twice as much). On a laptop: a bin put-away about 0.3 ms, a new order about 5 ms, a pick wave about 10 ms, the stock screen and the order queue under 50 ms, a restart under 0.1 s. Shipped pallets, finished jobs and shipped orders stay for history without slowing the floor.
 
@@ -305,7 +306,8 @@ Settings, through environment variables:
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.blank.json` | The empty building a new warehouse starts from. A site file can also carry a layout, block lanes, stations, routes, desks, items and printer addresses (see `test/fixtures/site.json`). |
 | `server/public/` | `app.html` (each role's screens, at `/app`), `setup.html` (the setup wizard), `bins.html` (the bin handheld), `handheld.html` (Android scanners on trucks), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
-| `server/backups.js`, `server/samples.js` | Daily database copies; the home, maker and 3PL sample warehouses. |
+| `server/backups.js`, `server/backup-offsite.js`, `server/backup-crypto.js`, `server/sigv4.js` | Daily database copies, and encrypted off-site copies (folder, S3, WebDAV). |
+| `server/samples.js` | The home, maker and 3PL sample warehouses. |
 | `scripts/cli.js`, `start.sh` | `./start.sh` and its commands: start, sample, backup, restore, setup. |
 | `scripts/load-test.js` | The load test (`npm run load-test`). |
 | `server/print.js` | Sends ZPL to network label printers. |
@@ -315,7 +317,7 @@ Settings, through environment variables:
 | `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page, the real screens running in the browser, and the demo in `demo/` (`npm run build:pages`). |
 | `docs/ROADMAP.md` | What is done, and what could come next. |
-| `docs/CONNECTIONS.md`, `src/messages.js`, `src/intake.js`, `server/inbox.js` | Connections: API keys, the message log other systems read, the intake for orders and ASNs, and the drop folder. `server/outbox.js` pushes the messages out by webhook and outbox folder. |
+| `docs/CONNECTIONS.md`, `src/messages.js`, `src/intake.js`, `server/inbox.js` | Connections: API keys, the message log other systems read, the intake for orders and ASNs, and the drop folder. `server/outbox.js` pushes the messages out by webhook and outbox folder. `server/alerts.js` and `server/smtp.js` send low-stock alerts. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
 ## Two names per location

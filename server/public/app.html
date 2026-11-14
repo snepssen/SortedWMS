@@ -109,6 +109,7 @@
       <button id="pairBtn" type="button">Connect a phone</button>
       <label>Theme <select data-theme-picker></select></label>
       <label>Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
+      <button id="alertBell" type="button" hidden>Alerts</button>
       <button id="out" type="button">Sign out</button>
     </div>
   </details>
@@ -122,21 +123,21 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['etsy', 'Etsy'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
-    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports']],
+    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', etsy: 'etsy' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -144,7 +145,7 @@
     return PANEL_FALLBACK[id] || null;
   }
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['offsite', 'Backups', 'backups.offsite'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -287,6 +288,19 @@
       nav.scrollLeft += current.getBoundingClientRect().left - nav.getBoundingClientRect().left;
     }
     if (restoreFocus) current?.focus({ preventScroll: true });
+    refreshBell();
+  }
+  async function refreshBell() {
+    const btn = document.getElementById('alertBell');
+    if (!btn) return;
+    if (!can('alerts.read') || !modOn('alerts')) { btn.hidden = true; return; }
+    try {
+      const box = await api('GET', '/api/notify/inbox');
+      const n = (box.unread || []).length;
+      btn.hidden = false;
+      btn.textContent = n ? `Alerts ${n}` : 'Alerts';
+      btn.classList.toggle('on', panel === 'alerts');
+    } catch (e) { btn.hidden = true; }
   }
 
   let pairTimer = null;
@@ -657,24 +671,78 @@
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
     },
-    async etsy() {
-      const data = await api('GET', '/api/etsy');
-      const shopId = (data.shops[0] && data.shops[0].id) || '';
-      const maps = shopId ? await api('GET', '/api/etsy/map/' + encodeURIComponent(shopId)).catch(() => []) : [];
-      const rows = (data.shops || []).map((s) => `<tr><td>${esc(s.name)}<br><span class="dim">${esc(s.shopId)}</span></td><td>${esc(s.clientId || 'all')}</td><td>${s.connected ? 'connected' : 'not connected'}</td><td>${s.last ? esc(s.last.summary) : '—'}</td></tr>`);
-      const mapRows = (maps || []).map((m) => `<tr><td>${esc(m.sku)} <span class="dim">${esc(m.title || '')}</span></td><td>${esc(m.barcode || '')}</td><td>${esc(m.suggestion || '')}</td><td><form class="form" data-act="etsy-map" style="margin:0"><input type="hidden" name="shopId" value="${esc(shopId)}"><input type="hidden" name="sku" value="${esc(m.sku)}"><input name="itemNo" value="${esc(m.itemNo || m.suggestion || '')}" aria-label="Item" style="width:8em"><button>Save</button></form></td></tr>`);
-      const errs = (data.errors || []).map((e) => `<li>${esc(e.summary)}</li>`).join('');
-      return `<section><h2>Etsy</h2><p class="hint">Paid receipts that have not shipped come in by polling, through the same intake as every other system. Sending one twice does not book it twice. Connect opens Etsy in this browser and comes back here. The keystring and the token are not shown again.</p>
-        ${errs ? `<p class="msg bad">Recent errors</p><ul>${errs}</ul>` : ''}
-        ${table(['Shop', 'Client', 'Sign-in', 'Last'], rows)}
-        <form class="form" data-act="etsy-shop"><label>Id<input name="id" required placeholder="north"></label><label>Name<input name="name" placeholder="North Gadgets"></label><label>Etsy shop id<input name="etsyShopId" required placeholder="555"></label><label>Client<input name="clientId" placeholder="optional"></label><label>Buffer<input name="buffer" type="number" min="0" value="0"></label><label>Poll minutes<input name="pollMinutes" type="number" min="1" value="15"></label><label>Redirect<input name="redirectUri" required placeholder="https://wms.example.com/api/etsy/callback"></label><label>Keystring<input name="keystring" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Shared secret<input name="sharedSecret" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Webhook secret<input name="webhookSecret" type="password" autocomplete="new-password" placeholder="optional, not official"></label><button class="primary">Save shop</button></form>
-        ${shopId ? `<form class="form" data-act="etsy-connect"><input type="hidden" name="shopId" value="${esc(shopId)}"><button class="primary">Connect</button></form> <form class="form" data-act="etsy-sync"><input type="hidden" name="shopId" value="${esc(shopId)}"><button>Import orders</button></form> <form class="form" data-act="etsy-catalog"><input type="hidden" name="shopId" value="${esc(shopId)}"><button>Read SKUs</button></form>` : ''}</section>
-        <section><h2>SKU mapping</h2><p class="hint">A SKU or barcode that matches an item is filled in. Save the row to keep the link. Stock sent back is available stock minus the buffer.</p>${table(['SKU', 'Barcode', 'Suggested', 'Item'], mapRows)}</section>`;
+    async offsite() {
+      const s = await api('GET', '/api/offsite');
+      const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+      const when = (t) => {
+        if (!t) return '—';
+        try { return new Intl.DateTimeFormat(undefined, { timeZone: s.timeZone, dateStyle: 'short', timeStyle: 'short' }).format(new Date(t)); }
+        catch (e) { return new Date(t).toLocaleString(); }
+      };
+      const passNote = s.passphraseFromEnv
+        ? 'The passphrase comes from the environment. It is not shown here.'
+        : s.passphraseSet
+          ? 'A passphrase is saved. It is not shown again. Type a new one only to replace it.'
+          : 'Set a passphrase. It is saved on this machine and is not shown again.';
+      const last = `<div class="kpi"><b>${s.last ? (s.last.ok ? 'OK' : 'Failed') : '—'}</b><span>Last run${s.last ? ` ${esc(when(s.last.at))}` : ''}</span></div>`;
+      const targetBlocks = (s.targets || []).map((t) => {
+        const where = t.kind === 'folder' ? esc(t.path) : t.kind === 's3' ? `${esc(t.bucket)} · ${esc(t.endpoint)}` : esc(t.url);
+        const files = (t.files || []).map((f) => `<tr><td><code>${esc(f.name)}</code></td><td>${kb(f.bytes)}</td><td>${esc(when(f.at))}</td><td><button type="button" data-act="offsite-restore" data-target="${esc(t.id)}" data-file="${esc(f.name)}">Restore</button></td></tr>`).join('');
+        return `<section><h2>${esc(t.kind)} <span class="dim">${esc(t.id)}</span></h2><p class="hint">${where}${t.credentialsSet ? ' · credentials saved' : ''}${t.error ? ` · <span class="bad">${esc(t.error)}</span>` : ''}</p>
+          ${table(['File', 'Size', 'Taken', ''], files ? [files] : [])}
+          <p><button type="button" data-act="offsite-drop" data-id="${esc(t.id)}">Remove target</button></p></section>`;
+      }).join('');
+      return `<section><h2>Off-site backups</h2><p class="hint">The database is encrypted on this machine, then copied to a folder, S3-compatible storage, or WebDAV. The file includes password hashes, the same as the daily copy under Settings. The passphrase is not in the file, the export, or the log.</p>
+        <div class="kpis">${last}<div class="kpi"><b>${s.mode === 'interval' ? `${esc(s.intervalHours)} h` : esc(s.dailyTime)}</b><span>Next run ${esc(when(s.nextRun))} · ${esc(s.timeZone || '')}</span></div><div class="kpi"><b>${(s.targets || []).length}</b><span>Targets</span></div></div>
+        ${s.last ? `<p class="${s.last.ok ? 'msg ok' : 'msg bad'}">${esc(s.last.summary)}</p>` : ''}
+        <form class="form" data-act="offsite-run"><button class="primary">Back up now</button></form></section>
+        <section><h2>Schedule</h2><p class="hint">${esc(passNote)} Times use this warehouse's timezone.</p>
+        <form class="form" data-act="offsite-settings">
+          <label>When<select name="mode"><option value="daily" ${s.mode === 'daily' ? 'selected' : ''}>Daily</option><option value="interval" ${s.mode === 'interval' ? 'selected' : ''}>Every few hours</option></select></label>
+          <label>Daily time<input name="dailyTime" value="${esc(s.dailyTime)}" placeholder="02:30"></label>
+          <label>Hours between<input name="intervalHours" type="number" min="1" max="168" value="${esc(s.intervalHours)}"></label>
+          <label>Keep daily<input name="retainDaily" type="number" min="0" max="100" value="${esc(s.retainDaily)}"></label>
+          <label>Keep weekly<input name="retainWeekly" type="number" min="0" max="100" value="${esc(s.retainWeekly)}"></label>
+          <label>Keep monthly<input name="retainMonthly" type="number" min="0" max="100" value="${esc(s.retainMonthly)}"></label>
+          <label><input type="checkbox" name="testDecrypt" ${s.testDecrypt ? 'checked' : ''}> Decrypt once after upload to check the file</label>
+          <label>Passphrase<input name="passphrase" type="password" autocomplete="new-password" placeholder="${s.passphraseSet ? 'saved' : 'at least 8 characters'}"></label>
+          <label>Local daily copy<select name="localCopy">
+            <option value="plain" ${s.localCopy === 'plain' ? 'selected' : ''}>Plain file</option>
+            <option value="encrypted" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'encrypted' ? 'selected' : ''}>Encrypted file</option>
+            <option value="off" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'off' ? 'selected' : ''}>Off</option>
+          </select></label>
+          <button class="primary">Save schedule</button>
+        </form>
+        ${s.offerPlainOff ? '<p class="msg">An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.</p>' : '<p class="hint">The plain daily copy stays on until an encrypted target has one verified backup.</p>'}
+        ${s.plainCopies && s.effectiveLocalCopy !== 'plain' ? `<p><button type="button" data-act="offsite-prune-plain">Remove old plain copies</button> <span class="dim">${s.plainCopies} plain file${s.plainCopies === 1 ? '' : 's'} in the backup folder. They are kept until you confirm.</span></p>` : ''}
+        ${s.passphraseSet && !s.passphraseFromEnv ? '<p><button type="button" data-act="offsite-clear">Remove saved passphrase</button></p>' : ''}</section>
+        ${targetBlocks || '<section><h2>Targets</h2><p class="dim">No off-site target yet.</p></section>'}
+        <section><h2>Add a target</h2>
+        <form class="form" data-act="offsite-target">
+          <label>Kind<select name="kind" id="offsiteKind"><option value="folder">Folder</option><option value="s3">S3</option><option value="webdav">WebDAV</option></select></label>
+          <div data-offsite-kind="folder"><label>Folder path<input name="path" placeholder="/mnt/backups/sorted"></label></div>
+          <div data-offsite-kind="s3" hidden>
+            <label>Endpoint<input name="endpoint" placeholder="https://s3.amazonaws.com"></label>
+            <label>Bucket<input name="bucket"></label>
+            <label>Region<input name="region" value="us-east-1"></label>
+            <label>Prefix<input name="prefix" placeholder="main"></label>
+            <label><input type="checkbox" name="pathStyle"> Path-style (MinIO)</label>
+            <label>Access key<input name="accessKeyId" autocomplete="off" placeholder="not shown again"></label>
+            <label>Secret key<input name="secretAccessKey" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <div data-offsite-kind="webdav" hidden>
+            <label>HTTPS address<input name="url" placeholder="https://cloud.example/remote.php/dav/files/user/sorted/"></label>
+            <label>User<input name="username" autocomplete="off" placeholder="not shown again"></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <button class="primary">Add target</button>
+        </form>
+        <p class="hint">WebDAV uses HTTPS and basic authentication. S3 signing works with AWS, Backblaze B2, MinIO and Wasabi. Credentials are saved on this machine and are not shown again.</p></section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
       const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. Copy that folder somewhere else too: another disk, a USB stick or cloud storage. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
+      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. That plain copy stays on until Off-site backups has a verified encrypted copy and you choose otherwise. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
         ${bk.dir ? `<form class="form" data-act="backup-now"><button class="primary">Back up now</button></form>` : ''}
         ${table(['Backup', 'Size', 'Made'], bk.backups.map((b) => `<tr><td><code>${esc(b.file)}</code></td><td>${kb(b.bytes)}</td><td>${esc(new Date(b.at).toLocaleString())}</td></tr>`))}</section>` : '';
       return `${backupBox}<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
@@ -1074,6 +1142,8 @@
   };
   $('#pairBtn').onclick = () => { document.querySelector('.workspace-options').open = false; panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
+  const bell = document.getElementById('alertBell');
+  if (bell) bell.onclick = () => { panel = 'alerts'; history.replaceState(null, '', '#alerts'); draw(); };
   $('#main').onclick = async (e) => {
     const saveModules = e.target.closest('#saveModules');
     if (saveModules) {
@@ -1150,6 +1220,10 @@
       if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
+      if (act === 'offsite-restore') { if (!confirm('Replace this warehouse with that backup? The current database is copied first.')) return; await api('POST', '/api/offsite/restore', { targetId: b.dataset.target, name: b.dataset.file }); return draw(); }
+      if (act === 'offsite-drop') { await api('POST', '/api/offsite/settings', { removeTarget: b.dataset.id }); return draw(); }
+      if (act === 'offsite-clear') { await api('POST', '/api/offsite/settings', { clearPassphrase: true }); return draw(); }
+      if (act === 'offsite-prune-plain') { if (!confirm('Remove the plain database copies in the backup folder? Encrypted files stay.')) return; await api('POST', '/api/offsite/prune-plain', { confirm: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -1165,6 +1239,7 @@
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
     if (e.target.id === 'tariffClient') { history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'offsiteKind') { for (const el of document.querySelectorAll('[data-offsite-kind]')) el.hidden = el.dataset.offsiteKind !== e.target.value; }
     if (e.target.id === 'countryPick') {
       const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
       const field = document.getElementById('timeZone');
@@ -1392,10 +1467,20 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
-    if (name === 'etsy-shop') return api('POST', '/api/etsy/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
-    if (name === 'etsy-map') return api('POST', '/api/etsy/map', data);
-    if (name === 'etsy-sync') return api('POST', '/api/etsy/sync', data);
-    if (name === 'etsy-catalog') return api('POST', '/api/etsy/catalog', data);
+    if (name === 'offsite-run') return api('POST', '/api/offsite/run', {});
+    if (name === 'offsite-settings') {
+      const body = { mode: data.mode, dailyTime: data.dailyTime, intervalHours: Number(data.intervalHours), retainDaily: Number(data.retainDaily), retainWeekly: Number(data.retainWeekly), retainMonthly: Number(data.retainMonthly), testDecrypt: data.testDecrypt === 'on', localCopy: data.localCopy || 'plain' };
+      if (data.passphrase) body.passphrase = data.passphrase;
+      return api('POST', '/api/offsite/settings', body);
+    }
+    if (name === 'offsite-target') {
+      const target = { kind: data.kind, path: data.path, endpoint: data.endpoint, bucket: data.bucket, region: data.region, prefix: data.prefix, pathStyle: data.pathStyle === 'on', url: data.url };
+      if (data.accessKeyId) target.accessKeyId = data.accessKeyId;
+      if (data.secretAccessKey) target.secretAccessKey = data.secretAccessKey;
+      if (data.username) target.username = data.username;
+      if (data.password) target.password = data.password;
+      return api('POST', '/api/offsite/settings', { target });
+    }
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });

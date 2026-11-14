@@ -89,7 +89,7 @@ The following observations identify where to extend that foundation.
 | Failure visibility | planReplenishment skips missing sources and catches unavailable-source/capacity failures | Retain structured blocked reasons and retry when the relevant condition changes |
 | Walking work | waves.js waveTasks sorts by location and supports claims | Direct the next eligible task to a walking worker using duty, zone, active work and capacity |
 | Wave release | autoWave returns while any wave is active | Consider bounded release of independent work, with order policies and resource reservations preserved |
-| Low stock | availability computes available stock, while its low flag compares on-hand with reorderPoint | Define separate purchase-demand and internal-replenishment policies using the appropriate stock and time horizon |
+| Low stock | availability computes available stock, and its low flag compares that available quantity with reorderPoint | Define separate purchase-demand and internal-replenishment policies using the appropriate stock and time horizon |
 | Recovery | Pallet replacement, stock checks, task release and handoffs already exist | Map recovery coverage across pallet, case and bin entry points, then close specific gaps |
 
 These observations come from src/engine.js, src/operations.js, src/waves.js, src/bins.js, src/foundation.js and server/commands.js at the SortedWMS revision above.
