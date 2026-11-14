@@ -123,9 +123,9 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['alerts', 'Alerts'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['labels', 'Labels']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
@@ -137,7 +137,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', alerts: 'alerts' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -145,7 +145,7 @@
     return PANEL_FALLBACK[id] || null;
   }
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['alerts', 'Alerts', 'alerts.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['offsite', 'Backups', 'backups.offsite'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -671,66 +671,78 @@
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
     },
-    async alerts() {
-      const [cfg, items, clients] = await Promise.all([
-        api('GET', '/api/notify'),
-        api('GET', '/api/items').catch(() => []),
-        me.role === 'client' ? [] : api('GET', '/api/clients').catch(() => []),
-      ]);
-      const unread = (cfg.inbox && cfg.inbox.unread) || [];
-      const notes = unread.length ? table(['When', 'What'], unread.map((n) => `<tr><td>${esc(new Date(n.at).toLocaleString())}</td><td>${esc(n.summary)}</td></tr>`)) : '<p class="dim">No unread alerts.</p>';
-      if (me.role === 'client') {
-        return `<section><h2>Alerts</h2><p class="hint">You only see alerts for your own items, when available stock is at or below the reorder point.</p>
-          ${notes}
-          <form class="form" data-act="alert-subscribe"><label>Email<input name="email" type="email" value="${esc(cfg.email || '')}" placeholder="optional"></label><button class="primary">${cfg.subscribed ? 'Update' : 'Subscribe'}</button></form>
-          ${cfg.subscribed ? '<p><button type="button" data-act="alert-unsubscribe">Stop alerts</button></p>' : ''}
-          <p>${unread.length ? '<button type="button" data-act="alert-read">Mark read</button>' : ''}</p></section>`;
-      }
-      const writable = can('alerts.write');
-      const smtp = cfg.smtp || {};
-      const [stock, low] = await Promise.all([api('GET', '/api/reports/availability').catch(() => []), api('GET', '/api/alerts/low-stock').catch(() => [])]);
-      const byItem = Object.fromEntries((Array.isArray(stock) ? stock : []).map((row) => [row.itemNo, row]));
-      const lowRows = (Array.isArray(low) ? low : []).map((row) => `<tr><td>${esc(row.itemNo)} <span class="dim">${esc(row.name || '')}</span></td><td>${esc(row.onHand)}</td><td>${esc(row.available)}</td><td>${esc(row.reorderPoint)}</td></tr>`);
-      const rows = (Array.isArray(items) ? items : []).filter((item) => item.status !== 'archived').slice(0, 40).map((item) => {
-        const have = byItem[item.itemNo] || {};
-        return `<tr><td>${esc(item.itemNo)} <span class="dim">${esc(item.name || '')}</span></td><td>${esc(item.clientId || '')}</td><td>${have.onHand == null ? '' : esc(have.onHand)}</td><td>${have.available == null ? '' : esc(have.available)}</td><td><form class="form" data-act="alert-reorder" style="margin:0"><input type="hidden" name="itemNo" value="${esc(item.itemNo)}"><input name="reorderPoint" type="number" min="0" value="${item.reorderPoint == null ? '' : esc(item.reorderPoint)}" aria-label="Reorder point" style="width:6em" ${writable ? '' : 'disabled'}><button ${writable ? '' : 'disabled'}>Save</button></form></td></tr>`;
-      });
-      const sent = (cfg.sent || []).map((row) => `<tr><td>${esc(new Date(row.at).toLocaleString())}</td><td>${esc(row.channel)}</td><td>${esc(row.kind)}</td><td>${esc(row.recipient || '')}</td><td>${esc(row.summary)}</td></tr>`).join('');
-      const emails = (cfg.warehouseRecipients || []).map((r) => r.email).filter(Boolean).join(', ');
-      return `<section><h2>Alerts</h2><p class="hint">Available stock is on hand, minus what is allocated, held or reserved. The reorder list uses that same available quantity. One alert is sent until the item recovers. A reminder follows if it stays low.</p>
-        ${notes}
-        <p>${unread.length ? '<button type="button" data-act="alert-read">Mark read</button>' : ''}</p></section>
-        <section><h2>How alerts go out</h2>
-        <form class="form" data-act="alert-settings">
-          <label>When<select name="mode" ${writable ? '' : 'disabled'}><option value="instant" ${cfg.mode === 'instant' ? 'selected' : ''}>As it happens</option><option value="digest" ${cfg.mode === 'digest' ? 'selected' : ''}>Daily digest</option></select></label>
-          <label>Digest time<input name="digestTime" value="${esc(cfg.digestTime || '07:00')}" ${writable ? '' : 'disabled'}></label>
-          <label>Reminder hours<input name="reminderHours" type="number" min="1" value="${esc(cfg.reminderHours)}" ${writable ? '' : 'disabled'}></label>
-          <label>Quiet after recovery (min)<input name="debounceMinutes" type="number" min="0" value="${esc(cfg.debounceMinutes)}" ${writable ? '' : 'disabled'}></label>
-          <label>Quiet from<input name="quietFrom" value="${esc(cfg.quietFrom || '')}" placeholder="22:00" ${writable ? '' : 'disabled'}></label>
-          <label>Quiet to<input name="quietTo" value="${esc(cfg.quietTo || '')}" placeholder="06:00" ${writable ? '' : 'disabled'}></label>
-          <label><input type="checkbox" name="perPickFace" ${cfg.perPickFace ? 'checked' : ''} ${writable ? '' : 'disabled'}> Also per pick face</label>
-          <label>Warehouse emails<input name="emails" value="${esc(emails)}" placeholder="office@example.com, buyer@example.com" size="36" ${writable ? '' : 'disabled'}></label>
-          <label>SMTP host<input name="host" value="${esc(smtp.host || '')}" ${writable ? '' : 'disabled'}></label>
-          <label>Port<input name="port" type="number" value="${esc(smtp.port || 587)}" ${writable ? '' : 'disabled'}></label>
-          <label>Security<select name="smtpMode" ${writable ? '' : 'disabled'}><option ${smtp.mode === 'starttls' ? 'selected' : ''}>starttls</option><option ${smtp.mode === 'smtps' ? 'selected' : ''}>smtps</option><option ${smtp.mode === 'plain' ? 'selected' : ''}>plain</option></select></label>
-          <label>SMTP user<input name="user" value="${esc(smtp.user || '')}" autocomplete="off" ${writable ? '' : 'disabled'}></label>
-          <label>From<input name="from" value="${esc(smtp.from || '')}" ${writable ? '' : 'disabled'}></label>
-          <label>SMTP password<input name="password" type="password" autocomplete="new-password" placeholder="${smtp.passwordSet ? 'saved' : 'not shown again'}" ${writable ? '' : 'disabled'}></label>
-          <button class="primary" ${writable ? '' : 'disabled'}>Save alerts</button>
+    async offsite() {
+      const s = await api('GET', '/api/offsite');
+      const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+      const when = (t) => {
+        if (!t) return '—';
+        try { return new Intl.DateTimeFormat(undefined, { timeZone: s.timeZone, dateStyle: 'short', timeStyle: 'short' }).format(new Date(t)); }
+        catch (e) { return new Date(t).toLocaleString(); }
+      };
+      const passNote = s.passphraseFromEnv
+        ? 'The passphrase comes from the environment. It is not shown here.'
+        : s.passphraseSet
+          ? 'A passphrase is saved. It is not shown again. Type a new one only to replace it.'
+          : 'Set a passphrase. It is saved on this machine and is not shown again.';
+      const last = `<div class="kpi"><b>${s.last ? (s.last.ok ? 'OK' : 'Failed') : '—'}</b><span>Last run${s.last ? ` ${esc(when(s.last.at))}` : ''}</span></div>`;
+      const targetBlocks = (s.targets || []).map((t) => {
+        const where = t.kind === 'folder' ? esc(t.path) : t.kind === 's3' ? `${esc(t.bucket)} · ${esc(t.endpoint)}` : esc(t.url);
+        const files = (t.files || []).map((f) => `<tr><td><code>${esc(f.name)}</code></td><td>${kb(f.bytes)}</td><td>${esc(when(f.at))}</td><td><button type="button" data-act="offsite-restore" data-target="${esc(t.id)}" data-file="${esc(f.name)}">Restore</button></td></tr>`).join('');
+        return `<section><h2>${esc(t.kind)} <span class="dim">${esc(t.id)}</span></h2><p class="hint">${where}${t.credentialsSet ? ' · credentials saved' : ''}${t.error ? ` · <span class="bad">${esc(t.error)}</span>` : ''}</p>
+          ${table(['File', 'Size', 'Taken', ''], files ? [files] : [])}
+          <p><button type="button" data-act="offsite-drop" data-id="${esc(t.id)}">Remove target</button></p></section>`;
+      }).join('');
+      return `<section><h2>Off-site backups</h2><p class="hint">The database is encrypted on this machine, then copied to a folder, S3-compatible storage, or WebDAV. The file includes password hashes, the same as the daily copy under Settings. The passphrase is not in the file, the export, or the log.</p>
+        <div class="kpis">${last}<div class="kpi"><b>${s.mode === 'interval' ? `${esc(s.intervalHours)} h` : esc(s.dailyTime)}</b><span>Next run ${esc(when(s.nextRun))} · ${esc(s.timeZone || '')}</span></div><div class="kpi"><b>${(s.targets || []).length}</b><span>Targets</span></div></div>
+        ${s.last ? `<p class="${s.last.ok ? 'msg ok' : 'msg bad'}">${esc(s.last.summary)}</p>` : ''}
+        <form class="form" data-act="offsite-run"><button class="primary">Back up now</button></form></section>
+        <section><h2>Schedule</h2><p class="hint">${esc(passNote)} Times use this warehouse's timezone.</p>
+        <form class="form" data-act="offsite-settings">
+          <label>When<select name="mode"><option value="daily" ${s.mode === 'daily' ? 'selected' : ''}>Daily</option><option value="interval" ${s.mode === 'interval' ? 'selected' : ''}>Every few hours</option></select></label>
+          <label>Daily time<input name="dailyTime" value="${esc(s.dailyTime)}" placeholder="02:30"></label>
+          <label>Hours between<input name="intervalHours" type="number" min="1" max="168" value="${esc(s.intervalHours)}"></label>
+          <label>Keep daily<input name="retainDaily" type="number" min="0" max="100" value="${esc(s.retainDaily)}"></label>
+          <label>Keep weekly<input name="retainWeekly" type="number" min="0" max="100" value="${esc(s.retainWeekly)}"></label>
+          <label>Keep monthly<input name="retainMonthly" type="number" min="0" max="100" value="${esc(s.retainMonthly)}"></label>
+          <label><input type="checkbox" name="testDecrypt" ${s.testDecrypt ? 'checked' : ''}> Decrypt once after upload to check the file</label>
+          <label>Passphrase<input name="passphrase" type="password" autocomplete="new-password" placeholder="${s.passphraseSet ? 'saved' : 'at least 8 characters'}"></label>
+          <label>Local daily copy<select name="localCopy">
+            <option value="plain" ${s.localCopy === 'plain' ? 'selected' : ''}>Plain file</option>
+            <option value="encrypted" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'encrypted' ? 'selected' : ''}>Encrypted file</option>
+            <option value="off" ${(s.offerPlainOff || s.localCopy !== 'plain') ? '' : 'disabled'} ${s.localCopy === 'off' ? 'selected' : ''}>Off</option>
+          </select></label>
+          <button class="primary">Save schedule</button>
         </form>
-        <p class="hint">Times use this warehouse's timezone (${esc(cfg.timeZone || '')}). The password is saved on this machine and is not shown again. ${smtp.passwordSet && !writable ? '' : ''}</p>
-        ${writable ? '<form class="form" data-act="alert-test"><button>Send test</button></form>' : ''}</section>
-        <section><h2>Reorder list</h2><p class="hint">Available stock at or below the reorder point. <a href="/api/alerts/low-stock.csv">CSV</a> with on hand and available.</p>${table(['Item', 'On hand', 'Available', 'Reorder point'], lowRows)}</section>
-        <section><h2>Reorder points</h2>${table(['Item', 'Client', 'On hand', 'Available', 'Reorder point'], rows)}</section>
-        <section><h2>Client recipients</h2><p class="hint">A client login only receives alerts for its own items. Add an address here, or they subscribe themselves.</p>
-        <form class="form" data-act="alert-client"><label>Client<select name="clientId">${(Array.isArray(clients) ? clients : []).map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`).join('')}</select></label><label>Email<input name="email" type="email"></label><button ${writable ? '' : 'disabled'}>Add</button></form>
-        ${Object.entries(cfg.clientRecipients || {}).map(([id, list]) => `<p><b>${esc(id)}</b> ${esc((list || []).map((r) => r.email || 'user').join(', '))}</p>`).join('') || '<p class="dim">None yet.</p>'}</section>
-        <section><h2>Sent</h2>${table(['When', 'Channel', 'Kind', 'To', 'Text'], sent ? [sent] : [])}</section>`;
+        ${s.offerPlainOff ? '<p class="msg">An encrypted backup has been verified. You can turn the plain daily copy off, or keep a local copy encrypted with the same passphrase.</p>' : '<p class="hint">The plain daily copy stays on until an encrypted target has one verified backup.</p>'}
+        ${s.plainCopies && s.effectiveLocalCopy !== 'plain' ? `<p><button type="button" data-act="offsite-prune-plain">Remove old plain copies</button> <span class="dim">${s.plainCopies} plain file${s.plainCopies === 1 ? '' : 's'} in the backup folder. They are kept until you confirm.</span></p>` : ''}
+        ${s.passphraseSet && !s.passphraseFromEnv ? '<p><button type="button" data-act="offsite-clear">Remove saved passphrase</button></p>' : ''}</section>
+        ${targetBlocks || '<section><h2>Targets</h2><p class="dim">No off-site target yet.</p></section>'}
+        <section><h2>Add a target</h2>
+        <form class="form" data-act="offsite-target">
+          <label>Kind<select name="kind" id="offsiteKind"><option value="folder">Folder</option><option value="s3">S3</option><option value="webdav">WebDAV</option></select></label>
+          <div data-offsite-kind="folder"><label>Folder path<input name="path" placeholder="/mnt/backups/sorted"></label></div>
+          <div data-offsite-kind="s3" hidden>
+            <label>Endpoint<input name="endpoint" placeholder="https://s3.amazonaws.com"></label>
+            <label>Bucket<input name="bucket"></label>
+            <label>Region<input name="region" value="us-east-1"></label>
+            <label>Prefix<input name="prefix" placeholder="main"></label>
+            <label><input type="checkbox" name="pathStyle"> Path-style (MinIO)</label>
+            <label>Access key<input name="accessKeyId" autocomplete="off" placeholder="not shown again"></label>
+            <label>Secret key<input name="secretAccessKey" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <div data-offsite-kind="webdav" hidden>
+            <label>HTTPS address<input name="url" placeholder="https://cloud.example/remote.php/dav/files/user/sorted/"></label>
+            <label>User<input name="username" autocomplete="off" placeholder="not shown again"></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="not shown again"></label>
+          </div>
+          <button class="primary">Add target</button>
+        </form>
+        <p class="hint">WebDAV uses HTTPS and basic authentication. S3 signing works with AWS, Backblaze B2, MinIO and Wasabi. Credentials are saved on this machine and are not shown again.</p></section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
       const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. Copy that folder somewhere else too: another disk, a USB stick or cloud storage. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
+      const backupBox = bk ? `<section><h2>Backups</h2><p class="hint">${bk.dir ? `The server copies the database into <code>${esc(bk.dir)}</code> once a day and keeps the newest 14. That plain copy stays on until Off-site backups has a verified encrypted copy and you choose otherwise. To go back to a copy, stop SortedWMS and run <code>./start.sh restore &lt;file&gt;</code>.` : 'Backups are made by the server. Start SortedWMS with ./start.sh.'}</p>
         ${bk.dir ? `<form class="form" data-act="backup-now"><button class="primary">Back up now</button></form>` : ''}
         ${table(['Backup', 'Size', 'Made'], bk.backups.map((b) => `<tr><td><code>${esc(b.file)}</code></td><td>${kb(b.bytes)}</td><td>${esc(new Date(b.at).toLocaleString())}</td></tr>`))}</section>` : '';
       return `${backupBox}<section><h2>System settings</h2><p class="hint">Dispatch and device mode. Printer addresses still live in the site file.</p>
@@ -1208,8 +1220,10 @@
       if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
-      if (act === 'alert-read') { const box = await api('GET', '/api/notify/inbox'); await api('POST', '/api/notify/read', { ids: (box.unread || []).map((n) => n.id) }); return draw(); }
-      if (act === 'alert-unsubscribe') { await api('POST', '/api/notify/subscribe', { unsubscribe: true }); return draw(); }
+      if (act === 'offsite-restore') { if (!confirm('Replace this warehouse with that backup? The current database is copied first.')) return; await api('POST', '/api/offsite/restore', { targetId: b.dataset.target, name: b.dataset.file }); return draw(); }
+      if (act === 'offsite-drop') { await api('POST', '/api/offsite/settings', { removeTarget: b.dataset.id }); return draw(); }
+      if (act === 'offsite-clear') { await api('POST', '/api/offsite/settings', { clearPassphrase: true }); return draw(); }
+      if (act === 'offsite-prune-plain') { if (!confirm('Remove the plain database copies in the backup folder? Encrypted files stay.')) return; await api('POST', '/api/offsite/prune-plain', { confirm: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -1225,6 +1239,7 @@
     if (e.target.id === 'stationPick') { sessionStorage.setItem('station', e.target.value); draw(); }
     if (e.target.id === 'rolePick') { location.hash = 'roles?role=' + e.target.value; panel = 'roles'; draw(); }
     if (e.target.id === 'tariffClient') { history.replaceState(null, '', '#tariff?client=' + encodeURIComponent(e.target.value)); panel = 'tariff'; draw(); }
+    if (e.target.id === 'offsiteKind') { for (const el of document.querySelectorAll('[data-offsite-kind]')) el.hidden = el.dataset.offsiteKind !== e.target.value; }
     if (e.target.id === 'countryPick') {
       const zone = e.target.selectedOptions[0] && e.target.selectedOptions[0].dataset.zone;
       const field = document.getElementById('timeZone');
@@ -1447,24 +1462,20 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
-    if (name === 'alert-reorder') return api('POST', '/api/items/' + encodeURIComponent(data.itemNo), { reorderPoint: data.reorderPoint === '' ? null : Number(data.reorderPoint) });
-    if (name === 'alert-settings') {
-      const emails = String(data.emails || '').split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
-      const body = { mode: data.mode, digestTime: data.digestTime, reminderHours: Number(data.reminderHours), debounceMinutes: Number(data.debounceMinutes), quietFrom: data.quietFrom || '', quietTo: data.quietTo || '', perPickFace: data.perPickFace === 'on', warehouseRecipients: emails.map((email) => ({ email })), smtp: { host: data.host, port: Number(data.port), mode: data.smtpMode, user: data.user, from: data.from } };
-      if (data.password) body.smtp.password = data.password;
-      return api('POST', '/api/notify/settings', body);
+    if (name === 'offsite-run') return api('POST', '/api/offsite/run', {});
+    if (name === 'offsite-settings') {
+      const body = { mode: data.mode, dailyTime: data.dailyTime, intervalHours: Number(data.intervalHours), retainDaily: Number(data.retainDaily), retainWeekly: Number(data.retainWeekly), retainMonthly: Number(data.retainMonthly), testDecrypt: data.testDecrypt === 'on', localCopy: data.localCopy || 'plain' };
+      if (data.passphrase) body.passphrase = data.passphrase;
+      return api('POST', '/api/offsite/settings', body);
     }
-    if (name === 'alert-client') {
-      const cfg = await api('GET', '/api/notify');
-      const map = { ...(cfg.clientRecipients || {}) };
-      const id = String(data.clientId || '').toUpperCase();
-      const list = (map[id] || []).filter((r) => r.email !== data.email);
-      if (data.email) list.push({ email: data.email });
-      map[id] = list;
-      return api('POST', '/api/notify/settings', { clientRecipients: map });
+    if (name === 'offsite-target') {
+      const target = { kind: data.kind, path: data.path, endpoint: data.endpoint, bucket: data.bucket, region: data.region, prefix: data.prefix, pathStyle: data.pathStyle === 'on', url: data.url };
+      if (data.accessKeyId) target.accessKeyId = data.accessKeyId;
+      if (data.secretAccessKey) target.secretAccessKey = data.secretAccessKey;
+      if (data.username) target.username = data.username;
+      if (data.password) target.password = data.password;
+      return api('POST', '/api/offsite/settings', { target });
     }
-    if (name === 'alert-subscribe') return api('POST', '/api/notify/subscribe', { email: data.email || '' });
-    if (name === 'alert-test') return api('POST', '/api/notify/test', {});
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });

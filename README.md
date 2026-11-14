@@ -220,14 +220,14 @@ The server shares one source of truth between the role views, handheld, desk and
 ./start.sh sample home     # a home bin wall (also: maker, 3pl), each in its own data/sample-<kind>.db
 ./start.sh backup          # copy the database into data/backups now
 ./start.sh backups         # list the backups
-./start.sh restore <file>  # put a backup back, with SortedWMS stopped
+./start.sh restore <file>  # put a backup back, with SortedWMS stopped (encrypted files too)
 ./start.sh setup           # check what SortedWMS needs
 npm test
 ```
 
 Then open `http://localhost:8080/login`. Your own warehouse gets only the `admin` account, which chooses its own password at the first sign-in (or set `SORTED_ADMIN_PASSWORD` before the first start). The samples also get the accounts below, with the printed passwords.
 
-**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. Copy that folder somewhere else as well. `npm start` also works, on an empty building.
+**Backups.** While it runs, the server copies the database into `data/backups` once a day and keeps the newest 14 (`SORTED_BACKUP_KEEP`, `SORTED_BACKUP_DIR`, or `SORTED_BACKUPS=0` to turn it off). Settings shows them and has **Back up now**. That copy is a plain database file until Off-site backups has a verified encrypted copy and you choose otherwise: keep the local copy encrypted with the same passphrase, or turn it off. Old plain files are removed only when you confirm. **Off-site backups** encrypts a copy and sends it to a folder, S3-compatible storage, or WebDAV, on a schedule in the warehouse's timezone. The passphrase is never shown again and is not in the file. The file does include password hashes, the same as the local copy and the JSON export. See [docs/BACKUPS.md](docs/BACKUPS.md). `npm start` also works, on an empty building.
 
 | Username | Password | View |
 | --- | --- | --- |
@@ -261,6 +261,7 @@ Settings, through environment variables:
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | Password for that first administrator. |
 | `SORTED_DEMO_USERS` | on | Set to `0` to skip the manager, office, technician, inbound, picker and stock accounts. |
 | `SORTED_MODULES` | none | Folder of extra module files. Same format as `modules/`. Nothing is downloaded. |
+| `SORTED_BACKUP_PASSPHRASE` | none | Passphrase for off-site backups. When set, it wins over the saved passphrase and is never printed. |
 
 **How big it gets.** `npm run load-test` builds a made-up warehouse of 14,000 locations, 2,000 items, 6,000 pallets, 8,000 bin lines and 2,000 orders through the real commands, then times what people wait on (`--scale 2` for twice as much). On a laptop: a bin put-away about 0.3 ms, a new order about 5 ms, a pick wave about 10 ms, the stock screen and the order queue under 50 ms, a restart under 0.1 s. Shipped pallets, finished jobs and shipped orders stay for history without slowing the floor.
 
@@ -305,7 +306,8 @@ Settings, through environment variables:
 | `server/commands.js` | Every change that can be made, as a journaled command. |
 | `server/site.blank.json` | The empty building a new warehouse starts from. A site file can also carry a layout, block lanes, stations, routes, desks, items and printer addresses (see `test/fixtures/site.json`). |
 | `server/public/` | `app.html` (each role's screens, at `/app`), `setup.html` (the setup wizard), `bins.html` (the bin handheld), `handheld.html` (Android scanners on trucks), `admin.html` (office), `card.html` (the command card, at `/card`) and `keys.html` (key test for a new scanner, at `/keys`). |
-| `server/backups.js`, `server/samples.js` | Daily database copies; the home, maker and 3PL sample warehouses. |
+| `server/backups.js`, `server/backup-offsite.js`, `server/backup-crypto.js`, `server/sigv4.js` | Daily database copies, and encrypted off-site copies (folder, S3, WebDAV). |
+| `server/samples.js` | The home, maker and 3PL sample warehouses. |
 | `scripts/cli.js`, `start.sh` | `./start.sh` and its commands: start, sample, backup, restore, setup. |
 | `scripts/load-test.js` | The load test (`npm run load-test`). |
 | `server/print.js` | Sends ZPL to network label printers. |

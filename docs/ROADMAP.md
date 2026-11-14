@@ -29,6 +29,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 
 **Running it**
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.
+- Encrypted off-site backups: AES-256-GCM with a passphrase, a daily time or an interval in the warehouse timezone, retention of daily, weekly and monthly copies, and a folder, S3-compatible bucket or WebDAV target. A failure is journaled and, when Alerts is on, raised there. The file includes password hashes; the passphrase does not. See [BACKUPS.md](BACKUPS.md).
 - Versioned data upgrades on start and on backup import: core steps, then each module's own steps, a backup taken first, a log of every step, and a rollback if a step fails. See [UPGRADES.md](UPGRADES.md).
 - A module manifest per feature in `modules/`: id, dependencies, conflicts, permissions, routes, menu entries, settings and its own data upgrades. A third-party folder (`SORTED_MODULES`) is loaded the same way, with no network install. See [MODULES.md](MODULES.md).
 - Per warehouse, a module that is off answers 404 on a read and 403 on a write, drops out of the menus and the handheld, and hides its permissions. Enabling offers to turn dependencies on. Disabling checks what still needs it and keeps the data. Managers and administrators have a Modules page. Presets, including a small 3PL, map onto the modules.
@@ -70,6 +71,6 @@ In order of priority:
 
 ## Risks to say out loud
 
-- A WMS that is down stops shipping. Whoever runs it needs hosting, backups (built in, but copy them elsewhere) and someone on call.
+- A WMS that is down stops shipping. Whoever runs it needs hosting, backups (a local copy is built in; the off-site module sends an encrypted copy elsewhere) and someone on call.
 - Food traceability (batch, best-before, recall) carries legal weight. The journal is the audit trail; it is not optional.
 - Moving to SortedWMS from another system depends on what that system can export.
