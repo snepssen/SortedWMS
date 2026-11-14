@@ -63,6 +63,7 @@ const PERMISSIONS = [
   ['devices.manage', 'See and revoke paired devices'],
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
+  ['shopify.manage', 'Connect Shopify shops and map SKUs'],
   ['intake.write', 'Send orders and ASNs in from another system'],
 ];
 
@@ -81,7 +82,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'shopify.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -269,6 +270,13 @@ const RULES = [
   ['GET', '/api/reports/availability.csv', 'reports.read'],
   ['GET', '/api/reports/availability.json', 'reports.read'],
   ['GET', '/api/alerts/low-stock', 'reports.read'],
+  ['GET', '/api/shopify', 'shopify.manage'],
+  ['GET', '/api/shopify/map/:id', 'shopify.manage'],
+  ['POST', '/api/shopify/shops', 'shopify.manage'],
+  ['POST', '/api/shopify/map', 'shopify.manage'],
+  ['POST', '/api/shopify/sync', 'shopify.manage'],
+  ['POST', '/api/shopify/catalog', 'shopify.manage'],
+  ['POST', '/api/shopify/stock', 'shopify.manage'],
   ['GET', '/api/reports/billing', 'reports.read'],
   ['GET', '/api/reports/billing.csv', 'reports.read'],
   ['GET', '/api/sites', 'wms.read'],

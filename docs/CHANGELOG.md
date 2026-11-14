@@ -1,5 +1,9 @@
 # Changelog
 
+## Shopify
+
+A warehouse can connect one or more Shopify shops, per client or for the whole building. Paid orders that are not yet fulfilled come in by a signed webhook or by polling, through the same intake as every other system, so sending one twice does not book it twice. Shop SKUs map to items, including a suggestion when the SKU or barcode already matches. Available stock (on hand minus allocated, held and reserved, then minus a per-shop buffer) is sent back, once per burst, and waits longer each time Shopify asks the warehouse to slow down. A shipped order sends its tracking number and carrier back. The access token and webhook secret are saved beside the database and are never shown again. See [connectors/SHOPIFY.md](connectors/SHOPIFY.md).
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.

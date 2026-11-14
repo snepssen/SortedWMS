@@ -167,7 +167,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null }) {
+  function createApi({ store, printers, hardware, backups = null, shopify = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -177,6 +177,8 @@
       return result;
     };
     let currentActor = null;
+    let rawBody = '';
+    let webhookHeader = '';
     const ownClient = () => (currentActor && currentActor.role === 'client' ? String(currentActor.clientId || '').toUpperCase() : null);
     const seesItemValue = () => {
       const w = wh();
@@ -585,6 +587,13 @@
       raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
     }));
     on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    on('GET', '/api/shopify', () => (shopify ? { ...shopify.status(), mappings: null } : { status: 400, error: 'Shopify runs on the server' }));
+    on('GET', '/api/shopify/map/:id', ({ id }) => (shopify ? shopify.mappings(id) : { status: 400, error: 'Shopify runs on the server' }));
+    on('POST', '/api/shopify/shops', (_, q, b) => (shopify ? shopify.saveShop(b || {}) : { status: 400, error: 'Shopify runs on the server' }));
+    on('POST', '/api/shopify/map', (_, q, b) => (shopify ? shopify.mapSku(b.shopId, b.sku, b.itemNo, b) : { status: 400, error: 'Shopify runs on the server' }));
+    on('POST', '/api/shopify/sync', (_, q, b) => (shopify ? shopify.pull(b.shopId) : { status: 400, error: 'Shopify runs on the server' }));
+    on('POST', '/api/shopify/catalog', (_, q, b) => (shopify ? shopify.pullProducts(b.shopId) : { status: 400, error: 'Shopify runs on the server' }));
+    on('POST', '/api/shopify/stock', () => (shopify ? shopify.flushStock() : { status: 400, error: 'Shopify runs on the server' }));
     on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: q.clientId || null }));
     on('GET', '/api/reports/billing.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',
@@ -699,8 +708,10 @@
     // request again when the answer is late; the repeat gets the first answer instead of
     // happening twice (a pallet scanned twice in Auto means "move it").
     const answered = new Map();
-    function handle(method, rawUrl, body = {}, by = 'office', requestId = null, actor = null) {
+    function handle(method, rawUrl, body = {}, by = 'office', requestId = null, actor = null, raw = '', signature = '') {
       currentActor = actor || null;
+      rawBody = typeof raw === 'string' ? raw : '';
+      webhookHeader = signature || '';
       if (method !== 'GET' && requestId) {
         const key = `${by}|${method} ${rawUrl}|${requestId}`;
         if (answered.has(key)) return answered.get(key);
@@ -727,10 +738,10 @@
       try {
         const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
         // Asking a printer goes over the network: those routes answer with a promise.
-        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: 400, body: { error: e.message } }));
+        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: e.status || 400, body: { error: e.message } }));
         return answer(out);
       } catch (e) {
-        return { status: 400, body: { error: e.message } };
+        return { status: e.status || 400, body: { error: e.message } };
       }
     }
 

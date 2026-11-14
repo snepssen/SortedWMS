@@ -45,6 +45,7 @@ SortedWMS is an open-source warehouse system for any warehouse: a chilled distri
 
 **Connections** ([CONNECTIONS.md](CONNECTIONS.md))
 - API keys per system, with a role, for one client or all; revoked at once.
+- Shopify: paid orders in (webhook or poll, safe to send twice), SKU mapping, stock and tracking back. See [connectors/SHOPIFY.md](connectors/SHOPIFY.md).
 - Orders and ASNs in: one intake, JSON or CSV, safe to send twice, the sender's reference carried through; and a drop folder.
 - Confirmations out: goods received, orders shipped with pallets, cartons, batches and serials, returns, stock adjustments, in a numbered log a system reads from where it left off, or pushed to it by signed webhooks or an outbox folder.
 
