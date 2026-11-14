@@ -65,11 +65,9 @@ test('PKCE comes back to the WMS, and a signed receipt is imported once', async 
   assert.equal(verifyWebhook(raw, 'nope', HOOK), false);
   const seen = { challenge: '' };
   const alerts = [];
-  const stop = registry.register({
-    id: 'alerts', name: 'Alerts', description: 'stub', version: 1,
-    upgrades: [{ version: 1, id: 'alerts-stub', up() {} }],
-    raise(s, event) { alerts.push(event); },
-  });
+  const alertsMod = registry.get('alerts');
+  const previousRaise = alertsMod.raise;
+  alertsMod.raise = (s, event) => { alerts.push(event); };
   let connected;
   const { store, etsy } = world(async (req) => {
     const target = String(req.url);
@@ -108,7 +106,7 @@ test('PKCE comes back to the WMS, and a signed receipt is imported once', async 
   const maps = etsy.mappings('demo');
   assert.equal(maps.find((m) => m.sku === 'MUG').itemNo, 'MUG');
   assert.equal(maps.find((m) => m.sku === 'OTHER').itemNo, 'MUG');
-  stop();
+  alertsMod.raise = previousRaise;
   store.close();
 });
 

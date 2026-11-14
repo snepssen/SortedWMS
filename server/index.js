@@ -20,9 +20,9 @@ const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null, shopify = null, woo = null, etsy = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware, backups, offsite });
+  const api = createApi({ store, printers, hardware, backups, offsite, shopify, woo, etsy });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -67,6 +67,28 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         if (denied) return send(denied.status, denied.body);
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
         try { return send(200, shopify.acceptWebhook(id, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))); }
+        catch (e) { return send(e.status || 400, { error: e.message }); }
+      }
+      if (woo && req.method === 'POST' && url.pathname.startsWith('/api/woocommerce/webhook/')) {
+        const denied = registry.denial(store.wh, 'POST', url.pathname);
+        if (denied) return send(denied.status, denied.body);
+        const id = decodeURIComponent(url.pathname.split('/')[4] || '');
+        try { return send(200, woo.acceptWebhook(id, raw, String(req.headers['x-wc-webhook-signature'] || ''))); }
+        catch (e) { return send(e.status || 400, { error: e.message }); }
+      }
+      if (etsy && req.method === 'GET' && url.pathname === '/api/etsy/callback') {
+        const denied = registry.denial(store.wh, 'GET', url.pathname);
+        if (denied) return send(denied.status, denied.body);
+        const page = (text) => `<!doctype html><meta charset="utf-8"><title>Etsy</title><p>${text}</p><p><a href="/app#etsy">Back to Etsy</a></p>`;
+        return etsy.finishConnect({ code: url.searchParams.get('code'), state: url.searchParams.get('state') })
+          .then(() => send(200, page('Etsy is connected. The token stays on this machine.'), 'text/html; charset=utf-8'))
+          .catch((e) => send(400, page(String(e.message || 'Etsy did not connect').replace(/[<>&]/g, '')), 'text/html; charset=utf-8'));
+      }
+      if (etsy && req.method === 'POST' && url.pathname.startsWith('/api/etsy/webhook/')) {
+        const denied = registry.denial(store.wh, 'POST', url.pathname);
+        if (denied) return send(denied.status, denied.body);
+        const id = decodeURIComponent(url.pathname.split('/')[4] || '');
+        try { return send(200, etsy.acceptWebhook(id, raw, String(req.headers['x-etsy-signature'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
       const sharedOk = Boolean(token) && (req.headers['x-token'] === token || url.searchParams.get('token') === token);
@@ -356,24 +378,24 @@ function main() {
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
   const shopify = require('./shopify').createShopify({ store, log: (line) => console.log(line) });
-  const previousAfter = store.afterCommand;
-  store.afterCommand = (op) => {
-    if (typeof previousAfter === 'function') previousAfter(op);
-    try { shopify.onCommand(op); } catch (e) { console.error('Shopify', e.message); }
-  };
-  const stopShopify = shopify.start();
-  const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
-  const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox, shopify });
+  const woo = require('./woocommerce').createWoo({ store, log: (line) => console.log(line) });
+  const etsy = require('./etsy').createEtsy({ store, log: (line) => console.log(line) });
   const alerts = require('./alerts').createAlerts({ store, log: (line) => console.log(line) });
   store.afterCommand = (op) => {
-    if (store.wh && store.wh.module && !store.wh.module('alerts')) return;
-    alerts.onCommand(op);
+    if (!(store.wh && store.wh.module && !store.wh.module('alerts'))) {
+      try { alerts.onCommand(op); } catch (e) { console.error('Alerts', e.message); }
+    }
+    try { shopify.onCommand(op); } catch (e) { console.error('Shopify', e.message); }
+    try { woo.onCommand(op); } catch (e) { console.error('WooCommerce', e.message); }
+    try { etsy.onCommand(op); } catch (e) { console.error('Etsy', e.message); }
   };
+  const stopShopify = shopify.start();
+  const stopWoo = woo.start();
+  const stopEtsy = etsy.start();
   const stopAlerts = alerts.start();
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite, shopify, woo, etsy });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
@@ -416,7 +438,7 @@ function main() {
     if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
     if (process.env.SORTED_OUTBOX) console.log(`Outbox folder for messages: ${process.env.SORTED_OUTBOX}`);
   });
-  const stop = () => { clearInterval(tick); stopOutbox(); stopOffsite(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); stopOutbox(); stopOffsite(); stopShopify(); stopWoo(); stopEtsy(); stopAlerts(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }
