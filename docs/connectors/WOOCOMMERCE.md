@@ -23,3 +23,5 @@ Available stock is on hand minus allocated, held and reserved, then minus the sh
 When the warehouse ships an order that came from the shop, the order is marked completed and the tracking number and carrier are written as order meta (`_tracking_number`, `_tracking_provider`).
 
 Errors are kept on the WooCommerce page. If the Alerts module is on, the same text is raised there.
+
+Order and catalogue imports follow pagination beyond the first 50 records. Shipment updates are stored in a per-warehouse delivery queue before the read cursor advances. Failed updates retry with increasing delays, including after a server restart. Background work visits every configured warehouse and keeps that warehouse context during network requests.

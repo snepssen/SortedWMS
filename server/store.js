@@ -7,6 +7,7 @@
  * The journal doubles as the audit trail: who did what, when.
  */
 const path = require('node:path');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { DatabaseSync } = require('node:sqlite');
 const { Warehouse } = require('../src/engine');
 const { buildWarehouse } = require('./site');
@@ -17,6 +18,7 @@ const SNAPSHOT_EVERY = 200;
 
 class Store {
   constructor({ file = ':memory:', site, now = () => Date.now(), backupDir = null, moduleUpgrades = null } = {}) {
+    this._siteContext = new AsyncLocalStorage();
     this.site = site;
     this.siteId = 'MAIN';
     this._extra = null;
@@ -143,10 +145,18 @@ class Store {
     return { id: siteId, name: label };
   }
 
+  get siteId() {
+    return this._siteContext.getStore()?.id || this._defaultSite || 'MAIN';
+  }
+
+  set siteId(id) {
+    const context = this._siteContext.getStore();
+    if (context) context.id = id;
+    else this._defaultSite = id;
+  }
+
   _withSite(siteId, fn) {
-    const previous = this.siteId;
-    this.siteId = siteId;
-    try { return fn(); } finally { this.siteId = previous || 'MAIN'; this._extra = null; }
+    return this._siteContext.run({ id: siteId || 'MAIN' }, fn);
   }
 
   startTransfer({ from = 'MAIN', to, itemNo, qty, id, by = 'office' } = {}) {
@@ -192,6 +202,7 @@ class Store {
     this.db.prepare('INSERT INTO extra_journal (site, t, op, args, by) VALUES (?, ?, ?, ?, ?)').run(siteId, t, op, JSON.stringify(args), by);
     this.db.prepare('UPDATE extra_sites SET state = ? WHERE id = ?').run(JSON.stringify(wh), siteId);
     this._extra = { id: siteId, wh };
+    this._after(op);
     return result;
   }
 

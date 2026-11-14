@@ -78,7 +78,7 @@ function createSendcloud({ store, secretsFile = undefined, labelsDir = undefined
   let memorySecrets = {};
 
   function siteId() { return store.siteId || 'MAIN'; }
-  function warehouse() { return store.wh; }
+  function warehouse() { return store.warehouse(siteId()); }
   function loadSecrets() {
     if (!secretsPath) return { ...memorySecrets };
     if (!fs.existsSync(secretsPath)) return {};
@@ -313,6 +313,14 @@ function createSendcloud({ store, secretsFile = undefined, labelsDir = undefined
   }
 
   function acceptWebhook(raw, header) {
+    const body = JSON.parse(raw);
+    const parcel = body.parcel || body;
+    const row = store.db.prepare('SELECT site FROM sendcloud_parcels WHERE external_id = ? ORDER BY id DESC LIMIT 1').get(String(parcel.id || ''));
+    return store._withSite(row?.site || 'MAIN', () => acceptWebhookHere(raw, header));
+  }
+
+  function acceptWebhookHere(raw, header) {
+    if (!warehouse().module('sendcloud')) throw new Error('Sendcloud is switched off');
     const sec = loadSecrets();
     if (!verifyWebhook(raw, header, sec.webhookSecret)) {
       journal(false, 'webhook', 'Signature did not match');
