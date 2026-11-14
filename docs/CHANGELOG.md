@@ -1,5 +1,9 @@
 # Changelog
 
+## Item photos
+
+The office and a client can each put up to three photos on an item. A photo is a JPEG, PNG, GIF or WebP of at most 512 KB, checked from the file itself, and stored next to the warehouse database. The journal keeps the name, the type and the size. The text terminal does not show photos. Switching the module off keeps the files: a read answers 404 and a new photo answers 403. A client only sees its own items.
+
 ## Sendcloud on the module list
 
 Sendcloud is in the core module list again, so its upgrade runs once and the registry tests match the modules on disk. The settings screen, the API, and the signed status webhook are wired on the server. A failed label still raises `shop.sync`.
