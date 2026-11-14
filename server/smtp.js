@@ -53,7 +53,7 @@ function sendMail({ host, port, mode = 'starttls', auth = 'PLAIN', user = '', pa
       if (phase === 'starttls' && code === 220) {
         const plain = socket;
         plain.removeListener('data', onData);
-        socket = tls.connect({ socket: plain, servername: host, ...tlsOpts });
+        socket = tls.connect({ socket: plain, servername: net.isIP(host) ? undefined : host, ...tlsOpts });
         socket.setTimeout(timeoutMs);
         socket.on('timeout', () => fail(new Error('SMTP did not answer in time')));
         socket.on('error', (err) => fail(new Error(err.message || 'SMTP connection failed')));
@@ -102,7 +102,7 @@ function sendMail({ host, port, mode = 'starttls', auth = 'PLAIN', user = '', pa
       }
     }
     const connect = secure
-      ? () => tls.connect({ host, port: port || 465, servername: host, ...tlsOpts })
+      ? () => tls.connect({ host, port: port || 465, servername: net.isIP(host) ? undefined : host, ...tlsOpts })
       : () => net.connect({ host, port: port || 587 });
     socket = connect();
     socket.setTimeout(timeoutMs);

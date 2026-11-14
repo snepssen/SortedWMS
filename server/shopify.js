@@ -5,6 +5,9 @@
  */
 'use strict';
 
+const { createShopWorker } = require('./shop-worker');
+const { shopPages } = require('./shop-pages');
+
 const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
@@ -123,7 +126,7 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
 
   function siteId() { return String(store.siteId || 'MAIN').toUpperCase(); }
   function warehouse() {
-    try { return store.warehouse ? store.warehouse(siteId()) : store.wh; } catch (e) { return store.wh; }
+    return store.warehouse(siteId());
   }
   function loadSecrets() {
     if (!secretsPath) return { shops: { ...(memorySecrets.shops || {}) } };
@@ -190,6 +193,8 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
 
   function saveShop(input = {}) {
     const id = String(input.id || '').trim().toLowerCase();
+    const existingSite = store.db.prepare('SELECT site FROM shopify_shops WHERE id = ?').get(id);
+    if (existingSite && existingSite.site !== siteId()) throw new Error('That shop ID belongs to another warehouse');
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) throw new Error('A shop id uses lowercase letters, digits or hyphens');
     const shop = String(input.shop || '').trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
     if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop)) throw new Error('The shop address looks like example.myshopify.com');
@@ -266,9 +271,11 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
     return result;
   }
 
-  async function callShop(shop, pathName, { method = 'GET', json = null } = {}) {
+  async function callShop(shop, pathName, { method = 'GET', json = null, response = false } = {}) {
     const sec = secretOf(shop.id);
-    const url = `https://${shop.shop}/admin/api/${API}${pathName}`;
+    const base = `https://${shop.shop}/admin/api/${API}`;
+    const url = pathName.startsWith('https://') ? pathName : base + pathName;
+    if (new URL(url).origin !== new URL(base).origin || !new URL(url).pathname.startsWith(`/admin/api/${API}/`)) throw new Error('Invalid Shopify pagination URL');
     const headers = { 'x-shopify-access-token': sec.token, accept: 'application/json' };
     let body = null;
     if (json) { body = Buffer.from(JSON.stringify(json)); headers['content-type'] = 'application/json'; }
@@ -276,16 +283,18 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
     const res = await withBackoff(run, { sleep, onWait: (wait) => journal(shop.id, false, 'rate-limit', `Waiting ${wait} ms`) });
     if (res.status < 200 || res.status >= 300) throw new Error(`Shopify answered HTTP ${res.status}`);
     const text = Buffer.isBuffer(res.body) ? res.body.toString('utf8') : String(res.body || '');
-    return text ? JSON.parse(text) : {};
+    const data = text ? JSON.parse(text) : {};
+    return response ? { data, headers: res.headers } : data;
   }
 
   async function pull(shopId) {
     const shop = shopOrThrow(shopId);
     try {
-      const page = await callShop(shop, '/orders.json?status=open&financial_status=paid&limit=50');
-      const orders = page.orders || [];
       let created = 0; let duplicate = 0; let skipped = 0;
-      for (const order of orders) {
+      for await (const orders of shopPages({
+        load: (path) => callShop(shop, path, { response: true }), path: '/orders.json?status=open&financial_status=paid&limit=50',
+        rows: (data) => data.orders || [], mode: 'link',
+      })) for (const order of orders) {
         const result = takeOrder(shop, order);
         if (result.status === 'created') created++;
         else if (result.status === 'duplicate') duplicate++;
@@ -300,11 +309,13 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
 
   async function pullProducts(shopId) {
     const shop = shopOrThrow(shopId);
-    const page = await callShop(shop, '/products.json?limit=50');
     const stmt = store.db.prepare(`INSERT INTO shopify_catalog (shop_id, sku, title, barcode, variant_id, inventory_item_id) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(shop_id, sku) DO UPDATE SET title = excluded.title, barcode = excluded.barcode, variant_id = excluded.variant_id, inventory_item_id = excluded.inventory_item_id`);
     let n = 0;
-    for (const product of page.products || []) {
+    for await (const products of shopPages({
+      load: (path) => callShop(shop, path, { response: true }), path: '/products.json?limit=50',
+      rows: (data) => data.products || [], mode: 'link',
+    })) for (const product of products) {
       for (const variant of product.variants || []) {
         if (!variant.sku) continue;
         stmt.run(shop.id, variant.sku, product.title || '', variant.barcode || '', String(variant.id), String(variant.inventory_item_id || ''));
@@ -333,14 +344,38 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
   function queueStock(itemNo) {
     const wh = warehouse();
     if (!wh.items[itemNo]) return;
-    pendingStock.set(itemNo, true);
+    const site = siteId();
+    const items = pendingStock.get(site) || new Set();
+    items.add(itemNo);
+    pendingStock.set(site, items);
     if (stockTimer) return;
     stockTimer = schedule(() => { stockTimer = null; return flushStock().catch((e) => log(redact(e.message))); }, debounceMs);
   }
 
-  async function flushStock() {
-    const items = [...pendingStock.keys()];
+  let stockFlushing = null;
+  function flushStock() {
+    if (stockFlushing) return stockFlushing;
+    stockFlushing = flushBatches().finally(() => { stockFlushing = null; });
+    return stockFlushing;
+  }
+
+  async function flushBatches() {
+    const batches = [...pendingStock];
     pendingStock.clear();
+    let failure = null;
+    for (const [site, items] of batches) {
+      try { await store._withSite(site, () => flushStockItems([...items])); }
+      catch (e) {
+        const waiting = pendingStock.get(site) || new Set();
+        for (const item of items) waiting.add(item);
+        pendingStock.set(site, waiting);
+        failure = e;
+      }
+    }
+    if (failure) throw failure;
+  }
+
+  async function flushStockItems(items) {
     for (const shop of shops()) {
       if (!shop.active || !shop.location_id) continue;
       for (const itemNo of items) {
@@ -376,6 +411,15 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
   }
 
   function acceptWebhook(shopId, raw, header) {
+    const shop = store.db.prepare('SELECT site FROM shopify_shops WHERE id = ?').get(String(shopId));
+    if (!shop) throw new Error('Unknown shop');
+    return store._withSite(shop.site, () => {
+      if (!warehouse().module('shopify')) throw new Error('The shop connector is switched off');
+      return acceptWebhookHere(shopId, raw, header);
+    });
+  }
+
+  function acceptWebhookHere(shopId, raw, header) {
     const shop = shopOrThrow(shopId);
     const sec = secretOf(shop.id);
     if (!verifyWebhook(raw, header, sec.webhookSecret)) {
@@ -398,38 +442,19 @@ function createShopify({ store, secretsFile = undefined, transport = null, sleep
   }
 
   function onCommand(op) {
-    if (op === 'intake' || op === 'noteTracking' || op === 'enableDemandReplenishment') return;
+    if (op === 'noteTracking' || op === 'enableDemandReplenishment') return;
     const wh = warehouse();
     if (!wh || typeof wh.module === 'function' && !wh.module('shopify')) return;
     for (const itemNo of Object.keys(wh.items || {})) queueStock(itemNo);
   }
 
-  function start() {
-    const timer = setInterval(() => {
-      for (const shop of shops()) {
-        if (!shop.active) continue;
-        const key = `poll:${shop.id}`;
-        const row = store.db.prepare('SELECT value FROM shopify_meta WHERE site = ? AND key = ?').get(siteId(), key);
-        const last = row ? Number(row.value) : 0;
-        if (clock() - last < shop.poll_minutes * 60000) continue;
-        store.db.prepare('INSERT INTO shopify_meta (site, key, value) VALUES (?, ?, ?) ON CONFLICT(site, key) DO UPDATE SET value = excluded.value').run(siteId(), key, String(clock()));
-        pull(shop.id).catch((e) => log(redact(e.message)));
-      }
-      const wh = warehouse();
-      if (!wh || typeof wh.messageLog !== 'function') return;
-      const cursorKey = 'message-cursor';
-      const cur = store.db.prepare('SELECT value FROM shopify_meta WHERE site = ? AND key = ?').get(siteId(), cursorKey);
-      let after = cur ? Number(cur.value) : 0;
-      const page = wh.messageLog({ after, limit: 100, type: 'order.shipped' });
-      for (const message of page.messages) pushFulfilment(message).catch((e) => journal(null, false, 'fulfil', e.message));
-      if (page.next && page.next !== after) store.db.prepare('INSERT INTO shopify_meta (site, key, value) VALUES (?, ?, ?) ON CONFLICT(site, key) DO UPDATE SET value = excluded.value').run(siteId(), cursorKey, String(page.next));
-    }, 15000);
-    if (timer.unref) timer.unref();
-    return () => clearInterval(timer);
-  }
+  const worker = createShopWorker({ store, connector: 'shopify', metaTable: 'shopify_meta',
+    shops, pull, deliver: pushFulfilment, journal, now: clock });
+  const start = worker.start;
+
 
   return {
-    status, saveShop, mapSku, mappings, pull, pullProducts, takeOrder, acceptWebhook, flushStock, queueStock, pushFulfilment, onCommand, start, verifyWebhook, availableQty, suggestItem, withBackoff,
+    run: worker.run, status, saveShop, mapSku, mappings, pull, pullProducts, takeOrder, acceptWebhook, flushStock, queueStock, pushFulfilment, onCommand, start, verifyWebhook, availableQty, suggestItem, withBackoff,
     _setSchedule(fn) { schedule = fn; },
   };
 }

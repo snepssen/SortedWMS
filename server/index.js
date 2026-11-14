@@ -59,19 +59,15 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
 
     let raw = '';
     req.on('data', (c) => { raw += c; if (raw.length > 5e6) req.destroy(); });
-    req.on('end', () => {
+    req.on('end', () => store._withSite('MAIN', () => {
       let body;
       try { body = raw ? JSON.parse(raw) : {}; } catch (e) { return send(400, { error: 'Body is not JSON' }); }
       if (shopify && req.method === 'POST' && url.pathname.startsWith('/api/shopify/webhook/')) {
-        const denied = registry.denial(store.wh, 'POST', url.pathname);
-        if (denied) return send(denied.status, denied.body);
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
         try { return send(200, shopify.acceptWebhook(id, raw, String(req.headers['x-shopify-hmac-sha256'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
       if (woo && req.method === 'POST' && url.pathname.startsWith('/api/woocommerce/webhook/')) {
-        const denied = registry.denial(store.wh, 'POST', url.pathname);
-        if (denied) return send(denied.status, denied.body);
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
         try { return send(200, woo.acceptWebhook(id, raw, String(req.headers['x-wc-webhook-signature'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
@@ -85,15 +81,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
           .catch((e) => send(400, page(String(e.message || 'Etsy did not connect').replace(/[<>&]/g, '')), 'text/html; charset=utf-8'));
       }
       if (etsy && req.method === 'POST' && url.pathname.startsWith('/api/etsy/webhook/')) {
-        const denied = registry.denial(store.wh, 'POST', url.pathname);
-        if (denied) return send(denied.status, denied.body);
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
         try { return send(200, etsy.acceptWebhook(id, raw, String(req.headers['x-etsy-signature'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
       if (sendcloud && req.method === 'POST' && url.pathname === '/api/sendcloud/webhook') {
-        const denied = registry.denial(store.wh, 'POST', url.pathname);
-        if (denied) return send(denied.status, denied.body);
         try { return send(200, sendcloud.acceptWebhook(raw, String(req.headers['sendcloud-signature'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
@@ -343,7 +335,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         if (out.contentType) return send(out.status, out.body, out.contentType);
         send(out.status, out.body);
       });
-    });
+    }));
   });
 }
 
