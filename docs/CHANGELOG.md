@@ -1,8 +1,8 @@
 # Changelog
 
-## Item photos
+## A4 documents
 
-The office and a client can each put up to three photos on an item. A photo is a JPEG, PNG, GIF or WebP of at most 512 KB, checked from the file itself, and stored next to the warehouse database. The journal keeps the name, the type and the size. The text terminal does not show photos. Switching the module off keeps the files: a read answers 404 and a new photo answers 403. A client only sees its own items.
+Delivery notes, pick lists, packing lists and client statements can be A4 PDFs. The writer is in the program itself. Dates use the warehouse timezone. Label printers keep their text rules.
 
 ## Sendcloud on the module list
 
