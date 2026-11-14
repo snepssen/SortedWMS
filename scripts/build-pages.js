@@ -32,6 +32,7 @@ fs.copyFileSync(path.join(root, 'server', 'public', 'card.html'), path.join(out,
 fs.copyFileSync(path.join(root, 'server', 'public', 'keys.html'), path.join(out, 'keys.html')); // stands alone
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'camera.js')); // scanning with the camera
 fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'theme.js')); // one light/dark setting for every screen
+fs.copyFileSync(path.join(root, 'server', 'public', 'ui.css'), path.join(out, 'ui.css'));
 fs.copyFileSync(path.join(root, 'src', 'i18n.js'), path.join(out, 'src', 'i18n.js'));
 fs.copyFileSync(path.join(root, 'server', 'public', 'i18n-boot.js'), path.join(out, 'i18n-boot.js'));
 fs.mkdirSync(path.join(out, 'locales'), { recursive: true });
@@ -39,8 +40,15 @@ for (const name of ['en.js', 'nl.js']) fs.copyFileSync(path.join(root, 'locales'
 
 const moduleTags = MODULES.map((f) => `<script src="modules/${f}"></script>`).join('\n');
 const tags = `${moduleTags}\n${LOCAL.map((f) => `<script src="${f}"></script>`).join('\n')}`;
+// Resolve screen assets against the published project path, including framed demo screens.
+function screenSource(name, prefix = '') {
+  return fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8')
+    .replace(/src="\/?(src\/|locales\/|i18n-boot\.js)/g, `src="${prefix}$1`)
+    .replace(/href="\/(admin|handheld|loading|app)"/g, 'href="$1.html"')
+    .replace(/href="card\.html"/g, `href="${prefix}card.html"`);
+}
 for (const name of SCREENS) {
-  const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="src/');
+  const src = screenSource(name);
   const i = src.indexOf('<script>');
   if (i === -1) throw new Error(`${name}: expected a <script> block`);
   const boot = name === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${tags}\n` : `${tags}\n`;
@@ -55,8 +63,9 @@ const demoTags = [`<script>window.SORTED_LOCAL = { key: '${DEMO_KEY}', demo: tru
 fs.mkdirSync(path.join(out, 'demo'), { recursive: true });
 fs.copyFileSync(path.join(root, 'server', 'public', 'camera.js'), path.join(out, 'demo', 'camera.js'));
 fs.copyFileSync(path.join(root, 'server', 'public', 'theme.js'), path.join(out, 'demo', 'theme.js'));
+fs.copyFileSync(path.join(root, 'server', 'public', 'ui.css'), path.join(out, 'demo', 'ui.css'));
 for (const name of SCREENS) {
-  const src = fs.readFileSync(path.join(root, 'server', 'public', name), 'utf8').replace(/src="\/src\//g, 'src="../src/').replace(/src="src\//g, 'src="../src/');
+  const src = screenSource(name, '../');
   const i = src.indexOf('<script>');
   const boot = name === 'app.html' ? `<script>window.SORTED_DEMO = true;</script>\n${demoTags}\n` : `${demoTags}\n`;
   fs.writeFileSync(path.join(out, 'demo', name), `${src.slice(0, i)}${boot}${src.slice(i)}`);
@@ -73,9 +82,10 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
 <meta name="description" content="SortedWMS: an open-source warehouse management system for any warehouse, from a wall of bins to a reach-truck distribution centre.">
 <title>SortedWMS</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  :root { --bg: #f6f7f9; --ink: #17202a; --dim: #5d6b76; --card: #fff; --line: #dde3e8; --accent: #2f5fb3; }
-  :root[data-theme="dark"] { --bg: #0f1316; --ink: #e9eef2; --dim: #93a1ad; --card: #182026; --line: #2a343d; --accent: #59a9ff; }
+  :root { --accent: #2f5fb3; }
+  :root[data-theme="dark"] { --accent: #59a9ff; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
@@ -88,6 +98,14 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
   .card b { display: block; color: var(--accent); margin-bottom: 4px; }
   code, pre { font-family: ui-monospace, monospace; font-size: 14px; }
   pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+  main { max-width: 940px; }
+  .top { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .top h1 { font-size: clamp(2rem, 5vw, 3rem); }
+  .top + p { max-width: 65ch; }
+  .cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 225px), 1fr)); }
+  .cards .card { padding: 18px; }
+  .cards .card:first-child { border-top: 3px solid var(--acc); }
+  .card b { font-size: 1.12rem; }
 </style>
 </head>
 <body>

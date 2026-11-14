@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101418">
 <title>SortedWMS key test</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  /* Dark unless the theme setting says light: easier on the eyes in a cold store and on a battery. */
-  :root, :root[data-theme="dark"] { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; --field: #0b0f12; --chip: #26303a; --on-acc: #04121f; --on-bad: #1a0505; }
-  :root[data-theme="light"] { --bg: #f4f6f8; --card: #fff; --line: #d5dde4; --ink: #17202a; --dim: #5d6b76; --ok: #0f7a45; --bad: #b42318; --warn: #8a5a00; --acc: #1769c2; --field: #fff; --chip: #e6ebef; --on-acc: #fff; --on-bad: #fff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   main { padding: 10px 12px 24px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; margin: 0 auto; }
@@ -35,6 +33,8 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
   a { color: var(--acc); }
+  .card { overflow-x: auto; }
+  #catch { min-height: 44px; }
 </style>
 </head>
 <body>
@@ -42,7 +42,7 @@
   <div class="row" style="justify-content:space-between"><h1>Key test</h1><span><select data-theme-picker></select> <a href="handheld" id="back">Back to the handheld</a></span></div>
   <div class="hint">Press every key you might use with gloves on: the number keys, F-keys, arrows, Esc / Clear, Tab, the Back key, the side and trigger buttons. Then scan a few barcodes: a location, a pallet's GS1 label, a command card code. Nothing is sent anywhere; the summary below is for copying.</div>
 
-  <input id="catch" inputmode="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Keys and scans land here (tap if it loses focus)">
+  <input aria-label="Key or barcode" id="catch" inputmode="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Keys and scans land here (tap if it loses focus)">
 
   <div class="card"><div class="kicker" id="lastKind">Last key</div><div class="last" id="last">–</div><div class="detail" id="lastDetail">Press a key</div></div>
 
@@ -56,7 +56,7 @@
   <div class="card"><div class="kicker">Every event, newest first</div><ol id="log"></ol></div>
 
   <div class="card"><div class="kicker">Summary to copy</div>
-    <textarea id="summary" readonly></textarea>
+    <textarea aria-label="Key and scan summary" id="summary" readonly></textarea>
     <div class="row" style="margin-top:8px"><button id="copy">Copy</button><button id="clear">Clear</button><span class="hint" id="copyOut"></span></div>
   </div>
 </main>

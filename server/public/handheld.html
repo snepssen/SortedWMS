@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101418">
 <title>SortedWMS handheld</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  /* Dark unless the theme setting says light: easier on the eyes in a cold store and on a battery. */
-  :root, :root[data-theme="dark"] { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; --field: #0b0f12; --chip: #26303a; --on-acc: #04121f; --on-bad: #1a0505; }
-  :root[data-theme="light"] { --bg: #f4f6f8; --card: #fff; --line: #d5dde4; --ink: #17202a; --dim: #5d6b76; --ok: #0f7a45; --bad: #b42318; --warn: #8a5a00; --acc: #1769c2; --field: #fff; --chip: #e6ebef; --on-acc: #fff; --on-bad: #fff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
@@ -106,13 +104,23 @@
   }
   summary { cursor:pointer; padding:12px; min-height:44px; box-sizing:border-box; }
   #syncReview:not([hidden]) { padding:12px; border:2px solid var(--warn); }
+  .stack li { align-items: baseline; flex-wrap: wrap; gap: 2px 12px; padding: 6px 8px; border-inline-start: 3px solid transparent; overflow-wrap: anywhere; }
+  .stack li.current { border-color: var(--acc); background: var(--chip); border-radius: 4px; }
+  .stack li > :last-child { margin-inline-start: auto; text-align: end; }
+  .handoff { background: var(--chip); border-inline-start: 4px solid var(--acc); }
+  .modePicker > summary { color: var(--dim); }
+  .scan label { align-self: center; }
+  @media (min-width: 720px) {
+    #app > header { padding-inline: max(16px, calc((100% - 42rem) / 2)); }
+    #job { gap: 14px; }
+  }
 </style>
 <script src="camera.js"></script>
 <script src="/locales/en.js"></script>
 <script src="/locales/nl.js"></script>
 <script src="/src/i18n.js"></script>
 </head>
-<body>
+<body class="scanner">
 <div class="offline" id="offline" role="status">No connection. Scans stay on this handheld and send when it returns.</div>
 <div id="syncReview" role="alert" hidden></div>
 <div class="net" id="net" role="status" aria-live="polite"></div>
@@ -189,7 +197,7 @@
   function stackHtml(I) {
     if (I.stack && I.stack.length > 1) {
       return `<div class="stack"><div class="sub"><span>On the forks</span> · ${I.stack.length}</div>
-        <ul>${I.stack.map((s) => `<li><span>…${esc(s.sscc.slice(-6))} ${esc(s.itemNo || '')}</span><span>${s.current ? '<b>Next drop</b> · ' : ''}${locBig(s.toName)}</span></li>`).join('')}</ul></div>`;
+        <ul>${I.stack.map((s) => `<li class="${s.current ? 'current' : ''}"><span>…${esc(s.sscc.slice(-6))} ${esc(s.itemNo || '')}</span><span>${s.current ? '<b>Next drop</b> · ' : ''}${locBig(s.toName)}</span></li>`).join('')}</ul></div>`;
     }
     return I.canStack ? '<div class="sub">Stacked pallets? Scan the next one to take it along</div>' : '';
   }
@@ -312,18 +320,18 @@
     const canProblem = I.kind === 'pickup' || I.kind === 'drop' || I.kind === 'wait';
     $('#app').innerHTML = `
       <header><span class="id">${esc(v.id)}</span><span class="who">${esc(operator)}${v.categories ? ' · ' + esc(v.categories.join(', ')) : ''}</span>
-        <button id="kb" title="Show the keyboard">⌨</button><button id="setup" title="Set up">⚙</button></header>
-      <details class="modePicker"><summary><span>Change mode</span> · ${esc(v.modes.find((m) => m.id === v.mode)?.label || v.mode)}</summary><div class="modes">${v.modes.filter((m) => m.id !== 'shift').map((m) => `<button data-mode="${m.id}" class="${m.id === v.mode ? 'on' : ''}">${esc(m.label.replace(' (manual)', ''))}</button>`).join('')}</div></details>
+        <button id="kb" aria-pressed="${keyboard}" title="Show the keyboard">⌨</button><button id="setup" title="Set up">⚙</button></header>
+      <details class="modePicker"><summary><span>Change mode</span> · ${esc(v.modes.find((m) => m.id === v.mode)?.label || v.mode)}</summary><div class="modes">${v.modes.filter((m) => m.id !== 'shift').map((m) => `<button data-mode="${m.id}" aria-pressed="${m.id === v.mode}" class="${m.id === v.mode ? 'on' : ''}">${esc(m.label.replace(' (manual)', ''))}</button>`).join('')}</div></details>
       <main id="job">
         ${I.armed ? `<div class="card armed"><div class="kicker" style="color:var(--warn)">Confirm</div><div class="mid">${esc(I.armed.label)}?</div>
           <div class="sub">Scan <b>${esc(I.armed.cmd)}</b> again to confirm. Any other scan cancels.</div></div>` : ''}
         ${I.pending ? heldHtml(I.pending) : ''}
         ${v.abc ? instructionHtml({ kind: 'abc', abc: v.abc, task: null }) : ''}
-        ${v.message?.handoff ? `<div class="msg" role="status">${esc(v.message.handoff.pallet)} <span>taken over by</span> ${esc(v.message.handoff.toTruck)}</div>` : ''}
+        ${v.message?.handoff ? `<div class="msg handoff" role="status">${esc(v.message.handoff.pallet)} <span>taken over by</span> ${esc(v.message.handoff.toTruck)}</div>` : ''}
         ${instructionHtml(I)}
         ${localError ? `<div class="msg bad">${esc(localError)}</div>`
           : v.message && !v.message.handoff && !I.armed && !(I.pending && v.message.ok) ? `<div class="msg ${v.message.ok ? 'ok' : 'bad'}">${esc(v.message.text)}</div>` : ''}
-        <form class="scan" id="scanForm" autocomplete="off"><label class="hint" for="scanIn">Scan</label><input id="scanIn" aria-label="Scan" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button>Enter</button></form>
+        <form class="scan" id="scanForm" autocomplete="off"><label class="hint" for="scanIn">Scan</label><input id="scanIn" aria-label="Scan" ${keyboard ? '' : 'inputmode="none"'} placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false"><button class="primary">Enter</button></form>
         ${canProblem ? `<details><summary>Report problem</summary><div class="row">${I.kind === 'pickup' ? '<button class="bad" data-cmd="CMD-MISSING">Pallet missing</button><button class="bad" data-cmd="CMD-DAMAGED">Damaged</button>' : ''}
           <button class="bad" data-cmd="CMD-BLOCKED">Location blocked</button></div></details>` : ''}
       </main>`;

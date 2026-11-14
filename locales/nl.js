@@ -3,6 +3,19 @@
  */
 (function (root) {
   const dict = {
+    "Automatic replenishment": "Automatische aanvulling",
+    "Pick face": "Picklocatie",
+    "Committed picks": "Toegewezen picks",
+    "Projected": "Verwacht",
+    "State": "Status",
+    "Recheck replenishment": "Aanvulling opnieuw controleren",
+    "Waiting for replenishment": "Wachten op aanvulling",
+    "The next pick appears after the replenishment drop.": "De volgende pick verschijnt na het afzetten van de aanvulling.",
+    "Refresh picks": "Picks vernieuwen",
+    "Top-ups account for the next wave's small picks and stock already inbound. Physical drops release dependent picks.": "Aanvullingen houden rekening met kleine picks in de volgende pickgolf en voorraad die al onderweg is. Na het afzetten komen afhankelijke picks vrij.",
+    'Workspace options': 'Werkruimteopties',
+    'Choose a demo role.': 'Kies een demorol.',
+    'Demo accounts': 'Demoaccounts',
     'Stacked pallets? Scan the next one to take it along': 'Gestapelde pallets? Scan de volgende om deze mee te nemen',
     'taken over by': 'overgenomen door',
     'Next drop': 'Volgende afzetlocatie',

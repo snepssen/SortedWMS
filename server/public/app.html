@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  :root { --bg: #f3f6f8; --card: #fff; --line: #dde3e8; --ink: #17202a; --dim: #5d6b76; --acc: #1769c2; --ok: #0f7a45; --bad: #b42318; --warn: #9a6700; --chip: #eef2f5; --field: #fff; --on-acc: #fff; }
-  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --line: #2a343d; --ink: #e9eef2; --dim: #93a1ad; --acc: #59a9ff; --ok: #3ccf7a; --bad: #ff6b63; --warn: #ffb020; --chip: #222c36; --field: #10161b; --on-acc: #0b1620; }
   body[data-role="administrator"] { --acc: #3d348b; }
   body[data-role="manager"] { --acc: #1769c2; }
   body[data-role="office"] { --acc: #0f6e56; }
@@ -74,15 +73,22 @@
   @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } .pair .qr { justify-self: start; } }
   @media (max-width: 720px) {
     main { padding: 10px; } header h1 { font-size: 16px; } .job { font-size: 18px; }
-    /* On a phone: one row of menu buttons that scrolls sideways, and the controls on one short row. */
     header { gap: 8px; padding: 8px 10px; }
-    header #who { display: none; }
-    header nav { order: 9; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
-    header nav::-webkit-scrollbar { display: none; }
-    header nav button { flex: 0 0 auto; }
-    header label.who { font-size: 0; gap: 0; }
-    header label.who select { font-size: 14px; }
-    header #pairBtn { display: none !important; }
+
+  }
+  .workspace-options { margin-inline-start: auto; position: relative; }
+  .workspace-options summary { cursor: pointer; padding: 8px 12px; border-radius: 8px; background: var(--chip); font-weight: 600; }
+  .workspace-options > div { position: absolute; right: 0; top: 100%; z-index: 4; margin-top: 6px; width: min(16rem, 92vw); padding: 12px; display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .workspace-options :is(a, button) { text-align: start; }
+  .workspace-options label { display: flex; align-items: center; justify-content: space-between; }
+  #demoBar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; background: var(--chip); }
+  #demoBar button { font-size: .85rem; padding: 4px 8px; background: var(--card); }
+  #demoBar [aria-pressed="true"] { color: var(--on-acc); background: var(--acc); }
+  @media (max-width: 480px) {
+    .workspace-options { position: static; }
+    .workspace-options > div { position: static; width: auto; }
+    .workspace-options[open] { flex-basis: 100%; }
+    #who { overflow-wrap: anywhere; }
   }
 </style>
 <script src="camera.js"></script>
@@ -90,19 +96,23 @@
 <script src="/locales/nl.js"></script>
 <script src="/src/i18n.js"></script>
 </head>
-<body>
+<body class="workspace">
 <header>
   <h1 id="title">SortedWMS</h1>
   <span class="who" id="who"></span>
-  <nav id="nav"></nav>
-  <span style="flex:1"></span>
   <label id="siteLabel" class="who">Warehouse <select id="sitePick"></select></label>
-  <a class="btn" href="/admin" id="floorLink">Floor</a>
-  <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
-  <button id="pairBtn" type="button" title="Open SortedWMS on a phone or tablet on this network">Connect a phone</button>
-  <select data-theme-picker></select>
-  <label class="who">Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
-  <button id="out" type="button">Sign out</button>
+  <details class="workspace-options">
+    <summary>Workspace options</summary>
+    <div>
+      <a class="btn" href="/admin" id="floorLink">Floor</a>
+      <a class="btn" href="/handheld" id="handheldLink">Handheld</a>
+      <button id="pairBtn" type="button">Connect a phone</button>
+      <label>Theme <select data-theme-picker></select></label>
+      <label>Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
+      <button id="out" type="button">Sign out</button>
+    </div>
+  </details>
+  <nav id="nav" aria-label="Workspace"></nav>
 </header>
 <main id="main"></main>
 <script>
@@ -153,7 +163,7 @@
     return data;
   }
   const can = (p) => me && me.permissions && me.permissions.includes(p);
-  const table = (heads, rows) => `<div style="overflow-x:auto"><table><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.join('') || `<tr><td class="dim" colspan="${heads.length}">Nothing here</td></tr>`}</table></div>`;
+  const table = (heads, rows) => `<div class="table"><table><thead><tr>${heads.map((h) => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td class="dim" colspan="${heads.length}">Nothing here</td></tr>`}</tbody></table></div>`;
   // The warehouse's own categories, set in the setup wizard.
   const catOptions = () => Object.entries(me.categories || {}).map(([id, label]) => `<option value="${esc(id)}">${esc(label || id)}</option>`).join('') || '<option value="">No categories yet: add them in the setup wizard</option>';
   function span(ms) {
@@ -268,7 +278,15 @@
     if (floor) floor.style.display = simple ? 'none' : '';
     const pairBtn = document.getElementById('pairBtn');
     if (pairBtn) { pairBtn.style.display = me.role !== 'client' && modOn('device-pairing') ? '' : 'none'; pairBtn.classList.toggle('on', panel === 'pairing'); }
-    $('#nav').innerHTML = items.map(([id, label]) => `<button type="button" data-panel="${id}" class="${id === panel ? 'on' : ''}">${label}</button>`).join('');
+    const nav = $('#nav');
+    const previous = nav.querySelector('[aria-current="page"]');
+    const restoreFocus = nav.contains(document.activeElement);
+    nav.innerHTML = items.map(([id, label]) => `<button type="button" data-panel="${id}" aria-current="${id === panel ? 'page' : 'false'}" class="${id === panel ? 'on' : ''}">${label}</button>`).join('');
+    const current = nav.querySelector('[aria-current="page"]');
+    if (current && nav.scrollWidth > nav.clientWidth && previous?.dataset.panel !== panel) {
+      nav.scrollLeft += current.getBoundingClientRect().left - nav.getBoundingClientRect().left;
+    }
+    if (restoreFocus) current?.focus({ preventScroll: true });
   }
 
   let pairTimer = null;
@@ -471,10 +489,20 @@
         <section><h2>Move queue</h2>${taskTable(moves.slice(0, 14), false)}</section>`;
     },
     async replenish() {
-      const locs = await api('GET', '/api/locations?kind=mezzanine&limit=20');
-      return `<section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
+      const [locs, status] = await Promise.all([
+        api('GET', '/api/locations?kind=mezzanine&limit=20'), api('GET', '/api/replenishment'),
+      ]);
+      const rows = status.map((r) => `<tr><td><b>${esc(r.code)}</b></td><td>${esc(r.itemNo)}</td>
+        <td>${r.onHand}</td><td>${r.committed}</td><td>${r.incoming}</td><td>${r.projected}</td>
+        <td><span class="tag ${r.status === 'blocked' ? 'warn' : ''}">${esc(r.status)}</span>
+        ${r.text ? `<div class="hint">${esc(r.text)}</div>` : ''}</td>
+        <td>${r.orders.map((o) => `${esc(o.orderId)} × ${o.qty}`).join('<br>') || '—'}</td></tr>`);
+      return `<section><h2>Automatic replenishment</h2>
+        <p class="hint">Top-ups account for the next wave's small picks and stock already inbound. Physical drops release dependent picks.</p>
+        ${table(['Pick face', 'Item', 'On hand', 'Committed picks', 'Inbound', 'Projected', 'State', 'Orders'], rows)}</section>
+        <section><h2>Replenishment and transfers</h2><p class="hint">Send stock from bulk to a pick face, or consolidate partial pallets at CONSO00.</p>
         <form class="form" data-act="pick-face"><label>Pick face<input name="code" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><label>Item<input name="itemNo" required></label><label>Min<input name="min" type="number" value="2"></label><label>Trigger<input name="trigger" type="number" value="4"></label><label>Max<input name="max" type="number" value="12"></label><label>Mode<select name="mode"><option value="units">units to max</option><option value="pallet">whole pallet</option></select></label><button>Save min / max</button></form>
-        <form class="form" data-act="plan-replen"><button class="primary">Queue replenishment</button></form>
+        <form class="form" data-act="plan-replen"><button>Recheck replenishment</button></form>
         <form class="form" data-act="replenish"><label>Item<input name="itemNo" required></label><label>To<input name="to" value="${esc((locs.locations[0] && locs.locations[0].code) || 'MEZZ-A1')}"></label><button>Replenish one pallet</button></form>
         <h3>Refill a bin from a pallet</h3><p class="hint">Boxes or pieces off a rack pallet into a bin. The bin gets the pallet's batch and best-before; the pallet stays in its slot.</p>
         <form class="form" data-act="bin-refill"><label>Pallet SSCC<input name="sscc" required autocomplete="off"></label><label>Bin<input name="loc" required></label><label>Qty<input name="qty" type="number" min="1" value="12" required></label><button>Refill the bin</button></form>
@@ -876,7 +904,7 @@
         ${chargeBlock('Storage', 'storage', ['pallet-day', 'location-day', 'm3-day'])}
         <h3>Seasons</h3>
         <p class="hint">A date range, or months that repeat every year. Surcharge adds a percent to the tier or flat rate. Override replaces the rate on those days. Two seasons cannot cover the same charge on the same day.</p>
-        <div style="overflow-x:auto"><table><tr><th>Name</th><th>Charge</th><th>When</th><th>From</th><th>To</th><th>Months</th><th>Effect</th><th>Percent</th><th>Rate</th></tr>${seasonRows}</table></div>
+        <div class="table"><table><thead><tr><th>Name</th><th>Charge</th><th>When</th><th>From</th><th>To</th><th>Months</th><th>Effect</th><th>Percent</th><th>Rate</th></tr></thead><tbody>${seasonRows}</tbody></table></div>
         ${chargeBlock('Inbound', 'inbound', ['pallet', 'line'])}
         ${chargeBlock('Outbound', 'outbound', ['order', 'line', 'carton'])}
         ${chargeBlock('VAL / kitting', 'val', null)}
@@ -1030,7 +1058,7 @@
     history.replaceState(null, '', '#' + panel);
     draw();
   };
-  $('#pairBtn').onclick = () => { panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
+  $('#pairBtn').onclick = () => { document.querySelector('.workspace-options').open = false; panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
   $('#main').onclick = async (e) => {
     const saveModules = e.target.closest('#saveModules');
@@ -1269,7 +1297,7 @@
   });
 
   function taskList(tasks, confirm) {
-    return table(['Task', 'Order', 'Where', 'Item', 'Quantity', confirm ? 'Confirm' : 'For'], tasks.map((t) => `<tr><td>${esc(t.id)}</td><td>${esc(t.orderId)}</td><td><b>${esc(t.loc)}</b>${t.sscc ? `<br><span class="dim">pallet …${esc(t.sscc.slice(-6))}</span>` : ''}</td><td>${esc(t.itemNo)} <span class="dim">${esc(t.name || '')}</span></td><td>${esc(t.qty)} ${esc(t.unit || '')}${t.box === 'new' ? '<br><span class="tag">open a box</span>' : t.box === 'open' ? '<br><span class="tag">from the open box</span>' : t.box === 'whole' && t.per ? `<br><span class="dim">${t.qty / t.per} whole box${t.qty / t.per === 1 ? '' : 'es'}</span>` : t.kind === 'pallet' ? '<br><span class="dim">whole pallet</span>' : ''}${t.dropTo ? `<br><span class="dim">to ${esc(t.dropTo)}</span>` : ''}</td><td>${confirm
+    return table(['Task', 'Order', 'Where', 'Item', 'Quantity', confirm ? 'Confirm' : 'For'], tasks.map((t) => `<tr><td>${esc(t.id)}</td><td>${esc(t.orderId)}</td><td><b>${esc(t.loc)}</b>${t.sscc ? `<br><span class="dim">pallet …${esc(t.sscc.slice(-6))}</span>` : ''}</td><td>${esc(t.itemNo)} <span class="dim">${esc(t.name || '')}</span></td><td>${esc(t.qty)} ${esc(t.unit || '')}${t.box === 'new' ? '<br><span class="tag">open a box</span>' : t.box === 'open' ? '<br><span class="tag">from the open box</span>' : t.box === 'whole' && t.per ? `<br><span class="dim">${t.qty / t.per} whole box${t.qty / t.per === 1 ? '' : 'es'}</span>` : t.kind === 'pallet' ? '<br><span class="dim">whole pallet</span>' : ''}${t.dropTo ? `<br><span class="dim">to ${esc(t.dropTo)}</span>` : ''}</td><td>${t.ready === false ? `<span class="tag warn">Waiting for replenishment #${esc(t.waitingFor)}</span>` : confirm
       ? `<form class="form" data-act="wave-confirm"><input type="hidden" name="task" value="${esc(t.id)}"><input name="scan" placeholder="scan ${t.kind === 'case' ? 'pallet or slot' : 'bin'}" size="14" autocomplete="off">${t.serialized ? `<input name="serials" placeholder="${esc(t.qty)} serial numbers" size="18" autocomplete="off">` : ''}<button class="primary">Done</button></form>`
       : (t.kind === 'bin' ? 'bin picker' : t.kind === 'pallet' ? 'pallet picker' : 'man-up')}</td></tr>`));
   }
@@ -1552,9 +1580,8 @@
     if (window.SORTED_LOCAL && window.SORTED_LOCAL.demo && window.self !== window.top) return; // inside the demo page, which has its own roles
     const bar = document.createElement('div');
     bar.id = 'demoBar';
-    bar.style.cssText = 'background:#9a6700;color:#fff;padding:8px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
     const role = new URLSearchParams(location.search).get('as') || 'administrator';
-    bar.innerHTML = `<b>Demo</b> <span>Not a signed-in warehouse. Pick a role to look around.</span> ` + DEMO_NAV_ROLES.map((r) => `<button type="button" data-demo="${r}" style="background:${r === role ? '#fff' : 'transparent'};color:${r === role ? '#9a6700' : '#fff'};border:1px solid #fff;border-radius:8px;padding:4px 8px">${TITLES[r]}</button>`).join('');
+    bar.innerHTML = `<b>Demo</b> <span>Choose a demo role.</span> ` + DEMO_NAV_ROLES.map((r) => `<button type="button" data-demo="${r}" aria-pressed="${r === role}">${TITLES[r]}</button>`).join('');
     bar.onclick = (e) => {
       const b = e.target.closest('[data-demo]');
       if (!b) return;

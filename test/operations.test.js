@@ -87,7 +87,7 @@ test('pick faces queue a replenishment move when stock falls to the trigger', ()
   const task = Object.values(w.tasks).find((t) => t.reason === 'replenish' && t.to === 'MEZZ-A1');
   assert.ok(task, 'a replenishment move is in the machine queue');
   assert.equal(task.type, 'SHIFT');
-  assert.equal(task.splitQty, 9, 'top up to the maximum, not the whole pallet');
+  assert.equal(task.splitQty, 7, 'committed demand queues the top-up before the pick frees another two places');
   const again = w.planReplenishment();
   assert.equal(again.length, 0);
 });

@@ -310,7 +310,7 @@
     return {
       id, name, screen, card: 'pickCard',
       next(wh, now, rand) {
-        const tasks = wh.waveTasks({ for: id }).filter((t) => kinds.includes(t.kind) && !t.serialized);
+        const tasks = wh.waveTasks({ for: id, readyOnly: true }).filter((t) => kinds.includes(t.kind) && !t.serialized);
         const t = tasks[0];
         if (!t) return null;
         if (t.claimedBy !== id) return { op: 'claimWaveTask', args: { task: t.id }, ms: jitter(rand, 10 * SEC), what: `take task ${t.id}`, key: `claim:${t.id}` };

@@ -6,9 +6,10 @@
 <meta name="theme-color" content="#17231f">
 <title>SortedWMS loading</title>
 <script src="theme.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  :root { --ink: #17231f; --dim: #61706a; --line: #d8e1dc; --green: #24634f; --red: #a72e32; --bg: #f4f7f5; --card: #fff; --on-green: #fff; }
-  :root[data-theme="dark"] { --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --green: #4cc38a; --red: #ff6b63; --bg: #0f1316; --card: #182026; --on-green: #0b1620; }
+  :root { --green: #24634f; --red: #a72e32; --on-green: #fff; }
+  :root[data-theme="dark"] { --green: #4cc38a; --red: #ff6b63; --on-green: #0b1620; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
   header { padding: 16px 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--card); border-bottom: 1px solid var(--line); }
@@ -50,6 +51,14 @@
   #releaseForm { margin-top: 16px; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { header { padding: 12px 16px; gap: 8px; } main { padding: 0 16px 24px; } h1 { font-size: 24px; } .scan-row { flex-wrap: nowrap; } .scan-row label { flex-basis: auto; } }
+  main { display: grid; gap: 14px; padding-block-start: 16px; }
+  section { background: var(--card); padding: clamp(14px, 3vw, 22px); border: 1px solid var(--line); border-radius: 12px; }
+  #work { border-inline-start: 4px solid var(--green); }
+  #message:empty { display: none; }
+  #message:not(:empty) { background: var(--card); border-inline-start: 4px solid currentColor; padding-inline: 12px; }
+  .target { margin-block: 12px; }
+  .target h1 { margin: 0; }
+  th { background: var(--chip); }
 </style>
 </head>
 <body>

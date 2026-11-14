@@ -9,10 +9,8 @@
 <script src="/locales/en.js"></script>
 <script src="/locales/nl.js"></script>
 <script src="/src/i18n.js"></script>
+<link rel="stylesheet" href="ui.css">
 <style>
-  /* Dark unless the theme setting says light: easier on the eyes in a cold store and on a battery. */
-  :root, :root[data-theme="dark"] { --bg: #101418; --card: #1b2229; --line: #2c3640; --ink: #f2f5f7; --dim: #9aa8b4; --ok: #3ccf7a; --bad: #ff5a52; --warn: #ffb020; --acc: #4aa8ff; --field: #0b0f12; --chip: #26303a; --on-acc: #04121f; --on-bad: #1a0505; }
-  :root[data-theme="light"] { --bg: #f4f6f8; --card: #fff; --line: #d5dde4; --ink: #17202a; --dim: #5d6b76; --ok: #0f7a45; --bad: #b42318; --warn: #8a5a00; --acc: #1769c2; --field: #fff; --chip: #e6ebef; --on-acc: #fff; --on-bad: #fff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
@@ -55,19 +53,25 @@
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--dim); font-weight: 600; }
+  .steps span.now { background: var(--chip); box-shadow: inset 0 -2px var(--acc); }
+  #job { border-inline-start: 4px solid var(--acc); }
+  @media (min-width: 720px) {
+    header { padding-inline: max(16px, calc((100% - 42rem) / 2)); }
+    main { gap: 14px; }
+  }
 </style>
 <script src="camera.js"></script>
 <script src="src/offline-queue.js"></script>
 </head>
-<body>
+<body class="scanner">
 <header><b>Bins</b><span class="who" id="who"></span><select data-theme-picker></select><a href="app" id="back">App</a></header>
 <div id="net" aria-live="polite"></div>
 <nav class="modes" id="modes"></nav>
 <main>
   <div class="card" id="job"></div>
-  <form class="scan" id="scanForm" autocomplete="off"><label><input id="scanIn" placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"></label><button class="primary">Enter</button></form>
+  <form class="scan" id="scanForm" autocomplete="off"><label><input id="scanIn" aria-label="Scan" placeholder="Scan…" autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"></label><button class="primary">Enter</button></form>
   <div id="extra"></div>
-  <div id="say"></div>
+  <div id="say" role="status"></div>
 </main>
 <script>
 (function () {
@@ -265,7 +269,16 @@
       }
       const t = tasks[0];
       if (!t) {
-        $('job').innerHTML = '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
+        let waiting = [];
+        try {
+          const waves = await api('GET', '/api/waves');
+          waiting = waves.flatMap((w) => w.tasks).filter((t) => t.kind === 'bin' && t.status === 'open' && t.ready === false);
+        } catch (e) { /* the offline task cache contains executable work only */ }
+        $('job').innerHTML = waiting.length
+          ? `<div class="kicker">Pick</div><div class="mid">Waiting for replenishment</div><div class="dim">${waiting.map((t) => `${esc(t.loc)} · ${esc(t.itemNo)} × ${t.qty}`).join('<br>')}</div><p>The next pick appears after the replenishment drop.</p><button type="button" id="refreshPicks">Refresh picks</button>`
+          : '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
+        if ($('refreshPicks')) $('refreshPicks').onclick = () => pick.start();
+        st.waiting = waiting.length > 0;
         st.step = 'order';
         return;
       }
@@ -628,7 +641,7 @@
 
   function drawModes() {
     const allowed = MODES.filter(([, , ok]) => ok());
-    $('modes').innerHTML = allowed.map(([id, label]) => `<button type="button" data-mode="${id}" class="${id === mode ? 'on' : ''}">${label}</button>`).join('');
+    $('modes').innerHTML = allowed.map(([id, label]) => `<button type="button" data-mode="${id}" aria-pressed="${id === mode}" class="${id === mode ? 'on' : ''}">${label}</button>`).join('');
   }
   async function setMode(next) {
     mode = next;
@@ -682,6 +695,17 @@
       flush().then(refreshCache);
       window.addEventListener('online', () => flush());
       setInterval(() => { if (queue.snapshot().pending.length) flush(); else refreshCache(); }, 30000);
+      let checkingPicks = false;
+      setInterval(async () => {
+        if (checkingPicks || mode !== 'pick' || !st.waiting || queue.snapshot().pending.length) return;
+        checkingPicks = true;
+        const waitingState = st;
+        try {
+          const tasks = await api('GET', '/api/waves/tasks?kind=bin&mine=1');
+          if (tasks.length && mode === 'pick' && st === waitingState && st.waiting) await pick.start();
+        } catch (e) { /* retry while waiting for stock */ }
+        finally { checkingPicks = false; }
+      }, 5000);
       $('net').onclick = async (e) => {
         if (e.target.id === 'retry') return flush();
         const d = e.target.closest('[data-drop]');

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SortedWMS command card</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" media="screen" href="ui.css">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; background: #fff; color: #000; font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -25,6 +27,14 @@
     .bar { display: none; }
     .sheet { padding: 0; }
     @page { size: A4; margin: 10mm; }
+  }
+  @media screen {
+    body { background: var(--bg); }
+    .bar { background: var(--card); border-color: var(--line); }
+    .bar .hint { color: var(--dim); }
+    .bar button { border-color: var(--acc); background: var(--acc); color: var(--on-acc); }
+    .sheet { background: white; color: black; color-scheme: light; }
+    @media (min-width: 761px) { .sheet { padding: 8mm; margin-block: 16px; box-shadow: var(--shadow); } }
   }
 </style>
 </head>

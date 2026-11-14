@@ -4,6 +4,19 @@
  */
 (function (root) {
   const dict = {
+    "Automatic replenishment": "Automatic replenishment",
+    "Pick face": "Pick face",
+    "Committed picks": "Committed picks",
+    "Projected": "Projected",
+    "State": "State",
+    "Recheck replenishment": "Recheck replenishment",
+    "Waiting for replenishment": "Waiting for replenishment",
+    "The next pick appears after the replenishment drop.": "The next pick appears after the replenishment drop.",
+    "Refresh picks": "Refresh picks",
+    "Top-ups account for the next wave's small picks and stock already inbound. Physical drops release dependent picks.": "Top-ups account for the next wave's small picks and stock already inbound. Physical drops release dependent picks.",
+    'Workspace options': 'Workspace options',
+    'Choose a demo role.': 'Choose a demo role.',
+    'Demo accounts': 'Demo accounts',
     'Stacked pallets? Scan the next one to take it along': 'Stacked pallets? Scan the next one to take it along',
     'taken over by': 'taken over by',
     'Next drop': 'Next drop',

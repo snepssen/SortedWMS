@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect · SortedWMS</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/ui.css">
 <style>
-  :root { --bg: #eef2f4; --card: #fff; --ink: #17202a; --dim: #5c6b76; --line: #d5dee6; --acc: #1769c2; --field: #fff; --on-acc: #fff; --bad: #a32620; --ok: #1b7f45; }
-  :root[data-theme="dark"] { --bg: #0f1316; --card: #182026; --ink: #e9eef2; --dim: #93a1ad; --line: #2a343d; --acc: #59a9ff; --field: #10161b; --on-acc: #0b1620; --bad: #ff6b63; --ok: #3ccf7a; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink); font: 17px/1.45 system-ui, sans-serif; }
   main { width: min(420px, calc(100% - 28px)); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
@@ -21,10 +20,10 @@
   .ok { color: var(--ok); font-weight: 700; font-size: 19px; }
 </style>
 </head>
-<body>
+<body class="entry">
 <main>
   <h1>Connect this device</h1>
-  <p id="msg">Connecting…</p>
+  <p id="msg" role="status">Connecting…</p>
   <form id="codeForm" hidden>
     <label>The 6-digit code on the computer<input class="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
     <button>Connect</button>

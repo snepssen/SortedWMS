@@ -79,6 +79,7 @@ class Store {
     let createdAt = this.meta('createdAt');
     if (!site) {
       site = this.meta('site', this.site);
+      this.meta('replenishmentVersionAtCreation', 1);
       createdAt = this.meta('createdAt', this.now());
     }
     this.siteUsed = site;
@@ -90,6 +91,7 @@ class Store {
     } else {
       this.replayT = createdAt;
       this.wh = buildWarehouse(site, this.clock);
+      this.wh.replenishmentVersion = this.meta('replenishmentVersionAtCreation') || 0;
       this.replayT = null;
     }
     const rows = this.db.prepare('SELECT id, t, op, args, by FROM journal WHERE id > ? ORDER BY id').all(from);
@@ -195,6 +197,9 @@ class Store {
 
   exec(op, args = {}, by = 'unknown') {
     if (!COMMANDS[op]) throw new Error(`Unknown command ${op}`);
+    if (op !== 'enableDemandReplenishment' && this.warehouse(this.siteId).replenishmentVersion !== 1) {
+      this.exec('enableDemandReplenishment', {}, 'system');
+    }
     if ((this.siteId || 'MAIN') !== 'MAIN') return this._execExtra(this.siteId, op, args, by);
     const t = this.now();
     this.replayT = t;
@@ -214,6 +219,7 @@ class Store {
 
   /** Clock tick: journaled only when it changed something (timers ran out, a truck got a job). */
   tick() {
+    if (this.wh.replenishmentVersion !== 1) this.exec('enableDemandReplenishment', {}, 'system');
     const t = this.now();
     const before = this.wh.events[0];
     this.replayT = t;

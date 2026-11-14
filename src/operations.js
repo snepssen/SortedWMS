@@ -822,7 +822,103 @@
       return this._faceCache;
     };
 
+    /** A read-only explanation of each face, including committed small-pick demand. */
+    proto.replenishmentStatus = function () {
+      const faces = this._pickFaces();
+      if (!faces.length) return [];
+      const demand = this.replenishmentDemand ? this.replenishmentDemand() : { faces: new Map(), reservedPallets: new Set() };
+      const selectedSources = new Set();
+      return faces.map((loc) => {
+        const spec = loc.replenishment;
+        const item = this.items[spec.itemNo];
+        const onHand = this._faceQty(loc);
+        const pending = this._liveTasks().filter((t) => t.reason === 'replenish' && t.to === loc.code && t.status !== 'cancelled');
+        const incoming = pending.reduce((n, t) => n + (t.splitQty || this.pallets[t.sscc]?.qty || 0), 0);
+        const orders = demand.faces.get(loc.code) || [];
+        const committed = orders.reduce((n, o) => n + o.qty, 0);
+        const minDays = Math.max(item?.minShipDays || 0, ...orders.map((o) => this._minDaysFor(this.orders[o.orderId], spec.itemNo)));
+        const eligible = (line) => line.itemNo === spec.itemNo && this._lotState(spec.itemNo, line, minDays) === 'ok';
+        let usable = ((this.binStock && this.binStock[loc.code]) || []).filter(eligible).reduce((n, line) => n + line.qty, 0);
+        for (const holder of Object.values(this.holders || {})) {
+          if (holder.loc === loc.code && !holder.sscc) usable += (holder.contents || []).filter(eligible).reduce((n, line) => n + Number(line.qty || 0), 0);
+        }
+        for (const id of [loc.sscc, ...(loc.pallets || [])]) {
+          const pallet = this.pallets[id];
+          if (pallet && eligible(pallet) && this.shipState(pallet) === 'ok') usable += pallet.qty;
+        }
+        const projected = usable + incoming - committed;
+        const need = projected <= spec.trigger ? Math.max(0, spec.max - projected) : 0;
+        const quantity = Math.min(need, Math.max(0, spec.max - onHand - incoming));
+        const result = { code: loc.code, itemNo: spec.itemNo, onHand, usable, incoming, committed, projected,
+          quantity, orders, taskIds: pending.map((t) => t.id), status: 'ready', reason: null, source: null };
+        const blocked = (reason, text) => Object.assign(result, { status: 'blocked', reason, text });
+        if (pending.some((t) => !this.pallets[t.sscc] || this.shipState(this.pallets[t.sscc]) !== 'ok')) return blocked('source-held', 'The incoming source stock is no longer eligible');
+        if (pending.some((t) => t.status === 'held')) return blocked('transport-held', 'The replenishment transport is held');
+        if (loc.blocked || loc.checkHold || loc.quarantine || ['quarantine', 'return'].includes(loc.role)) return blocked('destination-held', 'The pick face is blocked or held');
+        if (!need) return { ...result, status: pending.length ? 'incoming' : 'stocked' };
+        if (pending.length) return { ...result, status: 'incoming', text: 'Waiting for the existing replenishment transport' };
+        if (quantity < 1) return blocked('capacity', 'The pick face has no free capacity for a top-up');
+        if (loc.reservedBy) return blocked('destination-reserved', 'Another movement has reserved the pick face');
+        if (!item || item.status === 'archived' || item.status === 'pending') return blocked('item-unavailable', 'The item is unavailable for replenishment');
+        if (item.serialized && spec.mode !== 'pallet') return blocked('serials-required', 'Replenish traced pieces with their serial numbers');
+        const reserved = new Set(this._openWaveTasks().filter((t) => t.sscc).map((t) => t.sscc));
+        const sources = this._fefo(spec.itemNo).filter((p) => {
+          const job = this._liveTaskFor(p.sscc);
+          return p.loc !== loc.code && !selectedSources.has(p.sscc) && !demand.reservedPallets.has(p.sscc) && !reserved.has(p.sscc) && (!job || job.reason !== 'replenish');
+        });
+        const eligibleSources = sources.filter((p) => this._lotState(spec.itemNo, p, minDays) === 'ok');
+        if (!eligibleSources.length) return blocked('no-source', 'No eligible unreserved source stock is available');
+        const source = eligibleSources.find((p) => {
+          if (!this._fits(loc, p)) return false;
+          if (loc.kind === 'rack' && loc.sscc) return false;
+          if (loc.category && loc.category !== item.category) return false;
+          if (loc.kind === 'bin' && (loc.pallets || []).some((id) => this.pallets[id]?.itemNo !== item.itemNo)) return false;
+          if (loc.kind === 'bin' && spec.mode !== 'pallet') {
+            try { this._assertBinTakes(loc, item, Math.min(quantity, p.qty)); } catch (e) { return false; }
+          }
+          return true;
+        });
+        if (!source) return blocked('capacity', 'Eligible source stock does not fit the pick face');
+        selectedSources.add(source.sscc);
+        return { ...result, source: source.sscc, quantity: spec.mode === 'pallet' ? source.qty : Math.min(quantity, source.qty) };
+      });
+    };
+
     proto.planReplenishment = function () {
+      if (this.replenishmentVersion !== 1) return this._planReplenishmentLegacy();
+      if (this._planningReplenishment) return [];
+      this._planningReplenishment = true;
+      try {
+        const created = [];
+        for (const decision of this.replenishmentStatus()) {
+          const loc = this.locations[decision.code];
+          const { observedAt, ...previousDecision } = loc.replenishmentState || {};
+          if (JSON.stringify(previousDecision) !== JSON.stringify(decision)) {
+            loc.replenishmentState = { ...decision, observedAt: this.now() };
+            this.log(`Pick face ${loc.code}: ${decision.status}${decision.text ? ' — ' + decision.text : ''}`);
+          }
+          if (decision.status !== 'ready') continue;
+          const source = this.pallets[decision.source];
+          const previous = this._liveTaskFor(source.sscc);
+          if (previous) this._cancelQuiet(previous);
+          const task = this._newTask({
+            type: 'SHIFT', reason: 'replenish', sscc: source.sscc, from: source.loc, to: loc.code,
+            category: this.items[source.itemNo].category,
+            splitQty: loc.replenishment.mode !== 'pallet' && (decision.quantity < source.qty || ['bin', 'mezzanine'].includes(loc.kind)) ? decision.quantity : null,
+          });
+          task.planning = { ...decision, at: this.now() };
+          loc.reservedBy = task.id;
+          this.log(`Replenish ${decision.quantity} of ${decision.itemNo} → ${loc.code}, ${decision.committed} committed to picks`, { taskId: task.id });
+          created.push(task);
+        }
+        if (created.length) this.dispatch();
+        return created;
+      } finally {
+        delete this._planningReplenishment;
+      }
+    };
+
+    proto._planReplenishmentLegacy = function () {
       const created = [];
       for (const loc of this._pickFaces()) {
         const spec = loc.replenishment;
@@ -873,6 +969,77 @@
     };
 
     proto.applySplitDrop = function (truck, task) {
+      if (!task.planning) return this._applySplitDropLegacy(truck, task);
+      const pallet = this.pallets[truck.load];
+      const qty = Number(task.splitQty);
+      if (!pallet || !Number.isInteger(qty) || qty < 1 || pallet.qty < qty) throw new Error('Replenishment quantity exceeds the source plate');
+      if (this.shipState(pallet) !== 'ok') throw new Error('The replenishment pallet is no longer eligible');
+      if (this.items[pallet.itemNo]?.serialized) throw new Error('Replenish traced pieces with their serial numbers');
+      const to = this.locations[task.to];
+      if (!to || to.blocked || to.checkHold || to.quarantine || ['quarantine', 'return'].includes(to.role)) throw new Error('The pick face is blocked or held');
+      if (to.reservedBy && to.reservedBy !== task.id) throw new Error('Another transport has reserved the pick face');
+      if (to.kind === 'bin') this._assertBinTakes(to, this.items[pallet.itemNo], qty);
+      const spec = to.replenishment;
+      if (spec && this._faceQty(to) + qty > spec.max) throw new Error('The pick face no longer has room for this replenishment');
+      if (to && to.reservedBy === task.id) to.reservedBy = null;
+      const fromLoc = task.from;
+      pallet.qty -= qty;
+      const explicit = typeof this.module === 'function' && this.module('return-move');
+      if (!explicit && pallet.qty) this._place(pallet, fromLoc);
+      let holder = null;
+      if (to.kind === 'bin') {
+        this.binPut({ loc: to.code, itemNo: pallet.itemNo, qty, batch: pallet.batch, expiry: pallet.expiry,
+          event: 'moved', by: this._actor || truck.id, note: `Replenishment job #${task.id}` });
+      } else {
+        const minted = this.allocatePlate('ST');
+        holder = this._makePlate(minted, {
+          type: 'st', loc: task.to, clientId: pallet.clientId || null,
+          contents: [{ itemNo: pallet.itemNo, qty, batch: pallet.batch, expiry: pallet.expiry, clientId: pallet.clientId || null }],
+        });
+      }
+      task.replenishedHolder = holder?.id || null;
+      if (!pallet.qty) {
+        pallet.status = 'shipped';
+        pallet.removed = 'emptied';
+        pallet.goneAt = this.now();
+      }
+      const actor = this._actor || truck.id;
+      this.recordMovement({ sscc: pallet.sscc, holder: pallet.holderId || null, from: fromLoc, to: explicit ? null : fromLoc, qty: pallet.qty, event: 'moved', by: actor, note: `Replenished ${qty} at ${task.to}` });
+      if (holder) this.recordMovement({ holder: holder.id, from: fromLoc, to: task.to, qty, event: 'moved', by: actor, note: 'replenishment' });
+      task.alert = null;
+      let returnTask = null;
+      if (explicit && pallet.qty) {
+        const suggested = this._returnSlot(pallet, fromLoc);
+        returnTask = this._newTask({
+          type: 'SHIFT', reason: 'return-split', sscc: pallet.sscc, from: task.to, to: suggested,
+          category: this.items[pallet.itemNo].category,
+        });
+        this._finish(truck, task);
+        returnTask.status = 'active';
+        returnTask.step = 1;
+        returnTask.truckId = truck.id;
+        truck.taskId = returnTask.id;
+        truck.load = pallet.sscc;
+        truck.position = task.to;
+        const live = this.trucks && this.trucks[truck.id];
+        if (live && live !== truck) {
+          live.taskId = returnTask.id;
+          live.load = pallet.sscc;
+          live.position = task.to;
+        }
+        this.log(`Return …${pallet.sscc.slice(-6)} (${pallet.qty} left) from ${task.to} to ${suggested}`, { taskId: returnTask.id });
+      } else {
+        truck.load = null;
+        truck.position = task.to;
+        this._finish(truck, task);
+        this.log(`Top-up ${qty} of ${pallet.itemNo} at ${task.to}`);
+      }
+      this.planReplenishment();
+      this.dispatch();
+      return { task, holder, source: pallet, returnTask };
+    };
+
+    proto._applySplitDropLegacy = function (truck, task) {
       const pallet = this.pallets[truck.load];
       const qty = Number(task.splitQty);
       if (!pallet || !Number.isInteger(qty) || qty < 1 || pallet.qty <= qty) throw new Error('Split replenishment needs a source plate with more than the top-up');
