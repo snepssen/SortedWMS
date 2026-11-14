@@ -1,5 +1,9 @@
 # Changelog
 
+## User audit
+
+A manager or an administrator can export a CSV of every user's moves, warehouse commands and sign-ins for a range of dates. The times are the warehouse's local time, including daylight saving. A client login cannot open it, even with the permission. Switching the module off keeps the journal: the export answers 404.
+
 ## Sendcloud on the module list
 
 Sendcloud is in the core module list again, so its upgrade runs once and the registry tests match the modules on disk. The settings screen, the API, and the signed status webhook are wired on the server. A failed label still raises `shop.sync`.

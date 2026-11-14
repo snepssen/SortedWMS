@@ -71,6 +71,7 @@ const PERMISSIONS = [
   ['woocommerce.manage', 'Connect WooCommerce shops and map SKUs'],
   ['etsy.manage', 'Connect Etsy shops and map SKUs'],
   ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
+  ['user-audit.read', 'Export the user audit'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -412,6 +413,7 @@ const RULES = [
   ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
+  ['GET', '/api/user-audit.csv', 'user-audit.read'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({
