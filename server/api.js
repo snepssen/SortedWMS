@@ -332,6 +332,15 @@
     on('GET', '/api/process-log', () => wh().processLog.slice(0, 200));
     on('GET', '/api/events', () => wh().events.slice(0, 200).map((e) => ({ ...e, text: wh().display(e.text) })));
     on('GET', '/api/journal', (_, q) => store.journal({ limit: q.limit, op: q.op, by: q.by, before: q.before }).map((row) => ({ ...row, local: wh().formatLocal ? wh().formatLocal(row.t) : null })));
+    on('GET', '/api/user-audit.csv', (_, q) => {
+      if (currentActor && currentActor.role !== 'administrator' && currentActor.role !== 'manager') return { status: 403, error: 'Only a manager or an administrator can export the user audit' };
+      try {
+        const raw = require('./user-audit').build({ store, from: q.from, to: q.to });
+        return { contentType: 'text/csv; charset=utf-8', raw };
+      } catch (e) {
+        return { status: 400, error: e.message };
+      }
+    });
     on('GET', '/api/printers', () => (printers.list ? printers.list() : []));
     on('GET', '/api/printers/:name/status', ({ name }) => (printers.status ? printers.status(decodeURIComponent(name)) : { status: 404, error: 'No printers here' }));
     on('GET', '/api/print-queue', () => ({ jobs: wh().printQueue.slice(0, 50).map((j) => ({ id: j.id, printer: j.printer, at: j.at, label: j.label })), results: printers.results.slice(0, 50) }));
