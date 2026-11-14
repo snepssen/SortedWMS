@@ -585,6 +585,10 @@
       raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
     }));
     on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    on('GET', '/api/alerts/low-stock.csv', () => ({
+      contentType: 'text/csv; charset=utf-8',
+      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...wh().lowStock().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
+    }));
     on('GET', '/api/notify', () => (alerts ? alerts.status(currentActor) : { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' }));
     on('POST', '/api/notify/settings', (_, q, b) => {
       if (!alerts) return { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' };

@@ -263,9 +263,32 @@ test('a backup failure is raised on the alert channel, and the password stays ou
   w.store.close();
 });
 
+test('the reorder list and its csv use available stock and show on hand beside it', async () => {
+  const { belowReorder } = require('../src/operations');
+  const w = world();
+  assert.equal(belowReorder(7, 8), true);
+  assert.equal(belowReorder(10, 8), false);
+  assert.equal(belowReorder(0, null), false);
+  assert.equal(w.store.wh.lowStock().some((row) => row.itemNo === 'MUG'), false, '10 available is above the point of 5');
+  w.store.exec('addOrder', { id: 'SO1', customer: 'Shop', lane: 'OUT-01', clientId: 'CL-A', lines: [{ itemNo: 'MUG', units: 6 }] }, 'office');
+  const row = w.store.wh.lowStock().find((item) => item.itemNo === 'MUG');
+  assert.equal(row.onHand, 10);
+  assert.equal(row.available, 4);
+  assert.equal(row.onHand > row.reorderPoint, true);
+  assert.equal(row.low, belowReorder(row.available, row.reorderPoint));
+  const api = createApi({ store: w.store, printers: { flush() {} }, alerts: w.alerts });
+  const csv = await api.handle('GET', '/api/alerts/low-stock.csv', {}, 'office');
+  assert.match(csv.body, /sku","name","onHand","available","reorderPoint/);
+  assert.match(csv.body, /"MUG","Mug","10","4","5"/);
+  const json = await api.handle('GET', '/api/alerts/low-stock', {}, 'office');
+  assert.equal(json.body.find((item) => item.itemNo === 'MUG').available, 4);
+  w.store.close();
+});
+
 test('notify routes name a permission and disappear when the module is off', async () => {
   assert.equal(permissionFor('POST', '/api/notify/test').permission, 'alerts.write');
   assert.equal(permissionFor('GET', '/api/alerts/low-stock').permission, 'reports.read');
+  assert.equal(permissionFor('GET', '/api/alerts/low-stock.csv').permission, 'reports.read');
   const w = world();
   const api = createApi({ store: w.store, printers: { flush() {} }, alerts: w.alerts });
   w.store.wh.setModules({ alerts: false });

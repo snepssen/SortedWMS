@@ -271,6 +271,7 @@ const RULES = [
   ['GET', '/api/reports/availability.csv', 'reports.read'],
   ['GET', '/api/reports/availability.json', 'reports.read'],
   ['GET', '/api/alerts/low-stock', 'reports.read'],
+  ['GET', '/api/alerts/low-stock.csv', 'reports.read'],
   ['GET', '/api/notify', 'alerts.read'],
   ['POST', '/api/notify/settings', 'alerts.write'],
   ['POST', '/api/notify/test', 'alerts.write'],

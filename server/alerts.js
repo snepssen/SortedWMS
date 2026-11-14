@@ -15,6 +15,7 @@ const path = require('node:path');
 const { sendMail } = require('./smtp');
 const i18n = require('../src/i18n');
 const { DEFAULTS } = require('./permissions');
+const { belowReorder } = require('../src/operations');
 
 const DAY = 86400000;
 const KINDS = ['stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'];
@@ -378,7 +379,7 @@ function createAlerts({ store, secretsFile = undefined, env = process.env, log =
         available: row.available,
         reorderPoint: row.reorderPoint,
         face: null,
-        low: row.available <= row.reorderPoint,
+        low: belowReorder(row.available, row.reorderPoint),
       });
     }
     if (cfg.perPickFace && typeof wh._pickFaces === 'function') {
@@ -395,7 +396,7 @@ function createAlerts({ store, secretsFile = undefined, env = process.env, log =
           available: qty,
           reorderPoint: item.reorderPoint,
           face: loc.code,
-          low: qty <= item.reorderPoint,
+          low: belowReorder(qty, item.reorderPoint),
         });
       }
     }

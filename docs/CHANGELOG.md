@@ -1,5 +1,9 @@
 # Changelog
 
+## Reorder list uses available stock
+
+`/api/alerts/low-stock` and its CSV use the same available-stock check as the alerts: on hand minus allocated, held and reserved. The list and the CSV show both on hand and available. An item can now appear while stock is still in the building, if enough of it is already allocated, held or reserved. Previously the list compared on-hand stock only.
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.

@@ -688,10 +688,16 @@
       }
       const writable = can('alerts.write');
       const smtp = cfg.smtp || {};
-      const rows = (Array.isArray(items) ? items : []).filter((item) => item.status !== 'archived').slice(0, 40).map((item) => `<tr><td>${esc(item.itemNo)} <span class="dim">${esc(item.name || '')}</span></td><td>${esc(item.clientId || '')}</td><td><form class="form" data-act="alert-reorder" style="margin:0"><input type="hidden" name="itemNo" value="${esc(item.itemNo)}"><input name="reorderPoint" type="number" min="0" value="${item.reorderPoint == null ? '' : esc(item.reorderPoint)}" aria-label="Reorder point" style="width:6em" ${writable ? '' : 'disabled'}><button ${writable ? '' : 'disabled'}>Save</button></form></td></tr>`);
+      const [stock, low] = await Promise.all([api('GET', '/api/reports/availability').catch(() => []), api('GET', '/api/alerts/low-stock').catch(() => [])]);
+      const byItem = Object.fromEntries((Array.isArray(stock) ? stock : []).map((row) => [row.itemNo, row]));
+      const lowRows = (Array.isArray(low) ? low : []).map((row) => `<tr><td>${esc(row.itemNo)} <span class="dim">${esc(row.name || '')}</span></td><td>${esc(row.onHand)}</td><td>${esc(row.available)}</td><td>${esc(row.reorderPoint)}</td></tr>`);
+      const rows = (Array.isArray(items) ? items : []).filter((item) => item.status !== 'archived').slice(0, 40).map((item) => {
+        const have = byItem[item.itemNo] || {};
+        return `<tr><td>${esc(item.itemNo)} <span class="dim">${esc(item.name || '')}</span></td><td>${esc(item.clientId || '')}</td><td>${have.onHand == null ? '' : esc(have.onHand)}</td><td>${have.available == null ? '' : esc(have.available)}</td><td><form class="form" data-act="alert-reorder" style="margin:0"><input type="hidden" name="itemNo" value="${esc(item.itemNo)}"><input name="reorderPoint" type="number" min="0" value="${item.reorderPoint == null ? '' : esc(item.reorderPoint)}" aria-label="Reorder point" style="width:6em" ${writable ? '' : 'disabled'}><button ${writable ? '' : 'disabled'}>Save</button></form></td></tr>`;
+      });
       const sent = (cfg.sent || []).map((row) => `<tr><td>${esc(new Date(row.at).toLocaleString())}</td><td>${esc(row.channel)}</td><td>${esc(row.kind)}</td><td>${esc(row.recipient || '')}</td><td>${esc(row.summary)}</td></tr>`).join('');
       const emails = (cfg.warehouseRecipients || []).map((r) => r.email).filter(Boolean).join(', ');
-      return `<section><h2>Alerts</h2><p class="hint">Available stock is on hand, minus what is allocated, held or reserved. The reorder point is the one on the item. One alert is sent until the item recovers. A reminder follows if it stays low. The reorder list at /api/alerts/low-stock still compares on-hand.</p>
+      return `<section><h2>Alerts</h2><p class="hint">Available stock is on hand, minus what is allocated, held or reserved. The reorder list uses that same available quantity. One alert is sent until the item recovers. A reminder follows if it stays low.</p>
         ${notes}
         <p>${unread.length ? '<button type="button" data-act="alert-read">Mark read</button>' : ''}</p></section>
         <section><h2>How alerts go out</h2>
@@ -714,7 +720,8 @@
         </form>
         <p class="hint">Times use this warehouse's timezone (${esc(cfg.timeZone || '')}). The password is saved on this machine and is not shown again. ${smtp.passwordSet && !writable ? '' : ''}</p>
         ${writable ? '<form class="form" data-act="alert-test"><button>Send test</button></form>' : ''}</section>
-        <section><h2>Reorder points</h2>${table(['Item', 'Client', 'Reorder point'], rows)}</section>
+        <section><h2>Reorder list</h2><p class="hint">Available stock at or below the reorder point. <a href="/api/alerts/low-stock.csv">CSV</a> with on hand and available.</p>${table(['Item', 'On hand', 'Available', 'Reorder point'], lowRows)}</section>
+        <section><h2>Reorder points</h2>${table(['Item', 'Client', 'On hand', 'Available', 'Reorder point'], rows)}</section>
         <section><h2>Client recipients</h2><p class="hint">A client login only receives alerts for its own items. Add an address here, or they subscribe themselves.</p>
         <form class="form" data-act="alert-client"><label>Client<select name="clientId">${(Array.isArray(clients) ? clients : []).map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`).join('')}</select></label><label>Email<input name="email" type="email"></label><button ${writable ? '' : 'disabled'}>Add</button></form>
         ${Object.entries(cfg.clientRecipients || {}).map(([id, list]) => `<p><b>${esc(id)}</b> ${esc((list || []).map((r) => r.email || 'user').join(', '))}</p>`).join('') || '<p class="dim">None yet.</p>'}</section>

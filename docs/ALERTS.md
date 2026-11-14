@@ -1,6 +1,6 @@
 # Low-stock alerts
 
-The reorder list is already there: an item with a reorder point shows on `/api/alerts/low-stock` when **on-hand** stock is at or below that point. The **Low-stock alerts** module is what sends a message. It watches **available** stock: on hand, minus allocated, held and reserved. The reorder point is the same field on the item.
+The reorder list (`/api/alerts/low-stock` and `/api/alerts/low-stock.csv`) and the messages use one check: **available** stock, which is on hand minus allocated, held and reserved. An item is on the list when that available quantity is at or below its reorder point. The list and the CSV show on hand and available side by side. This used to compare on-hand stock, so an item can now be listed while pallets are still in the building if some of that stock is already allocated, held or reserved. The reorder point is the same field on the item.
 
 Switching the module off stops new messages. The history stays.
 
