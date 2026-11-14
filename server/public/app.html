@@ -109,6 +109,7 @@
       <button id="pairBtn" type="button">Connect a phone</button>
       <label>Theme <select data-theme-picker></select></label>
       <label>Language <select id="langPick"><option value="en">English</option><option value="nl">Dutch</option></select></label>
+      <button id="alertBell" type="button" hidden>Alerts</button>
       <button id="out" type="button">Sign out</button>
     </div>
   </details>
@@ -122,21 +123,21 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['alerts', 'Alerts'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History']],
-    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports']],
+    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', alerts: 'alerts' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -144,7 +145,7 @@
     return PANEL_FALLBACK[id] || null;
   }
   // Simple screens: one short list for whoever signs in, for a person running the place alone.
-  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['settings', 'Settings', 'settings.write']];
+  const SIMPLE_NAV = [['bins', 'Bins and shelves', 'stock.read'], ['receive', 'Receiving', 'inbound.write'], ['items', 'Items', 'items.read'], ['outbound', 'Orders', 'orders.read'], ['pack', 'Packing', 'outbound.write'], ['returns', 'Returns', 'inbound.write'], ['stockctl', 'Stock control', 'stock.read'], ['reports', 'Reports', 'reports.read'], ['labels', 'Labels', 'labels.print'], ['locations', 'Locations', 'locations.write'], ['users', 'Users', 'users.read'], ['alerts', 'Alerts', 'alerts.read'], ['settings', 'Settings', 'settings.write']];
   let MODS = null;
   const modOn = (id) => !id || !MODS || (MODS.modules.find((m) => m.id === id) || {}).on !== false;
   let me = null;
@@ -287,6 +288,19 @@
       nav.scrollLeft += current.getBoundingClientRect().left - nav.getBoundingClientRect().left;
     }
     if (restoreFocus) current?.focus({ preventScroll: true });
+    refreshBell();
+  }
+  async function refreshBell() {
+    const btn = document.getElementById('alertBell');
+    if (!btn) return;
+    if (!can('alerts.read') || !modOn('alerts')) { btn.hidden = true; return; }
+    try {
+      const box = await api('GET', '/api/notify/inbox');
+      const n = (box.unread || []).length;
+      btn.hidden = false;
+      btn.textContent = n ? `Alerts ${n}` : 'Alerts';
+      btn.classList.toggle('on', panel === 'alerts');
+    } catch (e) { btn.hidden = true; }
   }
 
   let pairTimer = null;
@@ -656,6 +670,55 @@
         <p id="moduleOffer"></p>
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
+    },
+    async alerts() {
+      const [cfg, items, clients] = await Promise.all([
+        api('GET', '/api/notify'),
+        api('GET', '/api/items').catch(() => []),
+        me.role === 'client' ? [] : api('GET', '/api/clients').catch(() => []),
+      ]);
+      const unread = (cfg.inbox && cfg.inbox.unread) || [];
+      const notes = unread.length ? table(['When', 'What'], unread.map((n) => `<tr><td>${esc(new Date(n.at).toLocaleString())}</td><td>${esc(n.summary)}</td></tr>`)) : '<p class="dim">No unread alerts.</p>';
+      if (me.role === 'client') {
+        return `<section><h2>Alerts</h2><p class="hint">You only see alerts for your own items, when available stock is at or below the reorder point.</p>
+          ${notes}
+          <form class="form" data-act="alert-subscribe"><label>Email<input name="email" type="email" value="${esc(cfg.email || '')}" placeholder="optional"></label><button class="primary">${cfg.subscribed ? 'Update' : 'Subscribe'}</button></form>
+          ${cfg.subscribed ? '<p><button type="button" data-act="alert-unsubscribe">Stop alerts</button></p>' : ''}
+          <p>${unread.length ? '<button type="button" data-act="alert-read">Mark read</button>' : ''}</p></section>`;
+      }
+      const writable = can('alerts.write');
+      const smtp = cfg.smtp || {};
+      const rows = (Array.isArray(items) ? items : []).filter((item) => item.status !== 'archived').slice(0, 40).map((item) => `<tr><td>${esc(item.itemNo)} <span class="dim">${esc(item.name || '')}</span></td><td>${esc(item.clientId || '')}</td><td><form class="form" data-act="alert-reorder" style="margin:0"><input type="hidden" name="itemNo" value="${esc(item.itemNo)}"><input name="reorderPoint" type="number" min="0" value="${item.reorderPoint == null ? '' : esc(item.reorderPoint)}" aria-label="Reorder point" style="width:6em" ${writable ? '' : 'disabled'}><button ${writable ? '' : 'disabled'}>Save</button></form></td></tr>`);
+      const sent = (cfg.sent || []).map((row) => `<tr><td>${esc(new Date(row.at).toLocaleString())}</td><td>${esc(row.channel)}</td><td>${esc(row.kind)}</td><td>${esc(row.recipient || '')}</td><td>${esc(row.summary)}</td></tr>`).join('');
+      const emails = (cfg.warehouseRecipients || []).map((r) => r.email).filter(Boolean).join(', ');
+      return `<section><h2>Alerts</h2><p class="hint">Available stock is on hand, minus what is allocated, held or reserved. The reorder point is the one on the item. One alert is sent until the item recovers. A reminder follows if it stays low. The reorder list at /api/alerts/low-stock still compares on-hand.</p>
+        ${notes}
+        <p>${unread.length ? '<button type="button" data-act="alert-read">Mark read</button>' : ''}</p></section>
+        <section><h2>How alerts go out</h2>
+        <form class="form" data-act="alert-settings">
+          <label>When<select name="mode" ${writable ? '' : 'disabled'}><option value="instant" ${cfg.mode === 'instant' ? 'selected' : ''}>As it happens</option><option value="digest" ${cfg.mode === 'digest' ? 'selected' : ''}>Daily digest</option></select></label>
+          <label>Digest time<input name="digestTime" value="${esc(cfg.digestTime || '07:00')}" ${writable ? '' : 'disabled'}></label>
+          <label>Reminder hours<input name="reminderHours" type="number" min="1" value="${esc(cfg.reminderHours)}" ${writable ? '' : 'disabled'}></label>
+          <label>Quiet after recovery (min)<input name="debounceMinutes" type="number" min="0" value="${esc(cfg.debounceMinutes)}" ${writable ? '' : 'disabled'}></label>
+          <label>Quiet from<input name="quietFrom" value="${esc(cfg.quietFrom || '')}" placeholder="22:00" ${writable ? '' : 'disabled'}></label>
+          <label>Quiet to<input name="quietTo" value="${esc(cfg.quietTo || '')}" placeholder="06:00" ${writable ? '' : 'disabled'}></label>
+          <label><input type="checkbox" name="perPickFace" ${cfg.perPickFace ? 'checked' : ''} ${writable ? '' : 'disabled'}> Also per pick face</label>
+          <label>Warehouse emails<input name="emails" value="${esc(emails)}" placeholder="office@example.com, buyer@example.com" size="36" ${writable ? '' : 'disabled'}></label>
+          <label>SMTP host<input name="host" value="${esc(smtp.host || '')}" ${writable ? '' : 'disabled'}></label>
+          <label>Port<input name="port" type="number" value="${esc(smtp.port || 587)}" ${writable ? '' : 'disabled'}></label>
+          <label>Security<select name="smtpMode" ${writable ? '' : 'disabled'}><option ${smtp.mode === 'starttls' ? 'selected' : ''}>starttls</option><option ${smtp.mode === 'smtps' ? 'selected' : ''}>smtps</option><option ${smtp.mode === 'plain' ? 'selected' : ''}>plain</option></select></label>
+          <label>SMTP user<input name="user" value="${esc(smtp.user || '')}" autocomplete="off" ${writable ? '' : 'disabled'}></label>
+          <label>From<input name="from" value="${esc(smtp.from || '')}" ${writable ? '' : 'disabled'}></label>
+          <label>SMTP password<input name="password" type="password" autocomplete="new-password" placeholder="${smtp.passwordSet ? 'saved' : 'not shown again'}" ${writable ? '' : 'disabled'}></label>
+          <button class="primary" ${writable ? '' : 'disabled'}>Save alerts</button>
+        </form>
+        <p class="hint">Times use this warehouse's timezone (${esc(cfg.timeZone || '')}). The password is saved on this machine and is not shown again. ${smtp.passwordSet && !writable ? '' : ''}</p>
+        ${writable ? '<form class="form" data-act="alert-test"><button>Send test</button></form>' : ''}</section>
+        <section><h2>Reorder points</h2>${table(['Item', 'Client', 'Reorder point'], rows)}</section>
+        <section><h2>Client recipients</h2><p class="hint">A client login only receives alerts for its own items. Add an address here, or they subscribe themselves.</p>
+        <form class="form" data-act="alert-client"><label>Client<select name="clientId">${(Array.isArray(clients) ? clients : []).map((c) => `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`).join('')}</select></label><label>Email<input name="email" type="email"></label><button ${writable ? '' : 'disabled'}>Add</button></form>
+        ${Object.entries(cfg.clientRecipients || {}).map(([id, list]) => `<p><b>${esc(id)}</b> ${esc((list || []).map((r) => r.email || 'user').join(', '))}</p>`).join('') || '<p class="dim">None yet.</p>'}</section>
+        <section><h2>Sent</h2>${table(['When', 'Channel', 'Kind', 'To', 'Text'], sent ? [sent] : [])}</section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
@@ -1060,6 +1123,8 @@
   };
   $('#pairBtn').onclick = () => { document.querySelector('.workspace-options').open = false; panel = 'pairing'; history.replaceState(null, '', '#pairing'); draw(); };
   $('#out').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.assign('/login'); };
+  const bell = document.getElementById('alertBell');
+  if (bell) bell.onclick = () => { panel = 'alerts'; history.replaceState(null, '', '#alerts'); draw(); };
   $('#main').onclick = async (e) => {
     const saveModules = e.target.closest('#saveModules');
     if (saveModules) {
@@ -1136,6 +1201,8 @@
       if (act === 'hook-remove') { if (!confirm('Remove this webhook? It gets no more messages.')) return; await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/remove', {}); return draw(); }
       if (act === 'hook-retry') { await api('POST', '/api/webhooks/' + encodeURIComponent(b.dataset.id) + '/retry', {}); return draw(); }
       if (act === 'key-revoke') { if (!confirm('Revoke this key? The system using it is locked out at once.')) return; await api('POST', '/api/keys/' + encodeURIComponent(b.dataset.id) + '/revoke', {}); return draw(); }
+      if (act === 'alert-read') { const box = await api('GET', '/api/notify/inbox'); await api('POST', '/api/notify/read', { ids: (box.unread || []).map((n) => n.id) }); return draw(); }
+      if (act === 'alert-unsubscribe') { await api('POST', '/api/notify/subscribe', { unsubscribe: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
@@ -1373,6 +1440,24 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'alert-reorder') return api('POST', '/api/items/' + encodeURIComponent(data.itemNo), { reorderPoint: data.reorderPoint === '' ? null : Number(data.reorderPoint) });
+    if (name === 'alert-settings') {
+      const emails = String(data.emails || '').split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+      const body = { mode: data.mode, digestTime: data.digestTime, reminderHours: Number(data.reminderHours), debounceMinutes: Number(data.debounceMinutes), quietFrom: data.quietFrom || '', quietTo: data.quietTo || '', perPickFace: data.perPickFace === 'on', warehouseRecipients: emails.map((email) => ({ email })), smtp: { host: data.host, port: Number(data.port), mode: data.smtpMode, user: data.user, from: data.from } };
+      if (data.password) body.smtp.password = data.password;
+      return api('POST', '/api/notify/settings', body);
+    }
+    if (name === 'alert-client') {
+      const cfg = await api('GET', '/api/notify');
+      const map = { ...(cfg.clientRecipients || {}) };
+      const id = String(data.clientId || '').toUpperCase();
+      const list = (map[id] || []).filter((r) => r.email !== data.email);
+      if (data.email) list.push({ email: data.email });
+      map[id] = list;
+      return api('POST', '/api/notify/settings', { clientRecipients: map });
+    }
+    if (name === 'alert-subscribe') return api('POST', '/api/notify/subscribe', { email: data.email || '' });
+    if (name === 'alert-test') return api('POST', '/api/notify/test', {});
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });

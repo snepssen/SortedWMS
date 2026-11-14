@@ -321,6 +321,22 @@
     'terminal.keys': '0 Back  ? Help',
     'terminal.menuKeys': 'Number  ? Help',
     'terminal.lan': 'This port is for the LAN only',
+    'Alerts': 'Alerts',
+    'Send test': 'Send test',
+    'Save alerts': 'Save alerts',
+    'Subscribe': 'Subscribe',
+    'Stop alerts': 'Stop alerts',
+    'Mark read': 'Mark read',
+    'As it happens': 'As it happens',
+    'Daily digest': 'Daily digest',
+    'No unread alerts.': 'No unread alerts.',
+    'Low-stock digest': 'Low-stock digest',
+    'This is a test alert from SortedWMS.': 'This is a test alert from SortedWMS.',
+    'Backup failed: {summary}': 'Backup failed: {summary}',
+    '{item} is at or below its reorder point: {available} available, reorder point {point}.': '{item} is at or below its reorder point: {available} available, reorder point {point}.',
+    '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.',
+    '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} is back above its reorder point: {available} available, reorder point {point}.',
+    'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).': 'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.en = dict; }

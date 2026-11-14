@@ -319,6 +319,22 @@
     'terminal.keys': '0 Terug  ? Help',
     'terminal.menuKeys': 'Nummer  ? Help',
     'terminal.lan': 'Deze poort is alleen voor het LAN',
+    'Alerts': 'Meldingen',
+    'Send test': 'Test versturen',
+    'Save alerts': 'Meldingen opslaan',
+    'Subscribe': 'Aanmelden',
+    'Stop alerts': 'Meldingen stoppen',
+    'Mark read': 'Gelezen',
+    'As it happens': 'Meteen',
+    'Daily digest': 'Dagelijks overzicht',
+    'No unread alerts.': 'Geen ongelezen meldingen.',
+    'Low-stock digest': 'Overzicht lage voorraad',
+    'This is a test alert from SortedWMS.': 'Dit is een testmelding van SortedWMS.',
+    'Backup failed: {summary}': 'Back-up mislukt: {summary}',
+    '{item} is at or below its reorder point: {available} available, reorder point {point}.': '{item} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    '{item} at {face} is at or below its reorder point: {available} available, reorder point {point}.': '{item} op {face} staat op of onder het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    '{item} is back above its reorder point: {available} available, reorder point {point}.': '{item} staat weer boven het bestelpunt: {available} beschikbaar, bestelpunt {point}.',
+    'Reminder: {item} is still at or below its reorder point ({available} available, reorder point {point}).': 'Herinnering: {item} staat nog op of onder het bestelpunt ({available} beschikbaar, bestelpunt {point}).',
   };
   if (typeof module === 'object' && module.exports) module.exports = dict;
   else { root.SortedLocales = root.SortedLocales || {}; root.SortedLocales.nl = dict; }

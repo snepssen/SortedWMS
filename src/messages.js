@@ -18,7 +18,7 @@
   'use strict';
 
   const MAX = 20000;
-  const TYPES = ['delivery.received', 'order.shipped', 'return.received', 'return.graded', 'stock.adjusted'];
+  const TYPES = ['delivery.received', 'order.shipped', 'return.received', 'return.graded', 'stock.adjusted', 'stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'];
   const iso = (t) => new Date(t).toISOString();
 
   function install(Warehouse) {
