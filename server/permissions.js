@@ -419,6 +419,9 @@ const RULES = [
   ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
+  ['GET', '/api/photos', 'photos.read'],
+  ['GET', '/api/items/:itemNo/photos/:id', 'photos.read'],
+  ['POST', '/api/items/:itemNo/photos', 'photos.write'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({
