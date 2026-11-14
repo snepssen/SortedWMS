@@ -1,8 +1,8 @@
 # Changelog
 
-## Bills of materials
+## A4 documents
 
-A client item can have a bill of materials. Building a kit consumes the components from bins and puts the kit item back in stock. A kitting task whose output item has a bill of materials uses those components and, when the task is done, puts one kit at KIT-OUT. Lots and serials are used only while those modules are on. Switching bills of materials off keeps the recipes and refuses a new one.
+Delivery notes, pick lists, packing lists and client statements can be A4 PDFs. The writer is in the program itself. Dates use the warehouse timezone. Label printers keep their text rules.
 
 ## Sendcloud on the module list
 
