@@ -64,6 +64,7 @@ const PERMISSIONS = [
   ['sites.write', 'Create a warehouse'],
   ['messages.read', 'Read the confirmations sent to other systems'],
   ['intake.write', 'Send orders and ASNs in from another system'],
+  ['sendcloud.manage', 'Connect Sendcloud and buy labels'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -81,7 +82,7 @@ const ROLES = [
 
 const ROLE_IDS = ROLES.map(([id]) => id);
 
-const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write']);
+const EXCEPT = new Set(['users.write', 'roles.write', 'settings.write', 'technical.write', 'sites.write', 'sendcloud.manage']);
 
 const DEFAULTS = {
   administrator: ALL,
@@ -366,6 +367,11 @@ const RULES = [
   ['GET', '/api/orders', 'orders.read'],
   ['GET', '/api/deliveries', 'inbound.read'],
   ['GET', '/api/stock', 'stock.read'],
+  ['GET', '/api/sendcloud', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/account', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

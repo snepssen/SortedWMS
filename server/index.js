@@ -20,9 +20,9 @@ const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, sendcloud = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware, backups });
+  const api = createApi({ store, printers, hardware, backups, sendcloud });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -62,6 +62,12 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
     req.on('end', () => {
       let body;
       try { body = raw ? JSON.parse(raw) : {}; } catch (e) { return send(400, { error: 'Body is not JSON' }); }
+      if (sendcloud && req.method === 'POST' && url.pathname === '/api/sendcloud/webhook') {
+        const denied = registry.denial(store.wh, 'POST', url.pathname);
+        if (denied) return send(denied.status, denied.body);
+        try { return send(200, sendcloud.acceptWebhook(raw, String(req.headers['sendcloud-signature'] || ''))); }
+        catch (e) { return send(e.status || 400, { error: e.message }); }
+      }
       const sharedOk = Boolean(token) && (req.headers['x-token'] === token || url.searchParams.get('token') === token);
       const sessionUser = auth ? auth.userFromRequest(req) : null;
       const access = permissionFor(req.method, url.pathname);
@@ -338,9 +344,11 @@ function main() {
   const hardware = createHardware({ printers, store });
   // Messages pushed out: webhooks always, the outbox folder when SORTED_OUTBOX names one.
   const outbox = require('./outbox').createOutbox({ store });
+  const sendcloud = require('./sendcloud').createSendcloud({ store, log: (line) => console.log(line) });
+  const stopSendcloud = sendcloud.start();
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, sendcloud });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });
@@ -383,7 +391,7 @@ function main() {
     if (inbox) console.log(`Drop folder for orders and ASNs: ${inbox.dir}`);
     if (process.env.SORTED_OUTBOX) console.log(`Outbox folder for messages: ${process.env.SORTED_OUTBOX}`);
   });
-  const stop = () => { clearInterval(tick); stopOutbox(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
+  const stop = () => { clearInterval(tick); stopOutbox(); stopSendcloud(); if (inbox) inbox.stop(); if (backups) backups.stop(); server.close(); store.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }

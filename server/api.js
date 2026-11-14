@@ -167,7 +167,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null }) {
+  function createApi({ store, printers, hardware, backups = null, sendcloud = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -684,6 +684,11 @@
       contentType: 'text/csv; charset=utf-8',
       raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
     }));
+    on('GET', '/api/sendcloud', () => (sendcloud ? sendcloud.status() : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/account', (_, q, b) => (sendcloud ? sendcloud.saveAccount(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/rules', (_, q, b) => (sendcloud ? sendcloud.saveRule(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/label', (_, q, b) => (sendcloud ? sendcloud.createParcel(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/return', (_, q, b) => (sendcloud ? sendcloud.createReturnLabel(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
     on('GET', '/api/hardware', () => (hardware ? hardware.recent() : { settings: { scanner: 'wedge', printer: 'simulated' }, scans: [], jobs: [], printers: printers.list ? printers.list() : [], modes: { scanner: ['wedge', 'manual', 'simulated'], printer: ['simulated', 'network', 'browser'] } }));
     on('POST', '/api/hardware/mode', (_, q, b) => (hardware ? hardware.setMode(b) : { status: 400, error: 'Hardware service is not configured' }));
     on('POST', '/api/hardware/scan', async (_, q, b, by) => {
@@ -727,10 +732,10 @@
       try {
         const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
         // Asking a printer goes over the network: those routes answer with a promise.
-        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: 400, body: { error: e.message } }));
+        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: e.status || 400, body: { error: e.message } }));
         return answer(out);
       } catch (e) {
-        return { status: 400, body: { error: e.message } };
+        return { status: e.status || 400, body: { error: e.message } };
       }
     }
 

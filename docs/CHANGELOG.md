@@ -1,5 +1,9 @@
 # Changelog
 
+## Sendcloud
+
+A packed order can buy a Sendcloud label. The weight and size come from the closed cartons. A rule picks the carrier and service from the client, the destination country and the weight. The label PDF is kept beside the database, and a short tracking label is sent to the existing print queue. The tracking number, carrier and URL are stored on the order, so the delivery note shows them and a shop connector can send them when the order ships. Parcel status webhooks are checked with `Sendcloud-Signature`. The same status sent twice is ignored. A return label is available when the Returns module is on. The API keys are saved beside the database and are never shown again. See [connectors/SENDCLOUD.md](connectors/SENDCLOUD.md).
+
 ## Stacked pickup
 
 With a stack height configured, Auto and Transfer (Move on the text terminal) can lift stacked pallets with transport jobs, including dock put-away. A pallet without a transport job still uses the pallet/location correction in Transfer. Each pallet keeps its own job and drop. After the first pallet, scan the next one where it stood. Scanning a location drops whichever pallet goes there, in any order. Scanning a pallet on the forks makes it the next drop.

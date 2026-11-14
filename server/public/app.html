@@ -122,7 +122,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['audit', 'Audit'], ['master', 'Master data']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['sendcloud', 'Sendcloud'], ['audit', 'Audit'], ['master', 'Master data']],
     manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
     office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
@@ -136,7 +136,7 @@
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', sendcloud: 'sendcloud' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -656,6 +656,24 @@
         <p id="moduleOffer"></p>
         ${writable ? '<p><button class="primary" id="saveModules" type="button">Save modules</button></p>' : '<p class="hint">A manager or an administrator can change these.</p>'}
         </section>${cards}`;
+    },
+    async sendcloud() {
+      const data = await api('GET', '/api/sendcloud');
+      const a = data.account || {};
+      const rows = (data.rules || []).map((r) => `<tr><td>${esc(r.clientId || 'any')}</td><td>${esc(r.country || 'any')}</td><td>${esc(r.minKg)}–${esc(r.maxKg)} kg</td><td>${esc(r.carrier)} <span class="dim">${esc(r.service || '')}</span></td><td>${esc(r.methodId)}</td></tr>`);
+      const parcels = (data.parcels || []).map((p) => `<tr><td>${esc(p.orderId || '')}${p.returnId ? `<br><span class="dim">${esc(p.returnId)}</span>` : ''}</td><td>${esc(p.carrier || '')}</td><td>${esc(p.tracking || '')}</td><td>${esc(p.status || '')}</td></tr>`);
+      const errs = (data.errors || []).map((e) => `<li>${esc(e.summary)}</li>`).join('');
+      return `<section><h2>Sendcloud</h2><p class="hint">A packed order gets a label from its carton weight and size. The PDF is kept on this machine and a short tracking label goes to the printer. The keys are not shown again.</p>
+        ${errs ? `<p class="msg bad">Recent errors</p><ul>${errs}</ul>` : ''}
+        <p>Keys ${a.secretKeySet ? 'saved' : 'missing'} · webhook secret ${a.webhookSecretSet ? 'saved' : 'not set'}</p>
+        <form class="form" data-act="sendcloud-account"><label>Public key<input name="publicKey" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Secret key<input name="secretKey" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Webhook secret<input name="webhookSecret" type="password" autocomplete="new-password" placeholder="not shown again"></label><label>Returns to<input name="senderName" value="${esc(a.senderName || '')}" placeholder="warehouse name"></label><label>Street<input name="senderAddress" value="${esc(a.senderAddress || '')}"></label><label>City<input name="senderCity" value="${esc(a.senderCity || '')}"></label><label>Postcode<input name="senderPostal" value="${esc(a.senderPostal || '')}"></label><label>Country<input name="senderCountry" value="${esc(a.senderCountry || '')}" placeholder="BE" maxlength="2"></label><button class="primary">Save account</button></form></section>
+        <section><h2>Carrier rules</h2><p class="hint">A rule for a client and a country wins over a rule for the country, which wins over a rule for anyone. Weight is the packed cartons, in kilograms.</p>
+        ${table(['Client', 'Country', 'Weight', 'Carrier', 'Method'], rows)}
+        <form class="form" data-act="sendcloud-rule"><label>Client<input name="clientId" placeholder="optional"></label><label>Country<input name="country" placeholder="NL" maxlength="2"></label><label>From kg<input name="minKg" type="number" min="0" step="0.1" value="0"></label><label>To kg<input name="maxKg" type="number" min="0" step="0.1" value="5"></label><label>Method id<input name="methodId" required placeholder="8"></label><label>Carrier<input name="carrier" required placeholder="PostNL"></label><label>Service<input name="service" placeholder="standard"></label><button>Add rule</button></form></section>
+        <section><h2>Label</h2><form class="form" data-act="sendcloud-label"><label>Order<input name="orderId" required></label><label>Name<input name="name" required></label><label>Street<input name="address" required></label><label>Number<input name="houseNumber"></label><label>City<input name="city" required></label><label>Postcode<input name="postalCode" required></label><label>Country<input name="country" required maxlength="2" placeholder="NL"></label><button class="primary">Buy label</button></form>
+        ${table(['Order', 'Carrier', 'Tracking', 'Status'], parcels)}</section>
+        <section><h2>Return label</h2><p class="hint">Only while Returns is on. The parcel comes back to the warehouse address above.</p>
+        <form class="form" data-act="sendcloud-return"><label>Return<input name="returnId" required placeholder="RMA-1"></label><label>Name<input name="name" required></label><label>Street<input name="address" required></label><label>City<input name="city" required></label><label>Postcode<input name="postalCode" required></label><label>Country<input name="country" required maxlength="2"></label><label>Weight kg<input name="weightKg" type="number" min="0.1" step="0.1" value="1"></label><button>Buy return label</button></form></section>`;
     },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
@@ -1373,6 +1391,10 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'sendcloud-account') return api('POST', '/api/sendcloud/account', data);
+    if (name === 'sendcloud-rule') return api('POST', '/api/sendcloud/rules', { ...data, minKg: Number(data.minKg), maxKg: Number(data.maxKg) });
+    if (name === 'sendcloud-label') return api('POST', '/api/sendcloud/label', data);
+    if (name === 'sendcloud-return') return api('POST', '/api/sendcloud/return', { ...data, weightKg: Number(data.weightKg || 1) });
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
