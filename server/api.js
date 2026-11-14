@@ -51,6 +51,7 @@
   function taskView(wh, t) {
     if (!t) return null;
     return {
+      planning: t.planning || null,
       id: t.id, type: t.type, typeLabel: TASK_TYPES[t.type].label, status: t.status, category: t.category, reason: t.reason || null, sscc: t.sscc,
       from: t.from, fromName: placeName(wh, t.from), to: t.to, toName: placeName(wh, t.to),
       step: t.step, orderId: t.orderId, deliveryId: t.deliveryId, truckId: t.truckId, urgent: wh.isUrgent(t),
@@ -515,10 +516,10 @@
     on('POST', '/api/bins/count', (_, q, b, by) => run('binCount', b, by));
     on('GET', '/api/best-before', (_, q) => ({ on: wh().feature('lotExpiry'), days: Number(q.days || 14), rows: wh().feature('lotExpiry') ? wh().bestBeforeWatch({ days: q.days == null || q.days === '' ? 14 : Number(q.days) }) : [] }));
     on('POST', '/api/bins/:code/mode', ({ code }, q, b, by) => run('setBinMode', { code: decodeURIComponent(code), mixed: b.mixed }, by));
-    on('GET', '/api/waves', () => Object.values(wh().waves || {}).slice(-30).reverse());
+    on('GET', '/api/waves', () => Object.values(wh().waves || {}).slice(-30).reverse().map((w) => ({ ...w, tasks: w.tasks.map((t) => ({ ...t, ...wh().waveTaskReadiness(t) })) })));
     on('GET', '/api/waves/queue', () => ({ settings: wh().waveSettings(), active: wh().activeWave() ? wh().activeWave().id : null, queue: wh().waveQueue() }));
     on('POST', '/api/waves/config', (_, q, b, by) => run('setWaveConfig', { config: b }, by));
-    on('GET', '/api/waves/tasks', (_, q, b, by) => wh().waveTasks({ kind: q.kind || null, for: q.mine ? by : null }));
+    on('GET', '/api/waves/tasks', (_, q, b, by) => wh().waveTasks({ kind: q.kind || null, for: q.mine ? by : null, readyOnly: Boolean(q.mine) }));
     on('POST', '/api/waves/tasks/:task/claim', ({ task }, q, b, by) => run('claimWaveTask', { task: decodeURIComponent(task) }, by));
     on('POST', '/api/waves/tasks/:task/release', ({ task }, q, b, by) => run('releaseWaveTask', { task: decodeURIComponent(task) }, by));
     on('POST', '/api/waves/tasks/:task/short', ({ task }, q, b, by) => run('shortWaveTask', { task: decodeURIComponent(task), found: b.found }, by));
@@ -568,6 +569,10 @@
     on('POST', '/api/cartons/:id/close', ({ id }, q, b, by) => run('closeCarton', { carton: decodeURIComponent(id), ...b }, by));
     on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
     on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));
+    on('GET', '/api/replenishment', () => wh().replenishmentStatus().filter((r) => {
+      const own = ownClient();
+      return own == null || wh().items[r.itemNo]?.clientId === own;
+    }));
     on('POST', '/api/replenishment/plan', (_, q, b, by) => run('planReplenishment', {}, by));
     on('GET', '/api/returns', (_, q) => wh().returnList({ status: q.status || null, orderId: q.order || null }));
     on('GET', '/api/orders/:id/returnable', ({ id }) => wh().returnable(decodeURIComponent(id)));

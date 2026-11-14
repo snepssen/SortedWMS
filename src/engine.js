@@ -257,6 +257,7 @@
       this.trucks = {};
       this.tasks = {};
       this.orders = {};
+      this.replenishmentVersion = 1;
       this.deliveries = {};
       this.printQueue = [];
       this.events = [];
@@ -1231,6 +1232,7 @@
         this.planGround();
         this.dispatch();
       }
+      if (this.replenishmentVersion === 1 && this.planReplenishment) this.planReplenishment();
       return order;
     }
 

@@ -259,6 +259,7 @@ const RULES = [
   ['POST', '/api/cartons/:id/close', 'outbound.write'],
   ['POST', '/api/work-orders', 'val.execute'],
   ['POST', '/api/pick-faces', 'putaway.execute'],
+  ['GET', '/api/replenishment', 'stock.read'],
   ['POST', '/api/replenishment/plan', 'replenish.execute'],
   ['GET', '/api/returns', 'inbound.read'],
   ['GET', '/api/orders/:id/returnable', 'inbound.read'],

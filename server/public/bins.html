@@ -269,7 +269,16 @@
       }
       const t = tasks[0];
       if (!t) {
-        $('job').innerHTML = '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
+        let waiting = [];
+        try {
+          const waves = await api('GET', '/api/waves');
+          waiting = waves.flatMap((w) => w.tasks).filter((t) => t.kind === 'bin' && t.status === 'open' && t.ready === false);
+        } catch (e) { /* the offline task cache contains executable work only */ }
+        $('job').innerHTML = waiting.length
+          ? `<div class="kicker">Pick</div><div class="mid">Waiting for replenishment</div><div class="dim">${waiting.map((t) => `${esc(t.loc)} · ${esc(t.itemNo)} × ${t.qty}`).join('<br>')}</div><p>The next pick appears after the replenishment drop.</p><button type="button" id="refreshPicks">Refresh picks</button>`
+          : '<div class="kicker">Pick</div><div class="mid">No bin picks right now</div><div class="dim">The next pick wave brings them. Scan an order number to pick it by hand.</div>';
+        if ($('refreshPicks')) $('refreshPicks').onclick = () => pick.start();
+        st.waiting = waiting.length > 0;
         st.step = 'order';
         return;
       }
@@ -686,6 +695,17 @@
       flush().then(refreshCache);
       window.addEventListener('online', () => flush());
       setInterval(() => { if (queue.snapshot().pending.length) flush(); else refreshCache(); }, 30000);
+      let checkingPicks = false;
+      setInterval(async () => {
+        if (checkingPicks || mode !== 'pick' || !st.waiting || queue.snapshot().pending.length) return;
+        checkingPicks = true;
+        const waitingState = st;
+        try {
+          const tasks = await api('GET', '/api/waves/tasks?kind=bin&mine=1');
+          if (tasks.length && mode === 'pick' && st === waitingState && st.waiting) await pick.start();
+        } catch (e) { /* retry while waiting for stock */ }
+        finally { checkingPicks = false; }
+      }, 5000);
       $('net').onclick = async (e) => {
         if (e.target.id === 'retry') return flush();
         const d = e.target.closest('[data-drop]');
