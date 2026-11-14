@@ -1366,6 +1366,11 @@
       if (out) out.innerHTML = msg(`Put away …${r.sscc.slice(-6)} at ${r.to}`, true);
       return;
     }
+    if (form.dataset.act === 'etsy-connect') {
+      const out = await api('POST', '/api/etsy/connect', data);
+      if (out && out.url) location.assign(out.url);
+      return;
+    }
     if (form.dataset.act === 'scan') return sendScan(data.code, wedgeBurst ? 'wedge' : 'manual', sessionStorage.getItem('device') || 'HH01');
       if (form.dataset.act === 'station-scan') return sendStation(data.code, wedgeBurst ? 'wedge' : 'manual');
       await act(form.dataset.act, data);
