@@ -221,6 +221,13 @@
       return { id: order.id, tracking: order.tracking || null, trackingUrl: order.trackingUrl || null, carrier: order.carrierName || null };
     },
     setModuleSettings: (wh, a) => wh.setModuleSettings(req(a.id, 'id'), a.settings || a.patch || {}),
+    recordAlert: (wh, a) => {
+      const type = String(a.type || '');
+      if (!['stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'].includes(type)) throw new Error('Unknown alert');
+      if (typeof wh._emit !== 'function') throw new Error('Messages are not available');
+      wh._emit(type, a.data || {}, a.clientId || null);
+      return { type };
+    },
     setFeatures: (wh, a) => wh.setFeatures(a.features || a),
     generateLocations: (wh, a) => wh.generateLocations(req(a.plan, 'plan'), { kind: a.kind, capacity: a.capacity }),
     setItemUnits: (wh, a) => wh.setItemUnits(req(a.itemNo, 'itemNo'), a),

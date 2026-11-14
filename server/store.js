@@ -218,10 +218,11 @@ class Store {
     return result;
   }
 
+  /** After a command is stored. Alerts and connectors must not undo it. */
   _after(op) {
-    if (op === 'noteTracking' || op === 'enableDemandReplenishment') return;
+    if (op === 'noteTracking' || op === 'recordAlert' || op === 'enableDemandReplenishment') return;
     if (typeof this.afterCommand !== 'function') return;
-    try { this.afterCommand(op); } catch (e) { /* a connector must not undo the command */ }
+    try { this.afterCommand(op); } catch (e) { /* the stock change stands */ }
   }
 
   /** Clock tick: journaled only when it changed something (timers ran out, a truck got a job). */
@@ -232,6 +233,7 @@ class Store {
     this.replayT = t;
     try { COMMANDS.tick(this.wh); } finally { this.replayT = null; }
     if (this.wh.events[0] !== before) this._journal(t, 'tick', {}, 'system');
+    this._after('tick');
   }
 
   _journal(t, op, args, by) {

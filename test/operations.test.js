@@ -126,6 +126,17 @@ test('available-to-sell and low stock follow on-hand, allocations and the reorde
   assert.equal(row.available, 7);
   assert.equal(row.low, true);
   assert.equal(w.lowStock()[0].sku, 'SKU1');
+  assert.equal(w.lowStock()[0].onHand, 10);
+  assert.equal(w.lowStock()[0].available, 7);
+  // On hand is still above 8, but available is not. The reorder list follows available.
+  w.updateItem('SKU1', { reorderPoint: 8 });
+  const tighter = w.availability().find((r) => r.sku === 'SKU1');
+  assert.equal(tighter.onHand > tighter.reorderPoint, true);
+  assert.equal(tighter.low, true);
+  assert.equal(w.lowStock()[0].available, 7);
+  w.updateItem('SKU1', { reorderPoint: 6 });
+  assert.equal(w.availability().find((r) => r.sku === 'SKU1').low, false);
+  assert.equal(w.lowStock().length, 0);
 });
 
 test('billing totals pallet-days and moves at the client rates', () => {
