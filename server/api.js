@@ -167,7 +167,7 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null }) {
+  function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
     const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
@@ -746,6 +746,11 @@
     on('POST', '/api/etsy/catalog', (_, q, b) => (etsy ? etsy.pullProducts(b.shopId) : { status: 400, error: 'Etsy runs on the server' }));
     on('POST', '/api/etsy/stock', () => (etsy ? etsy.flushStock() : { status: 400, error: 'Etsy runs on the server' }));
     on('POST', '/api/etsy/connect', (_, q, b) => (etsy ? etsy.beginConnect(b.shopId) : { status: 400, error: 'Etsy runs on the server' }));
+    on('GET', '/api/sendcloud', () => (sendcloud ? sendcloud.status() : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/account', (_, q, b) => (sendcloud ? sendcloud.saveAccount(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/rules', (_, q, b) => (sendcloud ? sendcloud.saveRule(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/label', (_, q, b) => (sendcloud ? sendcloud.createParcel(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
+    on('POST', '/api/sendcloud/return', (_, q, b) => (sendcloud ? sendcloud.createReturnLabel(b || {}) : { status: 400, error: 'Sendcloud runs on the server' }));
     on('GET', '/api/hardware', () => (hardware ? hardware.recent() : { settings: { scanner: 'wedge', printer: 'simulated' }, scans: [], jobs: [], printers: printers.list ? printers.list() : [], modes: { scanner: ['wedge', 'manual', 'simulated'], printer: ['simulated', 'network', 'browser'] } }));
     on('POST', '/api/hardware/mode', (_, q, b) => (hardware ? hardware.setMode(b) : { status: 400, error: 'Hardware service is not configured' }));
     on('POST', '/api/hardware/scan', async (_, q, b, by) => {
