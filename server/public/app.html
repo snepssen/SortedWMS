@@ -123,21 +123,21 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['shopify', 'Shopify'], ['woocommerce', 'WooCommerce'], ['etsy', 'Etsy'], ['sendcloud', 'Sendcloud'], ['audit', 'Audit'], ['user-audit', 'User audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules'], ['user-audit', 'User audit']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['shopify', 'Shopify'], ['woocommerce', 'WooCommerce'], ['etsy', 'Etsy'], ['sendcloud', 'Sendcloud'], ['documents', 'Documents'], ['audit', 'Audit'], ['master', 'Master data']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels'], ['documents', 'Documents']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
     stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
-    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts']],
+    client: [['items', 'Items'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['documents', 'Documents']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
   const DUTY_OF = { inbound: 'inbound', picker: 'picking', stock: 'inventory' };
   const GEAR = { reach: 'Reach truck', manup: 'Man-up order picker', ept: 'Electric pallet truck', cart: 'Picking cart' };
   // Screens that belong to a module disappear while it is off. The module list is the source; the fallback covers a page that has not loaded it yet.
-  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite', shopify: 'shopify', woocommerce: 'woocommerce', etsy: 'etsy', sendcloud: 'sendcloud', 'user-audit': 'user-audit' };
+  const PANEL_FALLBACK = { cases: 'waves', waves: 'waves', kitting: 'kitting', tariff: 'billing', clients: 'clients', sites: 'sites', moves: 'trucks', returns: 'returns', bins: 'bins', connections: 'connections', pairing: 'device-pairing', offsite: 'backup-offsite', shopify: 'shopify', woocommerce: 'woocommerce', etsy: 'etsy', sendcloud: 'sendcloud', documents: 'documents' };
   function panelModule(id) {
     if (MODS && MODS.modules) {
       for (const mod of MODS.modules) for (const item of mod.menu || []) if (item.id === id) return mod.id;
@@ -799,6 +799,13 @@
         </form>
         <p class="hint">WebDAV uses HTTPS and basic authentication. S3 signing works with AWS, Backblaze B2, MinIO and Wasabi. Credentials are saved on this machine and are not shown again.</p></section>`;
     },
+    async documents() {
+      return `<section><h2>Documents</h2><p class="hint">A4 PDFs. Dates are in this warehouse's local time. Labels on the printers stay as they are.</p>
+        <form class="form" data-act="documents-open"><input type="hidden" name="kind" value="delivery-note"><label>Delivery note order<input name="id" required></label><button>Open PDF</button></form>
+        <form class="form" data-act="documents-open"><input type="hidden" name="kind" value="pick-list"><label>Pick list order<input name="id" required></label><button>Open PDF</button></form>
+        <form class="form" data-act="documents-open"><input type="hidden" name="kind" value="packing-list"><label>Packing list order<input name="id" required></label><button>Open PDF</button></form>
+        <form class="form" data-act="documents-open"><input type="hidden" name="kind" value="statement"><label>Statement client<input name="id" required placeholder="CL-A"></label><label>From<input name="from" type="date"></label><label>To<input name="to" type="date"></label><button>Open PDF</button></form></section>`;
+    },
     async settings() {
       const [summary, hw, bk] = await Promise.all([api('GET', '/api/summary'), api('GET', '/api/hardware'), can('settings.write') ? api('GET', '/api/backups').catch(() => null) : null]);
       const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -817,9 +824,13 @@
         <p class="dim">One-way aisles ${summary.config.oneWay ? 'on' : 'off'} · naming ${esc(summary.naming)}</p>
         <p><a href="${window.SORTED_DEMO ? 'setup.html' : '/setup'}">Open the setup wizard</a> to change the warehouse type, category features and location codes.</p></section>`;
     },
-    'user-audit': async function () {
-      return `<section><h2>User audit</h2><p class="hint">Every user's moves and actions between two dates, in this warehouse's local time. A client login cannot open it.</p>
-        <form class="form" data-act="user-audit"><label>From<input name="from" type="date" required></label><label>To<input name="to" type="date" required></label><button class="primary">Export CSV</button></form></section>`;
+    async photos() {
+      const [items, photos] = await Promise.all([api('GET', '/api/items'), api('GET', '/api/photos')]);
+      const opts = items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('');
+      const cards = photos.map((p) => `<figure><img src="/api/items/${encodeURIComponent(p.itemNo)}/photos/${encodeURIComponent(p.id)}" alt="${esc(p.name || p.itemNo)}" style="max-width:240px;height:auto"><figcaption>${esc(p.itemNo)} ${esc(p.name || '')}</figcaption></figure>`).join('');
+      return `<section><h2>Item photos</h2><p class="hint">Up to 3 photos per item. JPEG, PNG, GIF or WebP, at most 512 KB. The text terminal does not show them.</p>
+        <form class="form" data-act="item-photo"><label>Item<select name="itemNo">${opts}</select></label><label>Photo<input name="file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required></label><button class="primary">Upload</button></form>
+        ${cards || '<p class="dim">No photos yet.</p>'}</section>`;
     },
     async audit() { return `<section><h2>Audit log</h2><p class="hint">Warehouse commands and sign-in events. The journal is also how the warehouse is rebuilt.</p>${await auditBits(80)}</section>`; },
     async master() {
@@ -886,7 +897,7 @@
         const showValue = features.highValueSecurity;
         const showMoney = modOn('item-value') && me.itemValue !== false && !(features.highValueSecurity && !can('items.value') && me.itemValue !== true);
         const moneyLabel = esc(me.currency || 'EUR');
-        return `<section><h2>Your items</h2><p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
+        return `<section><h2>Your items</h2>${modOn('photos') ? '<p><a href="#photos">Item photos</a></p>' : ''}<p class="hint">${me.itemApproval ? 'New items wait for the warehouse to approve them.' : 'New items are available as soon as you save them.'}</p>
           <form class="form" data-act="client-item"><label>SKU<input name="itemNo" required></label><label>Description<input name="name" required></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category">${catOptions()}</select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>Full pallet goods height (mm, excluding pallet)<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>${showMoney ? `<label>Value (${moneyLabel})<input id="itemValue" name="value" type="number" min="0" step="0.01"></label>` : ''}${showFood ? '<label><input type="checkbox" name="food"> Food</label>' : ''}${showFrozen ? '<label><input type="checkbox" name="frozen"> Frozen</label>' : ''}${showValue ? '<label><input type="checkbox" name="highValue"> High value</label>' : ''}<label><input type="checkbox" name="noBestBefore"> No best-before</label><button class="primary">Add item</button></form>
           ${table(['SKU', 'Description', 'Unit', ...(showMoney ? [`Value (${me.currency || 'EUR'})`] : []), 'Status', 'Flags', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.uom || '')}</td>${showMoney ? `<td>${i.value == null ? '' : esc(i.value)}</td>` : ''}<td>${esc(i.status)}</td><td>${esc(Object.entries(i.flags || {}).filter(([, v]) => v).map(([k]) => k).join(', '))}</td><td>${i.status === 'archived' ? '' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Deactivate</button>`}</td></tr>`))}</section>`;
       }
@@ -896,7 +907,7 @@
       const showMoney = modOn('item-value') && me.itemValue !== false;
       const moneyLabel = esc(me.currency || 'EUR');
       const currencyForm = showMoney && (can('items.value') || me.role === 'administrator' || me.role === 'manager') ? `<form class="form" data-act="item-currency"><label>Warehouse currency<input name="currency" value="${moneyLabel}" maxlength="3" size="4"></label><button>Save currency</button></form>` : '';
-      return `<section><h2>Items</h2>${currencyForm}<form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label>${showMoney ? `<label>Value (${moneyLabel})<input id="itemValue" name="value" type="number" min="0" step="0.01" placeholder="0.00"></label>` : ''}<label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>Full pallet goods height (mm, excluding pallet)<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><label><input name="noBestBefore" type="checkbox"> No best-before</label><button class="primary">Add item</button></form>
+      return `<section><h2>Items</h2>${modOn('photos') ? '<p><a href="#photos">Item photos</a></p>' : ''}${currencyForm}<form class="form" data-act="item-add"><label>Item<input name="itemNo" required></label><label>Name<input name="name" required></label><label>Category<select name="category">${catOptions()}</select></label><label>Client<select name="clientId"><option value="">House</option>${opts}</select></label><label>UOM<input name="uom" value="case"></label><label>Pallet qty<input name="palletQty" type="number" value="10"></label><label>GTIN<input name="gtin" placeholder="optional"></label>${showMoney ? `<label>Value (${moneyLabel})<input id="itemValue" name="value" type="number" min="0" step="0.01" placeholder="0.00"></label>` : ''}<label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>Full pallet goods height (mm, excluding pallet)<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label><label><input name="noBestBefore" type="checkbox"> No best-before</label><button class="primary">Add item</button></form>
         ${showMoney ? `<form class="form" data-act="item-value"><label>Update value<select name="itemNo">${items.filter((i) => i.status !== 'archived').map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)}</option>`).join('')}</select></label><label>Value (${moneyLabel})<input name="value" type="number" min="0" step="0.01"></label><button>Save value</button></form>` : ''}
         ${table(['Item', 'Name', 'Client', 'UOM', ...(showMoney ? [`Value (${me.currency || 'EUR'})`] : []), 'mm', 'kg', ''], items.map((i) => `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}</td><td>${esc(i.clientId || '')}</td><td>${esc(i.uom || '')}</td>${showMoney ? `<td>${i.value == null ? '' : esc(i.value)}</td>` : ''}<td>${[i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×')}</td><td>${i.weightKg == null ? '' : esc(i.weightKg)}</td><td>${i.status === 'pending' ? `<button type="button" data-act="item-approve" data-id="${esc(i.itemNo)}">Approve</button> ` : ''}${i.status === 'archived' ? 'archived' : i.status === 'pending' ? 'pending' : `<button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>`}</td></tr>`))}</section>`;
     },
@@ -1316,8 +1327,17 @@
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
-      if (form.dataset.act === 'user-audit') {
-        location.assign('/api/user-audit.csv?from=' + encodeURIComponent(data.from || '') + '&to=' + encodeURIComponent(data.to || ''));
+      if (form.dataset.act === 'item-photo') {
+        const file = form.elements.file && form.elements.file.files && form.elements.file.files[0];
+        if (!file) throw new Error('Choose a photo');
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Could not read the photo'));
+          reader.readAsDataURL(file);
+        });
+        await api('POST', '/api/items/' + encodeURIComponent(data.itemNo) + '/photos', { name: file.name, data: dataUrl });
+        await draw();
         return;
       }
       if (form.dataset.act === 'tariff-preview') {
@@ -1434,6 +1454,12 @@
       if (out) out.innerHTML = msg(`Put away …${r.sscc.slice(-6)} at ${r.to}`, true);
       return;
     }
+    if (form.dataset.act === 'documents-open') {
+      const id = encodeURIComponent(data.id || '');
+      const q = data.from || data.to ? `?from=${encodeURIComponent(data.from || '')}&to=${encodeURIComponent(data.to || '')}` : '';
+      location.assign('/api/documents/' + data.kind + '/' + id + q);
+      return;
+    }
     if (form.dataset.act === 'etsy-connect') {
       const out = await api('POST', '/api/etsy/connect', data);
       if (out && out.url) location.assign(out.url);
@@ -1535,6 +1561,8 @@
     }
     if (name === 'config') return api('POST', '/api/config', { aisleCap: Number(data.aisleCap) });
     if (name === 'backup-now') return api('POST', '/api/backups', {});
+    if (name === 'bom-save') return api('POST', '/api/boms', { itemNo: data.itemNo, lines: String(data.lines || '').split(',').map((part) => { const [itemNo, qty] = part.trim().split(/\s+/); return { itemNo, qty: Number(qty || 1) }; }).filter((line) => line.itemNo) });
+    if (name === 'bom-build') return api('POST', '/api/boms/build', { itemNo: data.itemNo, qty: Number(data.qty || 1), loc: data.loc });
     if (name === 'shopify-shop') return api('POST', '/api/shopify/shops', { ...data, buffer: Number(data.buffer || 0), pollMinutes: Number(data.pollMinutes || 15) });
     if (name === 'shopify-map') return api('POST', '/api/shopify/map', data);
     if (name === 'shopify-sync') return api('POST', '/api/shopify/sync', data);

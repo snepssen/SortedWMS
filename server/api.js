@@ -27,6 +27,7 @@
     return hidden;
   }
   const Intake = () => (typeof require === 'function' ? require('../src/intake') : globalThis.SortedIntake);
+  const photosLib = () => (typeof require === 'function' ? require('./photos') : null);
   const locationsLib = () => (typeof require === 'function' ? require('../src/locations') : globalThis.SortedLocations);
   const { TASK_TYPES, TRUCK_MODES, SHIFT_REASONS, RECEIVE_FIELDS, FIELD_LABELS, SCAN_COMMANDS, COMMAND_PREFIX } = Engine;
 
@@ -261,6 +262,51 @@
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
     on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own).map(presentItem); });
+    const photoItem = (itemNo) => {
+      const item = wh().items[itemNo];
+      if (!item) return { status: 404, error: `Unknown item ${itemNo}` };
+      const own = ownClient();
+      if (own && item.clientId !== own) return { status: 403, error: 'A client can only see its own items' };
+      return item;
+    };
+    const photoView = (itemNo, row) => ({ itemNo, id: row.id, type: row.type, bytes: row.bytes, name: row.name || '' });
+    on('GET', '/api/photos', () => {
+      const own = ownClient();
+      const out = [];
+      for (const [itemNo, rows] of Object.entries(wh().itemPhotos || {})) {
+        const item = wh().items[itemNo];
+        if (!item || (own && item.clientId !== own)) continue;
+        for (const row of rows) out.push(photoView(itemNo, row));
+      }
+      return out;
+    });
+    on('GET', '/api/items/:itemNo/photos/:id', ({ itemNo, id }) => {
+      const item = photoItem(decodeURIComponent(itemNo));
+      if (item.error) return item;
+      const row = ((wh().itemPhotos || {})[item.itemNo] || []).find((p) => p.id === decodeURIComponent(id));
+      if (!row) return { status: 404, error: 'No photo' };
+      const photos = photosLib();
+      const buf = photos && photos.read(photos.dir(store), item.itemNo, row.id, row.type);
+      if (!buf) return { status: 404, error: 'No photo' };
+      return { contentType: photos.mime(row.type), raw: buf };
+    });
+    on('POST', '/api/items/:itemNo/photos', ({ itemNo }, q, b, by) => {
+      const item = photoItem(decodeURIComponent(itemNo));
+      if (item.error) return item;
+      const photos = photosLib();
+      if (!photos) return { status: 400, error: 'Photos are stored by the server' };
+      let saved;
+      try { saved = photos.accept(b && b.data); } catch (e) { return { status: 400, error: e.message }; }
+      const id = photos.newId();
+      let file = null;
+      try {
+        file = photos.write(photos.dir(store), item.itemNo, id, saved.type, saved.buf);
+        return run('addItemPhoto', { itemNo: item.itemNo, id, type: saved.type, bytes: saved.buf.length, name: String((b && b.name) || '').slice(0, 80) }, by);
+      } catch (e) {
+        if (file) photos.remove(file);
+        throw e;
+      }
+    });
     on('GET', '/api/stock', () => { const own = ownClient(); return wh().stockSummary().filter((r) => own == null || (r.item && r.item.clientId === own)).map((r) => ({ ...r, item: presentItem(r.item), next: palletView(wh(), r.next) })); });
     on('GET', '/api/quality', () => Object.values(wh().pallets).filter((p) => p.qualityHistory && p.qualityHistory.length).map((p) => palletView(wh(), p)));
     const recallView = (itemNo, batch) => {
@@ -579,6 +625,8 @@
     on('GET', '/api/cartons/:id/slip.html', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().packingSlipHtml(decodeURIComponent(id)) }));
     on('POST', '/api/cartons/:id/close', ({ id }, q, b, by) => run('closeCarton', { carton: decodeURIComponent(id), ...b }, by));
     on('POST', '/api/work-orders', (_, q, b, by) => run('addWorkOrder', b, by));
+    on('POST', '/api/boms', (_, q, b, by) => run('setBom', b, by));
+    on('POST', '/api/boms/build', (_, q, b, by) => run('buildKit', b, by));
     on('POST', '/api/pick-faces', (_, q, b, by) => run('setPickFace', b, by));
     on('GET', '/api/replenishment', () => wh().replenishmentStatus().filter((r) => {
       const own = ownClient();
@@ -638,7 +686,24 @@
       if (!order) return { status: 404, error: `No order ${id}` };
       return order.shipment || { status: 404, error: 'No shipment' };
     });
-    on('GET', '/api/orders/:id/delivery-note', ({ id }) => ({ contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(decodeURIComponent(id)) }));
+    const orderDocument = (id, format) => {
+      const order = wh().orders[decodeURIComponent(id)];
+      if (!order) return { status: 404, error: 'No order' };
+      const own = ownClient();
+      if (own != null && order.clientId !== own) return { status: 403, error: 'A client can only see its own order documents' };
+      if (format === 'html') return { contentType: 'text/html; charset=utf-8', raw: wh().deliveryNote(order.id) };
+      return { contentType: 'application/pdf', raw: require('./documents')[format](wh(), order.id) };
+    };
+    on('GET', '/api/orders/:id/delivery-note', ({ id }) => orderDocument(id, 'html'));
+    on('GET', '/api/documents/delivery-note/:id', ({ id }) => orderDocument(id, 'deliveryNote'));
+    on('GET', '/api/documents/pick-list/:id', ({ id }) => orderDocument(id, 'pickList'));
+    on('GET', '/api/documents/packing-list/:id', ({ id }) => orderDocument(id, 'packingList'));
+    on('GET', '/api/documents/statement/:clientId', ({ clientId }, q) => {
+      const id = decodeURIComponent(clientId);
+      const own = ownClient();
+      if (own && own !== id.toUpperCase()) return { status: 403, error: 'A client can only see its own statement' };
+      return { contentType: 'application/pdf', raw: require('./documents').statement(wh(), id, { from: q.from || null, to: q.to || null }) };
+    });
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
     on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));

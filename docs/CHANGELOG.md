@@ -1,8 +1,8 @@
 # Changelog
 
-## User audit
+## A4 documents
 
-A manager or an administrator can export a CSV of every user's moves, warehouse commands and sign-ins for a range of dates. The times are the warehouse's local time, including daylight saving. A client login cannot open it, even with the permission. Switching the module off keeps the journal: the export answers 404.
+Delivery notes, pick lists, packing lists and client statements can be A4 PDFs. The writer is in the program itself. Dates use the warehouse timezone. Label printers keep their text rules.
 
 ## Sendcloud on the module list
 
