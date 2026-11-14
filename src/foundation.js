@@ -921,6 +921,7 @@
       const bomNeed = typeof this._bomNeed === 'function' ? this._bomNeed(kit) : null;
       const job = {
         id: (this.valJobs[0] ? this.valJobs[0].id : 0) + 1, stationId, kitId: kit.id, kitName: kit.name,
+        bomOutput: bomNeed ? (kit.output || kit.base.itemNo) : null,
         need: bomNeed || [{ itemNo: kit.base.itemNo, qty: kit.base.qty, role: 'base' }, ...kit.components.map((c) => ({ itemNo: c.itemNo, qty: c.qty, role: 'component' }))],
         got: [], status: 'open', startedAt: this.now(), by: by || this._actor || 'operator', workOrderId: null, orderId: null,
       };
@@ -948,18 +949,44 @@
       const line = job.need.find((n) => job.got.filter((g) => g.itemNo === n.itemNo).length < n.qty);
       if (!line || line.itemNo !== item.itemNo) throw new Error(`${item.itemNo} is not the next scan for this kit`);
       const actor = by || this._actor || 'operator';
+      const bom = job.bomOutput || (this._bomNeed && this._bomNeed(this.kits[job.kitId]));
+      let lot = null;
+      let componentPallet = null;
+      if (bom && !holder) throw new Error('Scan the component license plate so stock is consumed');
+      if (bom && holder) {
+        if (!holder.loc) throw new Error('The component plate is not in stock');
+        if (this._assertNotHeld) this._assertNotHeld(holder.loc);
+        const content = (holder.contents || []).find((c) => c.itemNo === item.itemNo && Number(c.qty) > 0);
+        if (!content || this._lotState(item.itemNo, content, 0) !== 'ok') throw new Error('The component is held or expired');
+        if (holder.sscc) {
+          componentPallet = this.pallets[holder.sscc];
+          if (!componentPallet || this.shipState(componentPallet) !== 'ok') throw new Error('The component pallet is on hold');
+          if (componentPallet.orderId || this._liveTaskFor(componentPallet.sscc)) throw new Error('The component pallet is reserved for another operation');
+        }
+      }
       if (holder) {
         const content = (holder.contents || []).find((c) => c.itemNo === item.itemNo && Number(c.qty) > 0);
         if (!content) throw new Error(`${holder.id} has no ${item.itemNo} left`);
         content.qty -= 1;
+        lot = { batch: content.batch || null, expiry: content.expiry || null };
+        if (componentPallet) {
+          componentPallet.qty -= 1;
+          componentPallet.openBox = Math.min(componentPallet.openBox || 0, componentPallet.qty);
+          if (!componentPallet.qty) {
+            this._remove(componentPallet);
+            componentPallet.status = 'shipped';
+            componentPallet.removed = 'emptied';
+            componentPallet.goneAt = this.now();
+          }
+        }
         this.recordMovement({ holder: holder.id, from: holder.loc, to: stationId, qty: 1, event: 'kitted', by: actor, note: `Kit ${job.kitId}` });
-        job._lot = content.batch || content.expiry ? { batch: content.batch || null, expiry: content.expiry || null } : job._lot;
+
       } else if (job.workOrderId) throw new Error('Scan the component license plate so stock is consumed');
-      job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role, batch: job._lot ? job._lot.batch : null, expiry: job._lot ? job._lot.expiry : null });
+      job.got.push({ itemNo: item.itemNo, holder: holder ? holder.id : null, t: this.now(), role: line.role, batch: lot?.batch || null, expiry: lot?.expiry || null });
       const done = job.need.every((n) => job.got.filter((g) => g.itemNo === n.itemNo).length >= n.qty);
+      if (done && typeof this._bomFinish === 'function') this._bomFinish(job, actor);
       if (done && job.workOrderId && typeof this._advanceWorkOrder === 'function') this._advanceWorkOrder(job, actor);
       else if (done) job.status = 'done';
-      if (done && typeof this._bomFinish === 'function') this._bomFinish(job, actor);
       this.log(`${stationId}: scanned ${item.itemNo}${job.status === 'done' ? ', kit complete' : ''}`);
       return job;
     };

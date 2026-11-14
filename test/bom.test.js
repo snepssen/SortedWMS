@@ -78,3 +78,62 @@ test('serials are required only while that module is on, and a VAL task produces
   assert.equal(made.batch, 'LB');
   store.close();
 });
+
+function station(store, units = 1) {
+  store.exec('setBom', { itemNo: 'KIT', lines: [{ itemNo: 'BASE', qty: 1 }] });
+  store.wh.addKit({ id: 'KIT-1', name: 'Kit', output: 'KIT', base: { itemNo: 'BASE', qty: 1 }, components: [{ itemNo: 'PLUG', qty: 1 }] });
+  store.wh.addValStation({ id: 'VAL-1', name: 'Bench', kitId: 'KIT-1' });
+  const plate = store.wh.issueSeries({ series: 'ST', itemNo: 'BASE', qty: units, loc: 'BIN-1', batch: 'LOT1', expiry: '2027-02-01' });
+  return plate.holder;
+}
+
+test('a BOM station rejects item-only scans without consuming stock or producing a kit', () => {
+  const store = world();
+  try {
+    const plate = station(store);
+    store.wh.startVal({ stationId: 'VAL-1' });
+    assert.throws(() => store.wh.scanVal({ stationId: 'VAL-1', code: 'BASE' }), /license plate/);
+    assert.equal(plate.contents[0].qty, 1);
+    assert.equal(store.wh.binStock?.['KIT-OUT'], undefined);
+    store.wh.scanVal({ stationId: 'VAL-1', code: plate.id });
+    assert.equal(plate.contents[0].qty, 0);
+    assert.equal(store.wh.binStock['KIT-OUT'][0].qty, 1);
+  } finally { store.close(); }
+});
+
+test('multi-unit work orders preserve each completed kit lot before resetting the scans', () => {
+  const store = world();
+  try {
+    const plate = station(store, 2);
+    store.wh.addWorkOrder({ id: 'WO1', kitId: 'KIT-1', qty: 2 });
+    store.wh.startVal({ stationId: 'VAL-1', workOrderId: 'WO1' });
+    store.wh.scanVal({ stationId: 'VAL-1', code: plate.id });
+    assert.equal(store.wh.binStock['KIT-OUT'][0].batch, 'LOT1');
+    store.wh.scanVal({ stationId: 'VAL-1', code: plate.id });
+    assert.equal(store.wh.binStock['KIT-OUT'][0].qty, 2);
+    assert.equal(store.wh.workOrders.WO1.built, 2);
+    assert.equal(plate.contents[0].qty, 0);
+  } finally { store.close(); }
+});
+
+test('customer kit work orders stage a finished unit once', () => {
+  const store = world();
+  try {
+    const plate = station(store);
+    store.wh.addOrder({ id: 'SO1', customer: 'North', clientId: 'CL-A', lane: 'OUT-01', lines: [{ itemNo: 'KIT', units: 1 }] });
+    store.wh.addWorkOrder({ id: 'WO1', kitId: 'KIT-1', qty: 1, orderId: 'SO1' });
+    store.wh.startVal({ stationId: 'VAL-1', workOrderId: 'WO1' });
+    store.wh.scanVal({ stationId: 'VAL-1', code: plate.id });
+    assert.equal(store.wh.orders.SO1.staged.length, 1);
+    assert.equal(store.wh.orders.SO1.staged[0].batch, 'LOT1');
+    assert.equal(store.wh.binStock?.['KIT-OUT'], undefined);
+  } finally { store.close(); }
+});
+
+test('duplicate BOM component lines combine into the full required quantity', () => {
+  const store = world();
+  try {
+    store.wh.setBom({ itemNo: 'KIT', lines: [{ itemNo: 'BASE', qty: 1 }, { itemNo: 'BASE', qty: 2 }] });
+    assert.deepEqual(store.wh.boms.KIT.lines, [{ itemNo: 'BASE', qty: 3 }]);
+  } finally { store.close(); }
+});

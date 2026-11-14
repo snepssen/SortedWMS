@@ -656,7 +656,7 @@
           line.picks = line.picks || [];
           line.picks.push({ workOrderId: wo.id, qty: 1, t: this.now(), by });
           order.staged = order.staged || [];
-          order.staged.push({ itemNo: line.itemNo, qty: 1, holder: wo.id, batch: null, expiry: null });
+          order.staged.push({ itemNo: line.itemNo, qty: 1, holder: wo.id, batch: job.bomLot?.batch || null, expiry: job.bomLot?.expiry || null });
           const piece = order.lines.filter((l) => l.kind === 'each');
           if (!order.lines.some((l) => l.pallets)) order.status = piece.every((l) => (l.picked || 0) >= l.units) ? 'ready' : 'picking';
         }

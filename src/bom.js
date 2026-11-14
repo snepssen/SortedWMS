@@ -33,7 +33,10 @@
         if (!part) throw new Error(`Unknown component ${line && line.itemNo}`);
         if ((part.clientId || null) !== (item.clientId || null)) throw new Error(`${part.itemNo} belongs to another client`);
         if (part.itemNo === item.itemNo) throw new Error('A kit cannot contain itself');
-        clean.push({ itemNo: part.itemNo, qty: whole(line.qty, 'Component quantity') });
+        const qty = whole(line.qty, 'Component quantity');
+        const existing = clean.find((c) => c.itemNo === part.itemNo);
+        if (existing) existing.qty += qty;
+        else clean.push({ itemNo: part.itemNo, qty });
       }
       this.boms = this.boms || {};
       this.boms[item.itemNo] = { itemNo: item.itemNo, clientId: item.clientId || null, lines: clean };
@@ -52,11 +55,18 @@
     proto._bomFinish = function (job, by) {
       if (!on(this, 'bom')) return null;
       const kit = this.kits && this.kits[job.kitId];
-      const output = kit && (kit.output || kit.base.itemNo);
+      const output = job.bomOutput || (kit && (kit.output || kit.base.itemNo));
       const bom = output && this.boms && this.boms[output];
-      if (!bom) return null;
+      if (!bom && !job.bomOutput) return null;
+      const consumed = job.got || [];
+      if (consumed.some((g) => !g.holder) || job.need.some((n) => consumed.filter((g) => g.itemNo === n.itemNo && g.holder).length < n.qty)) {
+        throw new Error('Consume every component plate before producing the kit');
+      }
       const lotsOn = on(this, 'lots');
       const lot = lotsOn ? (job.got || []).find((g) => g.batch || g.expiry) : null;
+      job.bomLot = { batch: lot?.batch || null, expiry: lot?.expiry || null };
+      // Customer work orders stage their finished unit in _advanceWorkOrder.
+      if (job.orderId) return { itemNo: output, qty: 1, ...job.bomLot };
       if (!this.locations['KIT-OUT']) this.createLocation({ code: 'KIT-OUT', kind: 'bin', name: 'Kit output' });
       return this.binPut({
         loc: 'KIT-OUT', itemNo: output, qty: 1,
