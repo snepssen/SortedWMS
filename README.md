@@ -316,7 +316,8 @@ Settings, through environment variables:
 | `src/demo.js`, `pages/demo.html` | The demo: its warehouse, stock and bots, and the page that runs them with a card per role. |
 | `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page, the real screens running in the browser, and the demo in `demo/` (`npm run build:pages`). |
-| `docs/ROADMAP.md` | What is done, and what could come next. |
+| `docs/ROADMAP.md` | What is done, and what comes next, in phases with a test for each item. |
+| `docs/OPENWMS-COMPARISON.md` | A function check of every area, and SortedWMS beside OpenWMS.org component by component. |
 | `docs/CONNECTIONS.md`, `src/messages.js`, `src/intake.js`, `server/inbox.js` | Connections: API keys, the message log other systems read, the intake for orders and ASNs, and the drop folder. `server/outbox.js` pushes the messages out by webhook and outbox folder. `server/alerts.js` and `server/smtp.js` send low-stock alerts. |
 | `docs/HARDWARE.md` | The site's equipment: Zebra MC9401 handheld (DataWedge, keys, screen), Zebra ZT421 printer (dpi, status), and the supplier labels on real pallets. |
 
