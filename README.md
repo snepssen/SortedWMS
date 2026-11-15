@@ -316,6 +316,7 @@ Settings, through environment variables:
 | `src/demo.js`, `pages/demo.html` | The demo: its warehouse, stock and bots, and the page that runs them with a card per role. |
 | `test/` | The tests, run with `npm test` (Node 22.13+). `test/fixtures/` holds a made-up reach-truck warehouse (racks, block lanes, process stations, a receiving desk) that many of them build on. |
 | `scripts/build-pages.js` | Builds the GitHub Pages site into `_site/`: a project page, the real screens running in the browser, and the demo in `demo/` (`npm run build:pages`). |
+| `docs/API.md`, `scripts/api-reference.js` | Every route with its permission, roles and module. Built by `npm run api-reference`; a test keeps it current. |
 | `docs/HEALTH.md`, `server/health.js` | Health figures and the metrics page: `/api/health/figures` and `/api/metrics`. |
 | `docs/ROADMAP.md` | What is done, and what comes next, in phases with a test for each item. |
 | `docs/OPENWMS-COMPARISON.md` | A function check of every area, and SortedWMS beside OpenWMS.org component by component. |

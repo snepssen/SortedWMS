@@ -85,7 +85,7 @@ The public pages are also thin. The receiving page, for example, says that annou
 
 | # | OpenWMS component | What it does there | SortedWMS | Verdict |
 | --- | --- | --- | --- | --- |
-| 1 | UAA | Users, roles, grants, password history, multi-tenant, OAuth2/OIDC auth server | Roles with editable permissions, TOTP, lockout, session timeouts, API keys, device pairing. No single sign-on, no password history | Partial |
+| 1 | UAA | Users, roles, grants, password history, multi-tenant, OAuth2/OIDC auth server | Roles with editable permissions, TOTP, lockout, session timeouts, API keys, device pairing. Password history and expiry were added after this check. No single sign-on | Partial |
 | 2 | Preferences | Settings per user, role or module | Settings per warehouse and per person (language, theme) | Covered |
 | 3 | Printing (private) | Label and document printing | ZPL over TCP 9100, label sheets, A4 PDFs, print queue | Covered |
 | 4 | Translation (private preview) | Translated texts | English and Dutch, per person, with local numbers, dates and money | Covered |

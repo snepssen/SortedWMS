@@ -144,6 +144,8 @@ const RULES = [
   ['GET', '/api/roles', 'roles.read'],
   ['POST', '/api/roles/:role', 'roles.write'],
   ['GET', '/api/auth-log', 'audit.read'],
+  ['GET', '/api/password-rules', 'users.read'],
+  ['POST', '/api/password-rules', 'users.write'],
   ['GET', '/api/keys', 'users.read'],
   ['POST', '/api/keys', 'users.write'],
   ['POST', '/api/keys/:id/revoke', 'users.write'],
@@ -449,4 +451,4 @@ function roleLabel(id) {
   return row ? row[1] : id;
 }
 
-module.exports = { PERMISSIONS, ALL, ROLES, ROLE_IDS, DEFAULTS, permissionFor, roleLabel };
+module.exports = { PERMISSIONS, ALL, ROLES, ROLE_IDS, DEFAULTS, RULES, permissionFor, roleLabel };
