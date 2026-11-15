@@ -33,10 +33,13 @@ function detail(args) {
 }
 
 function build({ store, from, to }) {
-  const wh = store.wh;
+  const siteId = store.siteId || 'MAIN';
+  const wh = store.warehouse ? store.warehouse(siteId) : store.wh;
   const span = range(from, to);
   const lines = [];
-  const journal = store.db.prepare("SELECT t, op, args, by FROM journal WHERE op != 'tick' ORDER BY id").all();
+  const journal = siteId === 'MAIN'
+    ? store.db.prepare("SELECT t, op, args, by FROM journal WHERE op != 'tick' ORDER BY id").all()
+    : store.db.prepare("SELECT t, op, args, by FROM extra_journal WHERE site = ? AND op != 'tick' ORDER BY id").all(siteId);
   for (const row of journal) {
     if (!inside(wh, row.t, span)) continue;
     let args = {};

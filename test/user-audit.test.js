@@ -29,6 +29,27 @@ function csv(store, query, actor) {
   return app.handle('GET', '/api/user-audit.csv' + query, {}, (actor && actor.role) || 'manager', null, actor || null);
 }
 
+test('the audit follows the selected warehouse and its local day', () => {
+  const store = world();
+  store.createSite({ id: 'WEST', timeZone: 'America/New_York' });
+  store._withSite('WEST', () => {
+    store.exec('setModules', { 'user-audit': true }, 'admin');
+    store.exec('addItem', { itemNo: 'WEST-SKU', name: 'West item', category: 'GEN', palletQty: 1 }, 'bea');
+    store.exec('createLocation', { code: 'WEST-BIN', kind: 'bin' }, 'bea');
+    store.exec('binPut', { loc: 'WEST-BIN', itemNo: 'WEST-SKU', qty: 3 }, 'bea');
+    const result = csv(store, '?from=2026-07-01&to=2026-07-01', { role: 'manager' });
+    assert.equal(result.status, 200);
+    assert.match(result.body, /WEST-SKU/);
+    assert.match(result.body, /2026-07-01 18:30:00","bea","move","received"/);
+    assert.equal(result.body.includes('"ada","action"'), false);
+    assert.equal(csv(store, '?from=2026-07-02&to=2026-07-02', { role: 'manager' }).body.includes('WEST-SKU'), false);
+  });
+  const main = csv(store, '?from=2026-07-02&to=2026-07-02', { role: 'manager' });
+  assert.match(main.body, /"ada","action"/);
+  assert.equal(main.body.includes('WEST-SKU'), false);
+  store.close();
+});
+
 test('the export uses the warehouse local day and leaves secrets out', () => {
   const store = world();
   const day = csv(store, '?from=2026-07-02&to=2026-07-02', { role: 'manager', permissions: ['user-audit.read'] });

@@ -1,5 +1,11 @@
 # Changelog
 
+## Restore the merged module wiring
+
+Item photos, bills of materials and the user audit keep their engine installers, role permissions and office navigation together after the merges. Photos can be uploaded again, office users can build kits, and managers and administrators can open the audit export. The audit follows the selected warehouse and its local timezone; account sign-in events remain shared. Client logins without a linked client cannot read photos or statements.
+
+The Pages build includes the BOM and photo metadata installers. Build checks load the emitted browser scripts, consume components into a kit and replay the result in a second page.
+
 ## A4 documents
 
 Delivery notes, pick lists, packing lists and client statements can be A4 PDFs. The writer is in the program itself. Dates use the warehouse timezone. Label printers keep their text rules.
