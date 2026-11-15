@@ -13,17 +13,17 @@
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { margin: 0; font-size: 19px; }
   header .spacer { flex: 1; }
-  select, input, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  select, input, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 9px 12px; }
   button { background: var(--card); cursor: pointer; }
   button.primary { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 600; }
   button.warn { border-color: var(--warn); color: var(--warn); }
   main { padding: 16px; max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
   .kicker { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
   .callout { text-align: center; padding: 18px 16px; }
   .callout .word { font: 900 88px/1 system-ui, sans-serif; letter-spacing: .04em; margin: 6px 0; }
   .callout .hint { color: var(--dim); }
-  .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 18px; }
+  .msg { border-radius: var(--r); padding: 12px 14px; font-weight: 700; font-size: 18px; }
   .msg.ok { background: rgba(19, 138, 74, .12); color: var(--ok); }
   .msg.bad { background: rgba(198, 47, 40, .12); color: var(--bad); }
   .scan { display: flex; gap: 8px; }

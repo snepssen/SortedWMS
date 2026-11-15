@@ -87,17 +87,17 @@ fs.writeFileSync(path.join(out, 'index.html'), `<!doctype html>
   :root { --accent: #2f5fb3; }
   :root[data-theme="dark"] { --accent: #59a9ff; }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 8px; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
   h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 19px; margin: 28px 0 8px; }
   p, li { color: var(--ink); } .dim { color: var(--dim); }
   a { color: var(--accent); }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
-  .card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; text-decoration: none; color: var(--ink); }
+  .card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; text-decoration: none; color: var(--ink); }
   .card b { display: block; color: var(--accent); margin-bottom: 4px; }
   code, pre { font-family: ui-monospace, monospace; font-size: 14px; }
-  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; overflow-x: auto; }
   main { max-width: 940px; }
   .top { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
   .top h1 { font-size: clamp(2rem, 5vw, 3rem); }

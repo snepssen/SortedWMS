@@ -20,9 +20,9 @@ const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
 
-function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null }) {
+function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null, alerts = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
-  const api = createApi({ store, printers, hardware, backups, offsite, shopify, woo, etsy, sendcloud });
+  const api = createApi({ store, printers, hardware, backups, offsite, shopify, woo, etsy, sendcloud, alerts });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -395,7 +395,7 @@ function main() {
   const stopAlerts = alerts.start();
   const connectionsOn = () => !store.wh || typeof store.wh.module !== 'function' || store.wh.module('connections');
   const stopOutbox = outbox.start({ folder: process.env.SORTED_OUTBOX || null, enabled: connectionsOn });
-  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite, shopify, woo, etsy, sendcloud });
+  const server = createServer({ store, printers, auth, hardware, backups, outbox, offsite, shopify, woo, etsy, sendcloud, alerts });
   const tick = setInterval(() => { try { store.tick(); printers.flush(store.wh.printQueue); } catch (e) { console.error('tick', e); } }, 10000);
   // The drop folder: orders and ASNs as files (docs/CONNECTIONS.md). SORTED_INBOX=0 turns it off.
   const inbox = process.env.SORTED_INBOX === '0' ? null : require('./inbox').watchInbox({ dir: process.env.SORTED_INBOX || path.join(path.dirname(dbFile), 'inbox'), api: createApi({ store, printers, hardware, backups }), enabled: connectionsOn });

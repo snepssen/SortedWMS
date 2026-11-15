@@ -1,5 +1,19 @@
 # Changelog
 
+## Alerts answer again
+
+Every `/api/notify` route answered "alerts is not defined": a merge had dropped the alerts service from the API and from the server that builds it. The bell, the alert settings, the test send and subscriptions work again.
+
+A new test calls every route with an empty request and fails when one names something its file never declared. A second checks that every service the API takes is passed by the server, and every service the server takes is passed by `main()`. The API lists its routes for that test.
+
+## Square, flat screens
+
+Every screen has square corners, no drop shadows and stronger borders. Corners, depth and the code typeface are set once in `server/public/ui.css` (`--r`, `--shadow`, `--mono`); each screen reads them, so the look changes in one place. The greys are neutral and darker where they draw a border, in light and dark.
+
+A button inverts for as long as it is pressed. Table headers, field captions, KPI captions and tags are small capitals; a tick box keeps the spelling of what it names. KPI numbers use the code typeface. An answer to a scan carries a solid edge in its own colour.
+
+Printed labels and the command card keep their corners.
+
 ## JSON backups keep module state
 
 JSON exports include persistent module tables alongside the original version-1 fields. Imports restore shop mappings, shipment retry state, alerts and other installed module data together with warehouse history. They clear newer module rows absent from the export, validate table and column names and binary values, and roll back on database constraint failures. Older version-1 exports still import without retaining unrelated newer module state. Photo bytes remain in `.db` and encrypted backups.

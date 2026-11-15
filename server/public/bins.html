@@ -14,10 +14,10 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
-  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; cursor: pointer; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; min-height: 48px; cursor: pointer; }
   button.primary { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 700; }
   button.bad { border-color: var(--bad); color: var(--bad); }
-  input { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
+  input { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; width: 100%; }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
   header b { font-size: 18px; }
   header .who { color: var(--dim); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -26,14 +26,14 @@
   .modes button { min-height: 40px; padding: 8px 12px; white-space: nowrap; }
   .modes button.on { background: var(--ink); color: var(--bg); font-weight: 700; }
   main { flex: 1; padding: 0 12px 12px; display: grid; gap: 10px; align-content: start; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; }
   .kicker { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
   .kicker .code { text-transform: none; letter-spacing: 0; }
   .big { font-size: 30px; font-weight: 800; line-height: 1.1; margin: 4px 0; overflow-wrap: anywhere; }
   .mid { font-size: 20px; font-weight: 700; }
   .dim { color: var(--dim); }
   .steps { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-  .steps span { font-size: 14px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--dim); }
+  .steps span { font-size: 14px; padding: 4px 8px; border-radius: var(--r); border: 1px solid var(--line); color: var(--dim); }
   .steps span.done { border-color: var(--ok); color: var(--ok); }
   .steps span.now { border-color: var(--acc); color: var(--ink); font-weight: 700; }
   form.scan { display: flex; gap: 8px; align-items: center; }
@@ -43,7 +43,7 @@
   .qty { display: flex; gap: 8px; align-items: center; }
   .qty input { font-size: 26px; font-weight: 800; text-align: center; }
   .qty button { min-width: 56px; font-size: 22px; }
-  .msg { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); }
+  .msg { padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--line); }
   .msg.ok { border-color: var(--ok); color: var(--ok); }
   .msg.bad { border-color: var(--bad); color: var(--bad); }
   #net { padding: 6px 12px; font-size: 14px; border-bottom: 1px solid var(--line); display: none; }

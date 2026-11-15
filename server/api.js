@@ -168,10 +168,10 @@
     return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
   }
 
-  function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null }) {
+  function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null, alerts = null }) {
     const wh = () => (store.warehouse ? store.warehouse(store.siteId) : store.wh);
     const routes = [];
-    const on = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
+    const on = (method, pattern, fn) => routes.push({ method, pattern, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
     const run = (op, args, by) => {
       const result = store.exec(op, args, by);
       printers.flush(wh().printQueue);
@@ -877,7 +877,8 @@
       }
     }
 
-    return { handle };
+    // The route list, so a test can call every one (test/wiring.test.js).
+    return { handle, routes: () => routes.map((r) => ({ method: r.method, pattern: r.pattern })) };
   }
 
   return { createApi, deviceView, summary, placeName, lookupView };
