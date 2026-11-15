@@ -1,5 +1,13 @@
 # Changelog
 
+## Health figures and a metrics page
+
+`/api/health/figures` gives the journal size, the last snapshot and how far it is behind, the database size, the local backups, webhooks waiting and failing, and the print queue, with a list of problems in words: no backup, a backup older than 36 hours, a snapshot more than 1,000 changes behind, a webhook that has failed five times in a row. `/api/metrics` gives the same numbers as plain text in the Prometheus format. Both need `settings.read`. `/api/health` stays public and still says only that the server answers. See [HEALTH.md](HEALTH.md).
+
+## Refusals in plain words
+
+An empty request no longer gets the engine's own words back. "Unknown item undefined" is now "No item given", and the same for a category or a client. The four import routes say "rows is required: send a list of rows" instead of "rows is not iterable". An unknown station says "Unknown station X". A job number that is not a number says "No job #X". The wiring test now fails on any answer that contains `undefined`, `null`, `NaN` or "is not iterable".
+
 ## Alerts answer again
 
 Every `/api/notify` route answered "alerts is not defined": a merge had dropped the alerts service from the API and from the server that builds it. The bell, the alert settings, the test send and subscriptions work again.

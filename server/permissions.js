@@ -135,6 +135,8 @@ const RULES = [
   ['POST', '/api/logout', null],
   ['GET', '/api/session', null],
   ['GET', '/api/health', null],
+  ['GET', '/api/health/figures', 'settings.read'],
+  ['GET', '/api/metrics', 'settings.read'],
   ['GET', '/api/login/info', null],
   ['GET', '/api/users', 'users.read'],
   ['POST', '/api/users', 'users.write'],

@@ -19,8 +19,7 @@ Nothing else should start before these. They are small, and each one closes a kn
 | # | Item | Size | Done when |
 | --- | --- | --- | --- |
 | 0.1 | **Check on real devices.** The bin handheld with no connection at all on a phone. The camera scanner with a real camera. A scanner gun on `/handheld`, `/keys` and the telnet terminal. A Zebra label printer on TCP 9100. | M | Each is tried, and what broke is fixed or written down in [HARDWARE.md](HARDWARE.md) |
-| 0.2 | **Say what is wrong, in plain words.** Empty requests to `/api/boms`, `/api/items` and `/api/reports/invoice` answer "Unknown item undefined". The four `/api/import` routes answer "rows is not iterable", and an unknown station answers "Cannot read properties of undefined". | S | Each names the missing field or the thing not found |
-| 0.3 | **A written shift.** One page that walks a person through a whole day on the sample 3PL: receive, put away, wave, pick, pack, load, count, return, invoice. Work it by hand once. | M | The page exists, and every step was done on the screens without the API |
+| 0.2 | **A written shift.** One page that walks a person through a whole day on the sample 3PL: receive, put away, wave, pick, pack, load, count, return, invoice. Work it by hand once. | M | The page exists, and every step was done on the screens without the API |
 
 ## Phase 1: ready for a real warehouse
 
@@ -31,12 +30,11 @@ The goal is one real site running on it for a month.
 | 1.1 | **Smaller snapshots.** History stays in the saved state. Move old history out of the snapshot into its own table. | M | A snapshot with a year of history writes as fast as one with a week |
 | 1.2 | **Restart time.** Replaying 15,000 journal rows from nothing takes 7 seconds in the load test. Check a year of rows, and make sure a restart always starts from a snapshot. | S | A restart with a year of history takes under 5 seconds |
 | 1.3 | **Running it safely.** A page on HTTPS behind a reverse proxy, what to firewall, running as a service, and restoring on a new machine. | S | A stranger can follow it without asking |
-| 1.4 | **Health and figures.** `/api/health` says only that it is up. Add journal size, last snapshot, last backup, queue lengths and failed deliveries, and a plain-text metrics page that a monitor can read. | M | An unattended install can be watched from outside |
-| 1.5 | **Password rules.** Minimum length, no reuse of the last few, and an optional expiry. | S | An administrator can set them |
-| 1.6 | **The API written down.** One generated description of every route, its role and its fields, from the route table itself so it cannot go stale. | M | It is built by a test and published with the docs |
-| 1.7 | **Security review.** Session handling, permissions per route, uploads, CSV formulas, webhook signatures, the telnet terminal. | M | Findings are fixed or listed |
-| 1.8 | **Pilot.** One real warehouse, alongside what it uses now, for a month. | L | It ran the month, and every problem became an issue |
-| 1.9 | **Import from another system.** Items, locations, stock and open orders as CSV exist. Add a dry run that reports what would be refused, and a cut-over checklist. | M | A pilot site moves its data in one evening |
+| 1.4 | **Password rules.** Minimum length, no reuse of the last few, and an optional expiry. | S | An administrator can set them |
+| 1.5 | **The API written down.** One generated description of every route, its role and its fields, from the route table itself so it cannot go stale. | M | It is built by a test and published with the docs |
+| 1.6 | **Security review.** Session handling, permissions per route, uploads, CSV formulas, webhook signatures, the telnet terminal. | M | Findings are fixed or listed |
+| 1.7 | **Pilot.** One real warehouse, alongside what it uses now, for a month. | L | It ran the month, and every problem became an issue |
+| 1.8 | **Import from another system.** Items, locations, stock and open orders as CSV exist. Add a dry run that reports what would be refused, and a cut-over checklist. | M | A pilot site moves its data in one evening |
 
 ## Phase 2: the floor, further
 
@@ -165,6 +163,8 @@ Only when one install is not enough.
 - One light/dark setting (Auto, Light or Dark) for every screen, kept in the browser; Auto follows the device.
 - Square, flat screens with instant press feedback, set in one place.
 - A wiring test that calls every route and checks that every service is passed from `main()` to the server to the API.
+- Refusals in plain words: an empty request is told what is missing, and a test keeps it so.
+- Health figures and a metrics page for whoever watches an unattended install. See [HEALTH.md](HEALTH.md).
 
 **Connections** ([CONNECTIONS.md](CONNECTIONS.md))
 - API keys per system, with a role, for one client or all; revoked at once.

@@ -2722,6 +2722,7 @@
     /** Everything a station screen shows. */
     stationView(stationId) {
       const st = this.stations[stationId];
+      if (!st) throw new Error(`Unknown station ${stationId}`);
       const pallets = this.locations[st.code].pallets.map((s) => this.pallets[s]);
       const by = (state) => pallets.filter((p) => p.proc && p.proc.state === state);
       const coming = this._liveTasks().filter((t) => LIVE.has(t.status) && t.to === st.code).length;
