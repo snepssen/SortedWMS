@@ -74,6 +74,56 @@ function read(root, itemNo, id, type) {
   return fs.readFileSync(file);
 }
 
+// Restored backups carry their images inside SQLite, so they also work on a
+// new machine where the original item-photos directory does not exist.
+function readArchived(db, itemNo, id, type) {
+  if (!db || !db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'backup_item_photos'").get()) return null;
+  const row = db.prepare('SELECT data FROM backup_item_photos WHERE item_no = ? AND id = ? AND type = ?').get(itemNo, id, type);
+  return row ? Buffer.from(row.data) : null;
+}
+
+function readStored(store, itemNo, id, type) {
+  const archived = readArchived(store.db, itemNo, id, type);
+  if (archived) return archived;
+  if (!store.file || store.file === ':memory:') return null;
+  return read(dir(store), itemNo, id, type);
+}
+
+/** Add only journal-referenced images to a backup, never to the live database. */
+function archive(db, sourceFile) {
+  const root = sourceFile ? dir({ file: sourceFile }) : null;
+  const references = new Map();
+  for (const table of ['journal', 'extra_journal']) {
+    if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
+    for (const row of db.prepare(`SELECT args FROM ${table} WHERE op = 'addItemPhoto'`).iterate()) {
+      const photo = JSON.parse(row.args);
+      references.set(JSON.stringify([photo.itemNo, photo.id]), photo);
+    }
+  }
+  if (!references.size) return;
+  db.exec('BEGIN');
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS backup_item_photos (item_no TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(item_no, id))');
+    const insert = db.prepare('INSERT OR REPLACE INTO backup_item_photos (item_no, id, type, data) VALUES (?, ?, ?, ?)');
+    for (const photo of references.values()) {
+      let data = readArchived(db, photo.itemNo, photo.id, photo.type);
+      const archived = Boolean(data);
+      if (!data && root) {
+        const file = fileFor(root, photo.itemNo, photo.id, photo.type);
+        // Never follow a substituted file or item directory outside photo storage.
+        if (fs.existsSync(file) && fs.lstatSync(path.dirname(file)).isDirectory() && fs.lstatSync(file).isFile()) data = fs.readFileSync(file);
+      }
+      if (!data) throw new Error(`Photo ${photo.itemNo}/${photo.id} is missing; the backup was not created`);
+      if (data.length > MAX_BYTES || sniff(data) !== photo.type) throw new Error(`Photo ${photo.itemNo}/${photo.id} is damaged; the backup was not created`);
+      if (!archived) insert.run(photo.itemNo, photo.id, photo.type, data);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
 function remove(file) {
   try { fs.unlinkSync(file); } catch (e) { /* already gone */ }
 }
@@ -82,4 +132,4 @@ function mime(type) {
   return TYPES[type] || 'application/octet-stream';
 }
 
-module.exports = { MAX_BYTES, sniff, accept, newId, dir, write, read, remove, mime };
+module.exports = { MAX_BYTES, sniff, accept, newId, dir, write, read, readStored, archive, remove, mime };

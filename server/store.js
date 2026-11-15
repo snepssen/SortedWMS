@@ -77,6 +77,7 @@ class Store {
 
   /** Rebuild the warehouse: latest snapshot, then replay the journal after it. */
   load() {
+    this._extra = null;
     let site = this.meta('site');
     let createdAt = this.meta('createdAt');
     if (!site) {

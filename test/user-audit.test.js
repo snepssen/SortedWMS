@@ -19,7 +19,7 @@ function world() {
   createAuth(store.db);
   store.db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(Date.parse('2026-07-01T22:30:00Z'), 'login', 'ada', null);
   store.db.prepare('INSERT INTO journal (t, op, args, by) VALUES (?, ?, ?, ?)').run(
-    Date.parse('2026-07-01T22:30:00Z'), 'note', JSON.stringify({ password: 'secret-value', note: 'hello' }), 'ada',
+    Date.parse('2026-07-01T22:30:00Z'), 'note', JSON.stringify({ password: 'secret-value', note: 'hello', settings: { token: 'nested-secret', label: 'visible' }, entries: [{ pin: 'array-secret', label: 'kept' }] }), 'ada',
   );
   return store;
 }
@@ -61,6 +61,10 @@ test('the export uses the warehouse local day and leaves secrets out', () => {
   assert.match(day.body, /2026-07-02 00:30:00","ada","sign-in","login"/);
   assert.match(day.body, /note=hello/);
   assert.equal(day.body.includes('secret-value'), false);
+  assert.equal(day.body.includes('nested-secret'), false);
+  assert.equal(day.body.includes('array-secret'), false);
+  assert.match(day.body, /visible/);
+  assert.match(day.body, /kept/);
   const previous = csv(store, '?from=2026-07-01&to=2026-07-01', { role: 'administrator' });
   assert.equal(previous.body.includes('binPut'), false);
   assert.equal(previous.body.includes('login'), false);
