@@ -42,6 +42,7 @@ For a monitor, make an API key with a role that has `settings.read` (see [CONNEC
 | There is no backup yet | Backups are on and the folder is empty |
 | The newest backup is N hours old | The newest copy is more than 36 hours old |
 | The last snapshot is N changes behind the journal | More than 1,000 changes since the last snapshot |
+| N snapshots could not be read at the last start | The newest snapshot was damaged; an older one or the journal was used instead |
 | Webhook N has failed M times in a row | Five or more failures in a row, with the last error |
 
 Off-site backups, shop connections and low stock raise their own alerts when Alerts is on (see [ALERTS.md](ALERTS.md)); they are not repeated here.

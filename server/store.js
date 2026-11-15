@@ -15,6 +15,7 @@ const { COMMANDS } = require('./commands');
 const { upgradeDatabase } = require('./upgrades');
 
 const SNAPSHOT_EVERY = 200;
+const SNAPSHOTS_KEPT = 2;
 
 class Store {
   constructor({ file = ':memory:', site, now = () => Date.now(), backupDir = null, moduleUpgrades = null } = {}) {
@@ -86,10 +87,21 @@ class Store {
       createdAt = this.meta('createdAt', this.now());
     }
     this.siteUsed = site;
-    const snap = this.db.prepare('SELECT journal_id, state FROM snapshots ORDER BY id DESC LIMIT 1').get();
+    // The newest snapshot that can be read. One that cannot (a write cut short) is
+    // passed over for the one before it; the journal after that one fills the gap.
+    let snap = null;
+    let saved = null;
+    this.snapshotSkipped = [];
+    for (const row of this.db.prepare('SELECT id, journal_id, state FROM snapshots ORDER BY id DESC').iterate()) {
+      try { saved = JSON.parse(row.state); } catch (e) { saved = null; }
+      if (saved && typeof saved === 'object' && saved.locations) { snap = row; break; }
+      this.snapshotSkipped.push(row.id);
+      saved = null;
+    }
     let from = 0;
     if (snap) {
-      this.wh = Warehouse.restore(JSON.parse(snap.state), { clock: this.clock });
+      // Parsed here and referenced nowhere else: the engine may keep it as it is.
+      this.wh = Warehouse.restore(saved, { clock: this.clock, owned: true });
       from = snap.journal_id;
     } else {
       this.replayT = createdAt;
@@ -124,7 +136,7 @@ class Store {
     if (this._extra && this._extra.id === id) return this._extra.wh;
     const row = this.db.prepare('SELECT state FROM extra_sites WHERE id = ?').get(id);
     if (!row) throw new Error(`Unknown warehouse ${id}`);
-    const wh = Warehouse.restore(JSON.parse(row.state), { clock: this.clock });
+    const wh = Warehouse.restore(JSON.parse(row.state), { clock: this.clock, owned: true });
     this._extra = { id, wh };
     return wh;
   }
@@ -256,7 +268,8 @@ class Store {
 
   snapshot() {
     this.db.prepare('INSERT INTO snapshots (journal_id, t, state) VALUES (?, ?, ?)').run(this.lastId, this.now(), JSON.stringify(this.wh));
-    this.db.prepare('DELETE FROM snapshots WHERE id NOT IN (SELECT id FROM snapshots ORDER BY id DESC LIMIT 5)').run();
+    // Only the newest is read; one more is kept in case that one cannot be.
+    this.db.prepare('DELETE FROM snapshots WHERE id NOT IN (SELECT id FROM snapshots ORDER BY id DESC LIMIT ?)').run(SNAPSHOTS_KEPT);
     this.sinceSnapshot = 0;
   }
 

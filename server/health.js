@@ -45,6 +45,8 @@ function createHealth({ store, backups = null, outbox = null, now = () => Date.n
       ? { at: Number(s.t), journalId: Number(s.id), bytes: Number(s.bytes || 0), behind: Math.max(0, journal.lastId - Number(s.id)) }
       : { at: null, journalId: null, bytes: null, behind: journal.lastId };
     if (snapshot.behind > SNAPSHOT_LATE) problems.push(`The last snapshot is ${snapshot.behind} changes behind the journal`);
+    const skipped = (store.snapshotSkipped || []).length;
+    if (skipped) problems.push(`${skipped} snapshot${skipped === 1 ? '' : 's'} could not be read at the last start; the journal filled the gap`);
 
     const database = { bytes: fileBytes(store.file) };
 
