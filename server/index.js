@@ -308,6 +308,11 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         } catch (e) { return send(400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/auth-log') return send(200, auth.audit(url.searchParams.get('limit')));
+      // Password rules for every login: how long, how many earlier ones are refused, and when one must be changed.
+      if (auth && req.method === 'GET' && url.pathname === '/api/password-rules') return send(200, { rules: auth.passwordRules(), limits: auth.passwordRuleLimits() });
+      if (auth && req.method === 'POST' && url.pathname === '/api/password-rules') {
+        try { return send(200, { rules: auth.setPasswordRules(body, by), limits: auth.passwordRuleLimits() }); } catch (e) { return send(400, { error: e.message }); }
+      }
       // Figures for whoever watches the install (server/health.js). /api/health itself stays public and says only "up".
       if (req.method === 'GET' && url.pathname === '/api/health/figures') return send(200, health.figures());
       if (req.method === 'GET' && url.pathname === '/api/metrics') return send(200, health.metrics(), 'text/plain; version=0.0.4; charset=utf-8');

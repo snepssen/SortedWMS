@@ -73,6 +73,26 @@ The floor screens (`/admin`, `/handheld`, `/station`, `/desk`, `/loading`) stay.
 
 An administrator edits a role under **Roles**. The last active administrator cannot be demoted or disabled.
 
+The whole route list, with the permission each needs and the roles that have it, is in [API.md](API.md).
+
+## Password rules
+
+An administrator sets three rules under **Users**, for every login on the install. They are also at `GET` and `POST /api/password-rules`.
+
+| Rule | Starts at | Range | What it does |
+| --- | --- | --- | --- |
+| Shortest password | 8 | 8 to 64 | A shorter password is refused, with the number in the message |
+| Earlier passwords refused | 0 | 0 to 24 | A person cannot go back to one of their last few. At 0 only the current password is refused |
+| Change after (days) | 0 | 0 to 730 | A password older than this still signs in, and must then be changed before anything else. 0 means never |
+
+- The rules apply to a new user, to a password an administrator sets for someone, and to a person changing their own.
+- Only hashes of earlier passwords are kept, the newest 24 per person. They and the rules are in every kind of backup.
+- A password's age starts when it was set. For an account from before this version it starts when the account was made, so turning on a limit can ask many people to change at their next sign-in.
+- The limit is checked at sign-in. A paired device that stays signed in is not asked until it signs in again.
+- A temporary password from **Reset password** must be changed at once whatever the rules say.
+- The accounts a new warehouse starts with are made before any rule can be set. The starting admin password must still be changed at the first sign-in.
+- API keys, terminal PINs and badges are not passwords and are not covered.
+
 ## Clients, items, locations, license plates, labels
 
 - A **client** is the owner of the goods (in a 3PL, each customer whose stock you hold; try `./start.sh sample 3pl`). Archiving blocks new items, receipts and orders for that owner. Stock already in the building stays.

@@ -600,11 +600,15 @@
     async users() {
       if (window.SORTED_DEMO) return '<section><h2>Users</h2><p>Warehouse accounts are managed on the SortedWMS server. Choose a role in the demo to explore its work.</p></section>';
       const { users } = await api('GET', '/api/users');
+      const { rules, limits } = await api('GET', '/api/password-rules');
       const roles = ['administrator', 'manager', 'office', 'technician', 'inbound', 'picker', 'stock', 'client'];
       const opts = (sel) => roles.map((r) => `<option ${r === sel ? 'selected' : ''}>${r}</option>`).join('');
+      const rule = (key, label) => `<label>${label}<input name="${key}" type="number" inputmode="numeric" required min="${limits[key].min}" max="${limits[key].max}" value="${rules[key]}"></label>`;
       return `<section><h2>Users and roles</h2><p class="hint">Assign a role. A client login only sees that client's items, stock and orders. The last administrator stays an administrator.</p>
-        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="8"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Language<select name="language"><option value="">Warehouse default</option><option value="en">English</option><option value="nl">Dutch</option></select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
+        <form class="form" data-act="user-create"><label>Username<input name="username" required></label><label>Name<input name="displayName" required></label><label>Password<input name="password" type="password" required minlength="${rules.minLength}"></label><label>Role<select name="role">${opts('picker')}</select></label><label>Language<select name="language"><option value="">Warehouse default</option><option value="en">English</option><option value="nl">Dutch</option></select></label><label>Client id<input name="clientId" placeholder="e.g. CL-ACME, for a client login"></label><button class="primary">Add user</button></form>
         ${table(['User', 'Name', 'Role', 'Active', ''], users.map((u) => `<tr><td>${esc(u.username)}</td><td>${esc(u.displayName)}</td><td><select data-role-for="${u.id}">${opts(u.role)}</select></td><td>${u.active ? 'yes' : 'no'}</td><td><button type="button" data-act="user-save" data-id="${u.id}">Save</button> <button type="button" data-act="user-off" data-id="${u.id}">${u.active ? 'Disable' : 'Enable'}</button> <button type="button" data-act="user-reset" data-id="${u.id}">Reset password</button></td></tr>`))}</section>${modOn('terminal') ? await terminalSection(users) : ''}
+        <section><h2>Password rules</h2><p class="hint">For every login on this install. A password older than the limit still signs in, and must then be changed; 0 means it never has to be. Earlier passwords refused: 0 only refuses the current one.</p>
+        <form class="form" data-act="password-rules">${rule('minLength', 'Shortest password (characters)')}${rule('history', 'Earlier passwords refused')}${rule('maxAgeDays', 'Change after (days)')}${can('users.write') ? '<button class="primary">Save rules</button>' : ''}</form></section>
         <section><h2>Recent sign-in activity</h2>${await auditBits(8)}</section>`;
     },
     async connections() {
@@ -1629,6 +1633,7 @@
     }
     if (name === 'terminal-secret') return api('POST', '/api/users/' + encodeURIComponent(data.id) + '/terminal', { pin: data.pin || null, badge: data.badge || null });
     if (name === 'user-create') return api('POST', '/api/users', { ...data, clientId: data.clientId || null, language: data.language || null });
+    if (name === 'password-rules') return api('POST', '/api/password-rules', { minLength: Number(data.minLength), history: Number(data.history), maxAgeDays: Number(data.maxAgeDays) });
     if (name === 'device-rename') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/rename', { name: data.name });
     if (name === 'device-revoke') return api('POST', '/api/devices/paired/' + encodeURIComponent(data.id) + '/revoke', {});
     if (name === 'device-revoke-all') return api('POST', '/api/devices/paired/revoke-all', {});

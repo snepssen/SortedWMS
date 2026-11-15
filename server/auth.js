@@ -118,6 +118,11 @@ function cookies(req) {
   return out;
 }
 
+// Password rules: [lowest, highest, what a new install starts with].
+const RULE_LIMITS = { minLength: [8, 64, 8], history: [0, 24, 0], maxAgeDays: [0, 730, 0] };
+const RULE_NAMES = { minLength: 'Shortest password', history: 'Earlier passwords refused', maxAgeDays: 'Days before a password must be changed' };
+const DAY_MS = 86400000;
+
 function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS pair_failures (source TEXT PRIMARY KEY, failures INTEGER NOT NULL, until_ms INTEGER NOT NULL);
@@ -178,6 +183,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
   add('users', 'terminal_badge', 'TEXT');
   add('users', 'terminal_fails', 'INTEGER NOT NULL DEFAULT 0');
   add('users', 'terminal_locked_until', 'INTEGER');
+  add('users', 'password_changed_at', 'INTEGER');
   add('sessions', 'last_seen', 'INTEGER');
   add('sessions', 'device_id', 'TEXT');
   add('sessions', 'user_agent', 'TEXT');
@@ -203,6 +209,17 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
       revoked_at INTEGER
     );
   `);
+  // Password rules an administrator sets, and the hashes of each person's earlier
+  // passwords so one cannot be used again. Both travel with every kind of backup.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      t INTEGER NOT NULL
+    );
+  `);
   // The on-foot operator and the machine operator became duties: pickers and inbound.
   for (const [old, next] of [['operator', 'picker'], ['machine', 'inbound']]) {
     const moved = db.prepare('UPDATE users SET role = ? WHERE role = ?').run(next, old).changes;
@@ -213,6 +230,48 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
 
   function record(action, by, detail) {
     db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(now(), action, by || null, detail ? JSON.stringify(detail) : null);
+  }
+
+  /** Password rules: how long, how many earlier ones are refused, and after how many days one must be changed (0: never). */
+  function passwordRules() {
+    const row = db.prepare("SELECT value FROM auth_settings WHERE key = 'password-rules'").get();
+    let saved = {};
+    try { saved = row ? JSON.parse(row.value) : {}; } catch (e) { saved = {}; }
+    const out = {};
+    for (const [key, [min, max, start]] of Object.entries(RULE_LIMITS)) {
+      const n = Number(saved[key]);
+      out[key] = Number.isInteger(n) && n >= min && n <= max ? n : start;
+    }
+    return out;
+  }
+
+  function setPasswordRules(patch = {}, by = null) {
+    const next = passwordRules();
+    for (const [key, [min, max]] of Object.entries(RULE_LIMITS)) {
+      if (patch[key] === undefined || patch[key] === null || patch[key] === '') continue;
+      const n = Number(patch[key]);
+      if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${RULE_NAMES[key]} is a whole number from ${min} to ${max}`);
+      next[key] = n;
+    }
+    db.prepare("INSERT INTO auth_settings (key, value) VALUES ('password-rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+    record('password-rules', by, next);
+    return next;
+  }
+
+  /** Refuse a new password that is too short, or one of this person's last few. */
+  function checkNewPassword(password, row = null, { rules = passwordRules() } = {}) {
+    if (String(password || '').length < rules.minLength) throw new Error(`Password must be at least ${rules.minLength} characters`);
+    if (!row || !rules.history) return;
+    const earlier = db.prepare('SELECT password_hash FROM password_history WHERE user_id = ? ORDER BY id DESC LIMIT ?').all(row.id, rules.history);
+    if (verifyPassword(password, row.password_hash) || earlier.some((old) => verifyPassword(password, old.password_hash))) {
+      throw new Error(rules.history === 1 ? 'Choose a password other than your last one' : `Choose a password you have not used for your last ${rules.history}`);
+    }
+  }
+
+  /** Keep a password's hash so it can be refused later. The newest few are kept per person. */
+  function rememberPassword(userId, hash) {
+    db.prepare('INSERT INTO password_history (user_id, password_hash, t) VALUES (?, ?, ?)').run(userId, hash, now());
+    db.prepare('DELETE FROM password_history WHERE user_id = ? AND id NOT IN (SELECT id FROM password_history WHERE user_id = ? ORDER BY id DESC LIMIT ?)').run(userId, userId, RULE_LIMITS.history[1]);
   }
 
   function rowToUser(row) {
@@ -252,10 +311,11 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     return db.prepare('SELECT * FROM users WHERE username = ?').get(String(username || '').trim().toLowerCase());
   }
 
-  function insertUser({ username, password, role, displayName, clientId = null }) {
+  function insertUser({ username, password, role, displayName, clientId = null }, { bootstrap = false } = {}) {
     const name = String(username || '').trim().toLowerCase();
     if (!/^[a-z][a-z0-9._-]{1,31}$/.test(name)) throw new Error('Username: start with a letter, then letters, digits, dot, underscore or hyphen');
-    if (String(password || '').length < 8) throw new Error('Password must be at least 8 characters');
+    // The accounts a new warehouse starts with are made before anyone could set a rule.
+    checkNewPassword(password, null, bootstrap ? { rules: { minLength: RULE_LIMITS.minLength[0], history: 0 } } : {});
     if (!ROLE_IDS.includes(role)) throw new Error(`Role is one of ${ROLE_IDS.join(', ')}`);
     const owner = clientId ? String(clientId).trim().toUpperCase() : null;
     if (role === 'client' && !owner) throw new Error('A client login needs a client id');
@@ -263,7 +323,9 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     if (!display) throw new Error('A display name is required');
     if (getUser(name)) throw new Error(`User ${name} already exists`);
     const t = now();
-    const result = db.prepare('INSERT INTO users (username, display_name, password_hash, role, active, created_at, client_id) VALUES (?, ?, ?, ?, 1, ?, ?)').run(name, display, hashPassword(password), role, t, owner);
+    const hash = hashPassword(password);
+    const result = db.prepare('INSERT INTO users (username, display_name, password_hash, role, active, created_at, client_id, password_changed_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)').run(name, display, hash, role, t, owner, t);
+    rememberPassword(Number(result.lastInsertRowid), hash);
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(Number(result.lastInsertRowid)));
   }
 
@@ -295,6 +357,13 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
         record(lockedUntil ? 'login-locked' : 'login-failed', row.username, lockedUntil ? { until: lockedUntil } : null);
       } else record(row && !row.active ? 'login-disabled' : 'login-failed', String(username || '').slice(0, 40), null);
       return null;
+    }
+    // A password older than the rule allows still signs in, and must then be changed.
+    const { maxAgeDays } = passwordRules();
+    if (maxAgeDays > 0 && !row.must_change && now() - (row.password_changed_at || row.created_at || 0) > maxAgeDays * DAY_MS) {
+      db.prepare('UPDATE users SET must_change = 1 WHERE id = ?').run(row.id);
+      row.must_change = 1;
+      record('password-expired', row.username, { maxAgeDays });
     }
     if (row.totp_enabled) {
       const mfaToken = randomBytes(24).toString('base64url');
@@ -429,7 +498,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     let hash = row.password_hash;
     let mustChange = row.must_change || 0;
     if (patch.password) {
-      if (String(patch.password).length < 8) throw new Error('Password must be at least 8 characters');
+      checkNewPassword(patch.password, row);
       hash = hashPassword(patch.password);
       mustChange = 0;
     }
@@ -451,6 +520,12 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
       language = code || null;
     }
     db.prepare('UPDATE users SET display_name = ?, role = ?, active = ?, password_hash = ?, must_change = ?, sites = ?, client_id = ?, language = ? WHERE id = ?').run(display, role, active ? 1 : 0, hash, mustChange, sites, clientId, language, row.id);
+    if (patch.password) {
+      // Someone else chose this password: remember it and the one it replaces, and start its age from now.
+      if (!db.prepare('SELECT 1 FROM password_history WHERE user_id = ? LIMIT 1').get(row.id)) rememberPassword(row.id, row.password_hash);
+      rememberPassword(row.id, hash);
+      db.prepare('UPDATE users SET password_changed_at = ? WHERE id = ?').run(now(), row.id);
+    }
     if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
     record('user-updated', patch.by || null, { id: row.id, username: row.username, role, active });
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
@@ -472,14 +547,21 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     }));
   }
 
+  /** Store a new password, remember it, and remember the one it replaces if that was never recorded. */
+  function setPassword(row, hash, { mustChange = 0 } = {}) {
+    if (!db.prepare('SELECT 1 FROM password_history WHERE user_id = ? LIMIT 1').get(row.id)) rememberPassword(row.id, row.password_hash);
+    db.prepare('UPDATE users SET password_hash = ?, must_change = ?, password_changed_at = ? WHERE id = ?').run(hash, mustChange, now(), row.id);
+    rememberPassword(row.id, hash);
+  }
+
   function changePassword(userId, { current, next }) {
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(userId));
     if (!row) throw new Error('Unknown user');
     if (!verifyPassword(current, row.password_hash)) throw new Error('Current password is wrong');
-    if (String(next || '').length < 8) throw new Error('Password must be at least 8 characters');
     if (String(next) === String(current)) throw new Error('Choose a different password');
+    checkNewPassword(next, row);
     if (DEMO_USERS.some(([, known]) => known === String(next))) throw new Error('That password is printed on the sign-in page of every SortedWMS. Choose your own');
-    db.prepare('UPDATE users SET password_hash = ?, must_change = 0 WHERE id = ?').run(hashPassword(next), row.id);
+    setPassword(row, hashPassword(next), { mustChange: 0 });
     record('password-changed', row.username, null);
     return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
   }
@@ -488,7 +570,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
     if (!row) throw new Error('Unknown user');
     const temporaryPassword = `Tmp-${randomBytes(6).toString('base64url')}`;
-    db.prepare('UPDATE users SET password_hash = ?, must_change = 1, failed_logins = 0, locked_until = NULL WHERE id = ?').run(hashPassword(temporaryPassword), row.id);
+    db.prepare('UPDATE users SET password_hash = ?, must_change = 1, failed_logins = 0, locked_until = NULL, password_changed_at = ? WHERE id = ?').run(hashPassword(temporaryPassword), now(), row.id);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
     record('password-reset', by || null, { username: row.username });
     return { username: row.username, temporaryPassword };
@@ -683,6 +765,9 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
     setRolePermissions,
     changePassword,
     resetPassword,
+    passwordRules,
+    setPasswordRules,
+    passwordRuleLimits: () => Object.fromEntries(Object.entries(RULE_LIMITS).map(([key, [min, max]]) => [key, { min, max, name: RULE_NAMES[key] }])),
     beginTotp,
     enableTotp,
     disableTotp,
@@ -726,7 +811,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
         }
         return { created: false, username: name, mustChange: Boolean(row.must_change) };
       }
-      const user = insertUser({ username, password, role: 'administrator', displayName });
+      const user = insertUser({ username, password, role: 'administrator', displayName }, { bootstrap: true });
       if (mustChange) db.prepare('UPDATE users SET must_change = 1 WHERE username = ?').run(user.username);
       record('bootstrap-admin', 'bootstrap', { username: user.username });
       return { created: true, username: user.username, mustChange: Boolean(mustChange) };
@@ -739,7 +824,7 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
       const created = [];
       for (const [username, password, role, displayName] of DEMO_USERS) {
         if (getUser(username)) continue;
-        insertUser({ username, password, role, displayName });
+        insertUser({ username, password, role, displayName }, { bootstrap: true });
         created.push(username);
       }
       if (created.length) record('bootstrap-demo', 'bootstrap', { users: created });
