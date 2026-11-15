@@ -16,6 +16,7 @@ const { createApi } = require('./api');
 const { createAuth } = require('./auth');
 const { createHardware } = require('./hardware');
 const { permissionFor } = require('./permissions');
+const { createHealth } = require('./health');
 const registry = require('../modules/registry');
 
 const ROOT = path.join(__dirname, '..');
@@ -23,6 +24,7 @@ const ROOT = path.join(__dirname, '..');
 function createServer({ store, printers, token = process.env.SORTED_TOKEN || null, auth = null, hardware = null, backups = null, outbox = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null, alerts = null }) {
   hardware = hardware || (auth ? createHardware({ printers, store }) : null);
   const api = createApi({ store, printers, hardware, backups, offsite, shopify, woo, etsy, sendcloud, alerts });
+  const health = createHealth({ store, backups, outbox });
   const pages = {
     '/ui.css': 'server/public/ui.css',
     '/login': 'server/public/login.html', '/app': 'server/public/app.html', '/setup': 'server/public/setup.html', '/pair': 'server/public/pair.html',
@@ -306,6 +308,9 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
         } catch (e) { return send(400, { error: e.message }); }
       }
       if (auth && req.method === 'GET' && url.pathname === '/api/auth-log') return send(200, auth.audit(url.searchParams.get('limit')));
+      // Figures for whoever watches the install (server/health.js). /api/health itself stays public and says only "up".
+      if (req.method === 'GET' && url.pathname === '/api/health/figures') return send(200, health.figures());
+      if (req.method === 'GET' && url.pathname === '/api/metrics') return send(200, health.metrics(), 'text/plain; version=0.0.4; charset=utf-8');
       // API keys for other systems: made by an administrator, shown once, revoked here.
       if (auth && req.method === 'GET' && url.pathname === '/api/keys') return send(200, { keys: auth.listApiKeys() });
       if (auth && req.method === 'POST' && url.pathname === '/api/keys') {

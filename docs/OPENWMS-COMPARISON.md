@@ -109,7 +109,7 @@ The public pages are also thin. The receiving page, for example, says that annou
 | 22 | ERP adapters (private) | SAP, Dynamics, NetSuite | One intake for orders and ASNs, a numbered log of confirmations, webhooks, folders. Three shop connectors. No ERP adapter | Partial |
 | 23 | Operator web app (COP) | Office screens | `/app` by role, `/admin`, client portal, reports | Covered |
 | 24 | Handheld app (Roma, Flutter) | Native mobile app | Web handheld, offline for bins, camera scanning, text terminal for guns. No native app | Covered |
-| 25 | Monitoring | Grafana, Kibana, Spring Boot Admin | `/api/health` only | Missing |
+| 25 | Monitoring | Grafana, Kibana, Spring Boot Admin | `/api/health` only when checked. Since then: health figures and a Prometheus metrics page ([HEALTH.md](HEALTH.md)); no dashboards or log search | Partial since |
 | 26 | Deployment | Kubernetes, several nodes, cloud or on site | One process, one SQLite file | Missing |
 | 27 | Multi-tenancy | Tenants across the services | Several warehouses and several clients on one install. No isolated tenants | Partial |
 
