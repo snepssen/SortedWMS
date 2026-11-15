@@ -1,5 +1,11 @@
 # Changelog
 
+## Alerts answer again
+
+Every `/api/notify` route answered "alerts is not defined": a merge had dropped the alerts service from the API and from the server that builds it. The bell, the alert settings, the test send and subscriptions work again.
+
+A new test calls every route with an empty request and fails when one names something its file never declared. A second checks that every service the API takes is passed by the server, and every service the server takes is passed by `main()`. The API lists its routes for that test.
+
 ## Square, flat screens
 
 Every screen has square corners, no drop shadows and stronger borders. Corners, depth and the code typeface are set once in `server/public/ui.css` (`--r`, `--shadow`, `--mono`); each screen reads them, so the look changes in one place. The greys are neutral and darker where they draw a border, in light and dark.
