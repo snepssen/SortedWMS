@@ -1,5 +1,13 @@
 # Changelog
 
+## Password rules
+
+An administrator sets a shortest password (8 to 64 characters), how many earlier passwords are refused (0 to 24), and after how many days a password must be changed (0 is never), under Users or at `/api/password-rules`. The rules apply to new users, to a password set for someone else, and to a change of one's own. A password older than the limit still signs in and must then be changed. Only hashes of earlier passwords are kept; they and the rules are in every kind of backup. A new install starts as before: 8 characters, no history, no expiry. See [ACCOUNTS.md](ACCOUNTS.md).
+
+## The API written down
+
+[API.md](API.md) lists all 345 routes with the permission each needs, the roles that have it on a new install, and the module that must be on. `npm run api-reference` builds it from the route tables, and a test fails when the page is out of date. The fields of each body are not listed yet.
+
 ## Health figures and a metrics page
 
 `/api/health/figures` gives the journal size, the last snapshot and how far it is behind, the database size, the local backups, webhooks waiting and failing, and the print queue, with a list of problems in words: no backup, a backup older than 36 hours, a snapshot more than 1,000 changes behind, a webhook that has failed five times in a row. `/api/metrics` gives the same numbers as plain text in the Prometheus format. Both need `settings.read`. `/api/health` stays public and still says only that the server answers. See [HEALTH.md](HEALTH.md).
