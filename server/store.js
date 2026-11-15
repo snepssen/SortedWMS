@@ -278,60 +278,11 @@ class Store {
   }
 
   exportBackup() {
-    const table = (name) => {
-      const exists = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-      return exists ? this.db.prepare(`SELECT * FROM ${name}`).all() : [];
-    };
-    return {
-      version: 1,
-      exportedAt: this.now(),
-      meta: table('meta'),
-      journal: table('journal'),
-      snapshots: table('snapshots'),
-      extra_sites: table('extra_sites'),
-      extra_journal: table('extra_journal'),
-      users: table('users'),
-      role_permissions: table('role_permissions'),
-      upgrade_log: table('upgrade_log'),
-      module_settings: table('module_settings'),
-    };
+    return require('./backup-json').exportJson(this.db, this.now());
   }
 
   importBackup(data) {
-    if (!data || data.version !== 1 || !Array.isArray(data.journal)) throw new Error('Backup must be a version 1 export');
-    if (data.journal.length > 200000) throw new Error('Backup is too large');
-    for (const row of data.journal) {
-      if (!row || typeof row.op !== 'string' || typeof row.args !== 'string' || !Number.isFinite(Number(row.t))) throw new Error('A journal row needs t, op and args');
-    }
-    const insert = (name, rows) => {
-      if (!Array.isArray(rows) || !rows.length) return;
-      const cols = Object.keys(rows[0]);
-      const sql = `INSERT INTO ${name} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
-      const stmt = this.db.prepare(sql);
-      for (const row of rows) stmt.run(...cols.map((c) => row[c]));
-    };
-    this.db.exec('BEGIN');
-    try {
-      for (const name of ['journal', 'snapshots', 'extra_journal', 'extra_sites', 'sessions', 'role_permissions', 'users', 'meta', 'upgrade_log', 'module_settings']) {
-        const exists = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-        if (exists) this.db.exec(`DELETE FROM ${name}`);
-      }
-      insert('meta', data.meta);
-      insert('journal', data.journal);
-      insert('snapshots', data.snapshots);
-      insert('extra_sites', data.extra_sites);
-      insert('extra_journal', data.extra_journal);
-      insert('users', data.users);
-      insert('role_permissions', data.role_permissions);
-      insert('upgrade_log', data.upgrade_log);
-      insert('module_settings', data.module_settings);
-      const audit = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_audit'").get();
-      if (audit) this.db.prepare('INSERT INTO auth_audit (t, action, by, detail) VALUES (?, ?, ?, ?)').run(this.now(), 'backup-import', 'backup', JSON.stringify({ journal: data.journal.length }));
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    require('./backup-json').importJson(this.db, data, this.now());
     this._upgrade();
     this.load();
     return { journal: data.journal.length, users: (data.users || []).length, schema: this.upgradeReport && this.upgradeReport.to };
