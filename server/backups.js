@@ -37,8 +37,17 @@ function backup(db, dir, { keep = 14, now = Date.now() } = {}) {
   for (let n = 1; fs.existsSync(target); n++) target = path.join(dir, `sorted-${stamp(now + n * 1000)}.db`);
   const own = typeof db === 'string';
   const handle = own ? new DatabaseSync(db, { readOnly: true }) : db;
+  let copied = false;
   try {
     handle.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+    copied = true;
+    fs.chmodSync(target, 0o600);
+    const sourceFile = handle.prepare('PRAGMA database_list').all().find((row) => row.name === 'main').file;
+    const copy = new DatabaseSync(target);
+    try { require('./photos').archive(copy, sourceFile); } finally { copy.close(); }
+  } catch (e) {
+    if (copied) fs.rmSync(target, { force: true });
+    throw e;
   } finally {
     if (own) handle.close();
   }

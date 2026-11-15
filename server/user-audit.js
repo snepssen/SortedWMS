@@ -25,7 +25,9 @@ function detail(args) {
   const parts = [];
   for (const [key, value] of Object.entries(args)) {
     if (SECRET.test(key) || value == null || value === '') continue;
-    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    const text = typeof value === 'object'
+      ? JSON.stringify(value, (nestedKey, nestedValue) => SECRET.test(nestedKey) ? undefined : nestedValue)
+      : String(value);
     if (text.length > 80) continue;
     parts.push(`${key}=${text}`);
   }

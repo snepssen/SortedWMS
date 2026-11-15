@@ -1,5 +1,11 @@
 # Changelog
 
+## Photos survive a backup restore
+
+Plain, encrypted local and off-site backups include item image bytes as well as photo metadata. Restoring on a new machine works without the original photo directory, and the restored images survive another backup. Missing or damaged source images fail the backup before old copies are pruned. Restoring also clears the secondary warehouse cache so open screens use restored state immediately.
+
+User audit exports remove password, token and similar fields inside nested objects and arrays as well as top-level fields.
+
 ## Restore the merged module wiring
 
 Item photos, bills of materials and the user audit keep their engine installers, role permissions and office navigation together after the merges. Photos can be uploaded again, office users can build kits, and managers and administrators can open the audit export. The audit follows the selected warehouse and its local timezone; account sign-in events remain shared. Client logins without a linked client cannot read photos or statements.

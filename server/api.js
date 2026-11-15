@@ -286,7 +286,7 @@
       const row = ((wh().itemPhotos || {})[item.itemNo] || []).find((p) => p.id === decodeURIComponent(id));
       if (!row) return { status: 404, error: 'No photo' };
       const photos = photosLib();
-      const buf = photos && photos.read(photos.dir(store), item.itemNo, row.id, row.type);
+      const buf = photos && photos.readStored(store, item.itemNo, row.id, row.type);
       if (!buf) return { status: 404, error: 'No photo' };
       return { contentType: photos.mime(row.type), raw: buf };
     });

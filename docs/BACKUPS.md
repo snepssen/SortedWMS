@@ -10,6 +10,10 @@ Switching the module off stops new copies. It does not delete ones already sent.
 
 The encrypted file is the whole database, taken with SQLite `VACUUM INTO` while the floor keeps working. It includes users and their **password hashes**, the same as the local `.db` copy and the JSON export from Settings. It does not include the passphrase, and it does not include S3 or WebDAV credentials.
 
+Plain `.db` backups, encrypted local copies and off-site backups also include the item photos referenced by the warehouse history, including other warehouses and photos whose module is switched off. A restored database serves those images directly, so copying the original `item-photos` directory to the new machine is not required. Further backups keep the restored images too. The Settings JSON export contains photo metadata, but does not include image files.
+
+If a referenced image is missing or damaged, the backup fails and keeps the previous successful copies. Older backups made before image inclusion cannot recover images they never contained; keep their original photo directory if it is still available.
+
 Treat a backup like the live database. Anyone who can decrypt it can read the hashes.
 
 ## The local daily copy
