@@ -1,41 +1,46 @@
 /* Shared surfaces and controls for warehouse screens. */
 :root {
-  --bg: #f0f4f5;
+  /* Shape: square and flat. Every screen takes its corners, depth and
+     code typeface from these, so the look changes here and nowhere else. */
+  --r: 2px;
+  --shadow: none;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: #eaedef;
   --card: #fff;
   --field: #fff;
-  --line: #cbd6da;
-  --ink: #172e38;
-  --dim: #4d626c;
-  --chip: #e7eef0;
-  --acc: #126576;
+  --line: #89959c;
+  --rule: #c5cdd1;
+  --ink: #0f1a1f;
+  --dim: #43525a;
+  --chip: #dae0e3;
+  --acc: #0e5a69;
   --on-acc: #fff;
-  --ok: #12653e;
-  --warn: #855500;
-  --bad: #aa302d;
+  --ok: #0f5c38;
+  --warn: #7a4e00;
+  --bad: #a32a27;
   --on-bad: #fff;
-  --shadow: 0 2px 6px rgb(22 49 61 / 5%);
 }
 :root[data-theme="dark"] {
-  --bg: #10191e;
-  --card: #1a272e;
-  --field: #142027;
-  --line: #384b55;
-  --ink: #edf4f6;
-  --dim: #a9bcc5;
-  --chip: #263941;
+  --bg: #0d1114;
+  --card: #171c20;
+  --field: #0d1114;
+  --line: #5b6870;
+  --rule: #2c363c;
+  --ink: #f1f4f5;
+  --dim: #a8b4bb;
+  --chip: #262e33;
   --acc: #78d3df;
   --on-acc: #092229;
   --ok: #7cdda7;
   --warn: #ffc169;
   --bad: #ff958e;
   --on-bad: #30120f;
-  --shadow: 0 2px 6px rgb(0 0 0 / 14%);
 }
 :focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
 :where(input, select, button, textarea) { max-width: 100%; }
 :where(input, progress) { accent-color: var(--acc); }
 :where(button:disabled) { cursor: default; }
-h1, h2 { letter-spacing: -.025em; }
+h1, h2 { letter-spacing: 0; font-weight: 800; }
 :where(summary, button, a) { touch-action: manipulation; }
 :where(header, .card, section, .sheet) { min-width: 0; }
 header { background: var(--card); }
@@ -48,7 +53,7 @@ select[data-theme-picker] {
   color: var(--ink);
   background-color: var(--field);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r);
   padding: .4em .55em;
 }
 @media (hover: hover) {
@@ -57,6 +62,26 @@ select[data-theme-picker] {
     outline-offset: -2px;
   }
 }
+/* A press answers at once: the control inverts for as long as it is held.
+   No screen fades or slides anything. */
+button:not(:disabled):active, a.btn:active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+  outline: 0;
+}
+:where(input, select, textarea):focus { border-color: var(--ink); }
+/* An answer is a block with a solid edge in its own colour. */
+body .msg:is(.ok, .bad, .warn) { border-inline-start: 5px solid currentColor; }
+body .tag {
+  background: none;
+  border: 1px solid currentColor;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 11px;
+  line-height: 1.5;
+}
+:where(code, .code, .kpi b, td.value) { font-family: var(--mono); }
 
 /* Office workspaces share navigation, metrics and dense data tables. */
 .workspace header { gap: 8px 14px; border-bottom: 1px solid var(--line); }
@@ -77,14 +102,27 @@ select[data-theme-picker] {
   font-weight: 600;
 }
 .workspace #nav button.on {
-  background: var(--chip);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
   box-shadow: inset 0 -3px var(--acc);
 }
 .workspace .table { overflow-x: auto; }
-.workspace th { background: var(--chip); color: var(--ink); }
+.workspace th {
+  background: var(--chip);
+  color: var(--ink);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 2px solid var(--ink);
+}
 .workspace th, .workspace td { padding: 8px 10px; }
-.workspace .kpi { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; }
+.workspace td { border-bottom-color: var(--rule); }
+.workspace label { text-transform: uppercase; letter-spacing: .05em; font-size: 11px; font-weight: 600; }
+.workspace :is(.checks, .workspace-options) label { text-transform: none; letter-spacing: 0; }
+/* A tick box names data (a category, a client), so it keeps its own spelling. */
+.workspace label:has(> :is(input[type="checkbox"], input[type="radio"])) { text-transform: none; letter-spacing: 0; }
+.workspace .kpi { background: var(--card); border: 1px solid var(--line); border-inline-start: 4px solid var(--acc); padding: 12px 14px; }
+.workspace .kpi span { text-transform: uppercase; letter-spacing: .05em; font-size: 11px; font-weight: 600; }
 .workspace .kpi b { font-size: 1.8rem; line-height: 1.2; margin-bottom: 4px; }
 .workspace section h2 { font-size: 1.1rem; line-height: 1.3; }
 .workspace .form :is(label, input, select) { min-width: 0; max-width: 100%; }

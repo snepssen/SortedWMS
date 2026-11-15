@@ -11,11 +11,11 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; }
-  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-height: 48px; cursor: pointer; }
+  button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; min-height: 48px; cursor: pointer; }
   button.primary { background: var(--acc); border-color: var(--acc); color: var(--on-acc); font-weight: 700; }
   button.bad { border-color: var(--bad); color: var(--bad); }
   button:disabled { opacity: .4; }
-  input, select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 12px; width: 100%; }
+  input, select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; width: 100%; }
   header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
   header .id { font-weight: 800; font-size: 20px; }
   header .who { color: var(--dim); font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -24,7 +24,7 @@
   .modes button { flex: 0 0 auto; min-height: 42px; padding: 8px 12px; font-size: 15px; }
   .modes button.on { background: var(--ink); color: var(--bg); font-weight: 700; }
   main { flex: 1; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; }
   .kicker { color: var(--dim); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
   .kicker.urgent { color: var(--warn); }
   .big { font: 800 52px/1.05 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .02em; margin: 6px 0 2px; word-break: break-all; }
@@ -34,9 +34,9 @@
   .pallet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 15px; }
   .pallet dt { color: var(--dim); }
   .pallet dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-  .msg { border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 18px; white-space: pre-line; }
+  .msg { border-radius: var(--r); padding: 12px 14px; font-weight: 700; font-size: 18px; white-space: pre-line; }
   .lines { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
-  .lines li { padding: 6px 8px; background: var(--field); border-radius: 8px; word-break: break-word; }
+  .lines li { padding: 6px 8px; background: var(--field); border-radius: var(--r); word-break: break-word; }
   .lines li:first-child { background: none; padding: 0 0 2px; color: var(--dim); }
   .belongs { margin-top: 8px; font-size: 15px; color: var(--dim); }
   .belongs .where { display: block; font: 800 34px/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink); }
@@ -46,7 +46,7 @@
   .stack { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
   .stack ul { list-style: none; margin: 4px 0 0; padding: 0; }
   .stack li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-weight: 600; }
-  .cust { margin-top: 8px; border-left: 4px solid var(--warn); background: rgba(255, 176, 32, .1); border-radius: 6px; padding: 6px 10px; color: var(--warn); font-weight: 700; }
+  .cust { margin-top: 8px; border-left: 4px solid var(--warn); background: rgba(255, 176, 32, .1); border-radius: var(--r); padding: 6px 10px; color: var(--warn); font-weight: 700; }
   .cust div { font-weight: 600; color: var(--ink); }
   .card.armed { border: 2px solid var(--warn); background: rgba(255, 176, 32, .12); }
   .card.armed .mid { color: var(--warn); font-size: 26px; }
@@ -66,7 +66,7 @@
   .setup { max-width: 440px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 10px; padding: 16px 12px; }
   .setup label { font-size: 14px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
   .cats { display: flex; gap: 6px; flex-wrap: wrap; }
-  .cats label { flex-direction: row; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink); font-size: 16px; }
+  .cats label { flex-direction: row; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; color: var(--ink); font-size: 16px; }
   .cats input { width: auto; }
   .offline { background: var(--bad); color: var(--on-bad); text-align: center; font-weight: 700; padding: 6px; display: none; }
   .offline.on { display: block; }
@@ -90,7 +90,7 @@
     .modes { padding: 4px 32px 4px 10px; gap: 4px; }
     .modes button { min-height: 34px; padding: 4px 9px; font-size: 13px; }
     main { padding: 2px 8px 8px; gap: 6px; }
-    .card { padding: 9px 11px; border-radius: 12px; }
+    .card { padding: 9px 11px; border-radius: var(--r); }
     .kicker { font-size: 12px; }
     .big { font-size: 40px; margin: 2px 0 0; }
     .mid { font-size: 18px; margin: 2px 0; }
@@ -105,7 +105,7 @@
   summary { cursor:pointer; padding:12px; min-height:44px; box-sizing:border-box; }
   #syncReview:not([hidden]) { padding:12px; border:2px solid var(--warn); }
   .stack li { align-items: baseline; flex-wrap: wrap; gap: 2px 12px; padding: 6px 8px; border-inline-start: 3px solid transparent; overflow-wrap: anywhere; }
-  .stack li.current { border-color: var(--acc); background: var(--chip); border-radius: 4px; }
+  .stack li.current { border-color: var(--acc); background: var(--chip); border-radius: var(--r); }
   .stack li > :last-child { margin-inline-start: auto; text-align: end; }
   .handoff { background: var(--chip); border-inline-start: 4px solid var(--acc); }
   .modePicker > summary { color: var(--dim); }

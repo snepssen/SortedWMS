@@ -1,5 +1,13 @@
 # Changelog
 
+## Square, flat screens
+
+Every screen has square corners, no drop shadows and stronger borders. Corners, depth and the code typeface are set once in `server/public/ui.css` (`--r`, `--shadow`, `--mono`); each screen reads them, so the look changes in one place. The greys are neutral and darker where they draw a border, in light and dark.
+
+A button inverts for as long as it is pressed. Table headers, field captions, KPI captions and tags are small capitals; a tick box keeps the spelling of what it names. KPI numbers use the code typeface. An answer to a scan carries a solid edge in its own colour.
+
+Printed labels and the command card keep their corners.
+
 ## Photos survive a backup restore
 
 Plain, encrypted local and off-site backups include item image bytes as well as photo metadata. Restoring on a new machine works without the original photo directory, and the restored images survive another backup. Missing or damaged source images fail the backup before old copies are pruned. Restoring also clears the secondary warehouse cache so open screens use restored state immediately.

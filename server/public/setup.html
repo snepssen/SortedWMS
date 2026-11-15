@@ -15,26 +15,26 @@
   header h1 { font-size: 20px; margin: 0; }
   header a { color: var(--acc); }
   main { max-width: 980px; margin: 0 auto; padding: 18px; display: grid; gap: 14px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; }
   h2 { margin: 0 0 6px; font-size: 18px; }
   .hint { color: var(--dim); margin: 0 0 10px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-  .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--field); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+  .card { border: 1px solid var(--line); border-radius: var(--r); padding: 12px; background: var(--field); text-align: left; cursor: pointer; font: inherit; color: inherit; }
   .card.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
   .card b { display: block; margin-bottom: 4px; }
   .examples { display: grid; gap: 8px; }
   .ex { display: grid; grid-template-columns: 180px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .ex code { font: 700 18px ui-monospace, monospace; }
-  button, .btn { font: inherit; color: var(--ink); border: 1px solid var(--line); background: var(--field); border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button, .btn { font: inherit; color: var(--ink); border: 1px solid var(--line); background: var(--field); border-radius: var(--r); padding: 8px 12px; cursor: pointer; }
   button.primary { background: var(--acc); color: var(--on-acc); border-color: var(--acc); font-weight: 700; }
   label { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
   .level { display: grid; grid-template-columns: 110px 90px 140px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
-  input, select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-  .preview { font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: 8px; padding: 10px; min-height: 3em; }
-  .msg { padding: 8px 10px; border-radius: 8px; background: var(--good-bg); }
+  input, select { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 8px; }
+  .preview { font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: var(--r); padding: 10px; min-height: 3em; }
+  .msg { padding: 8px 10px; border-radius: var(--r); background: var(--good-bg); }
   .msg.bad { background: var(--bad-bg); }
   .steps { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 12px; }
-  .steps span { flex: 1 1 18px; height: 5px; border-radius: 3px; background: var(--line); }
+  .steps span { flex: 1 1 18px; height: 5px; border-radius: var(--r); background: var(--line); }
   .steps span.done { background: var(--done); }
   .steps span.now { background: var(--acc); }
   .q { min-height: 220px; }
@@ -56,7 +56,7 @@
   .pick button.on { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); font-weight: 700; }
   .pick small { display: block; color: var(--dim); font-weight: 400; }
   .nav { display: flex; gap: 8px; margin-top: 14px; }
-  .codes { margin-top: 14px; font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: 8px; padding: 10px 12px; }
+  .codes { margin-top: 14px; font: 15px/1.5 ui-monospace, monospace; background: var(--soft); border-radius: var(--r); padding: 10px 12px; }
   .codes .label { font: 13px system-ui, sans-serif; color: var(--dim); }
   .codes.bad { background: var(--bad-bg); font-family: system-ui, sans-serif; }
   .review { width: 100%; border-collapse: collapse; font-size: 15px; }

@@ -28,15 +28,15 @@
   header h1 { font-size: 18px; margin: 0; }
   header .who { color: var(--dim); }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
-  nav button, button, .btn { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 8px; padding: 7px 11px; cursor: pointer; text-decoration: none; }
+  nav button, button, .btn { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: var(--r); padding: 7px 11px; cursor: pointer; text-decoration: none; }
   nav button.on { background: var(--acc); color: var(--on-acc); border-color: var(--acc); }
   button.primary { background: var(--acc); color: var(--on-acc); border-color: var(--acc); font-weight: 700; }
   main { padding: 16px; max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; min-width: 0; }
   h2 { font-size: 16px; margin: 0 0 8px; }
   .hint, .dim { color: var(--dim); }
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-  .kpi { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .kpi { background: var(--bg); border-radius: var(--r); padding: 10px 12px; }
   .kpi b { display: block; font-size: 26px; }
   .kpi span { color: var(--dim); font-size: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -47,12 +47,12 @@
   .form.stack > label { display: inline-flex; flex-direction: column; margin: 8px 8px 0 0; }
   .rma { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
   label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim); }
-  input, select, textarea { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 8px; }
   textarea { min-height: 64px; width: 100%; }
-  .msg { padding: 8px 10px; border-radius: 8px; background: var(--chip); }
+  .msg { padding: 8px 10px; border-radius: var(--r); background: var(--chip); }
   .msg.bad { color: var(--bad); }
   .msg.ok { color: var(--ok); }
-  .tag { display: inline-block; padding: 1px 6px; border-radius: 5px; background: var(--chip); font-size: 12px; font-weight: 700; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: var(--r); background: var(--chip); font-size: 12px; font-weight: 700; }
   .tag.bad { color: var(--bad); } .tag.warn { color: var(--warn); }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   .job { font-size: 20px; }
@@ -63,7 +63,7 @@
   a { color: var(--acc); }
   #pairBtn.on { background: var(--acc); color: var(--on-acc); border-color: var(--acc); }
   .pair { display: grid; grid-template-columns: auto 1fr; gap: 20px 28px; align-items: start; }
-  .pair .qr { background: #fff; padding: 12px; border-radius: 12px; line-height: 0; }
+  .pair .qr { background: #fff; padding: 12px; border-radius: var(--r); line-height: 0; }
   .pair .qr svg { width: 232px; height: 232px; }
   .pair .code { font: 700 34px/1.1 ui-monospace, Menlo, monospace; letter-spacing: 4px; margin: 2px 0 6px; }
   .pair ol { margin: 0 0 10px; padding-left: 20px; }
@@ -77,8 +77,8 @@
 
   }
   .workspace-options { margin-inline-start: auto; position: relative; }
-  .workspace-options summary { cursor: pointer; padding: 8px 12px; border-radius: 8px; background: var(--chip); font-weight: 600; }
-  .workspace-options > div { position: absolute; right: 0; top: 100%; z-index: 4; margin-top: 6px; width: min(16rem, 92vw); padding: 12px; display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .workspace-options summary { cursor: pointer; padding: 8px 12px; border-radius: var(--r); background: var(--chip); font-weight: 600; }
+  .workspace-options > div { position: absolute; right: 0; top: 100%; z-index: 4; margin-top: 6px; width: min(16rem, 92vw); padding: 12px; display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
   .workspace-options :is(a, button) { text-align: start; }
   .workspace-options label { display: flex; align-items: center; justify-content: space-between; }
   #demoBar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; background: var(--chip); }
