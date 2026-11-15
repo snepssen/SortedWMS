@@ -14,6 +14,12 @@ A button inverts for as long as it is pressed. Table headers, field captions, KP
 
 Printed labels and the command card keep their corners.
 
+## JSON backups keep module state
+
+JSON exports include persistent module tables alongside the original version-1 fields. Imports restore shop mappings, shipment retry state, alerts and other installed module data together with warehouse history. They clear newer module rows absent from the export, validate table and column names and binary values, and roll back on database constraint failures. Older version-1 exports still import without retaining unrelated newer module state. Photo bytes remain in `.db` and encrypted backups.
+
+All restore formats invalidate existing sessions, MFA challenges and pairing attempts, including those saved in the backup. Users can sign in again with their restored credentials. Backup creation leaves current logins alone.
+
 ## Photos survive a backup restore
 
 Plain, encrypted local and off-site backups include item image bytes as well as photo metadata. Restoring on a new machine works without the original photo directory, and the restored images survive another backup. Missing or damaged source images fail the backup before old copies are pruned. Restoring also clears the secondary warehouse cache so open screens use restored state immediately.

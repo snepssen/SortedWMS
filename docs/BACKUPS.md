@@ -16,6 +16,16 @@ If a referenced image is missing or damaged, the backup fails and keeps the prev
 
 Treat a backup like the live database. Anyone who can decrypt it can read the hashes.
 
+## JSON exports
+
+The version-1 JSON export keeps its original warehouse, user and upgrade fields. New exports also contain `moduleTables`: persistent module data such as shop connections and SKU mappings, shipment retry queues and cursors, alert state, API-key hashes and authentication history. Switching a module off does not remove its data from the export. Image bytes and credentials saved in separate secrets files are not included.
+
+Import into an installation with the same modules installed. Unknown tables or columns and invalid binary encodings are refused before rows are replaced; the importer never executes schemas supplied in JSON. A database constraint failure rolls the import back, including its authentication changes.
+
+Older version-1 exports without `moduleTables` still import. Module data that was never exported cannot be recovered from them. Existing module rows absent from the export are cleared so they cannot be mixed with the restored warehouse history. Existing image files and images already recovered from a database backup remain available to matching photo metadata.
+
+Every successful restore, whether JSON, plain `.db` or encrypted, invalidates browser and scanner sessions, pending MFA challenges and unused pairing codes. Sign in or pair devices again. Users, their saved credentials and persistent API-key records are restored; creating a backup does not sign out the running warehouse.
+
 ## The local daily copy
 
 Three choices, on the Backups page:

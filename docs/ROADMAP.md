@@ -18,10 +18,9 @@ Nothing else should start before these. They are small, and each one closes a kn
 
 | # | Item | Size | Done when |
 | --- | --- | --- | --- |
-| 0.1 | **Land the JSON backup fix** on `fix/json-backup-module-state`. | S | Merged with its tests |
-| 0.2 | **Check on real devices.** The bin handheld with no connection at all on a phone. The camera scanner with a real camera. A scanner gun on `/handheld`, `/keys` and the telnet terminal. A Zebra label printer on TCP 9100. | M | Each is tried, and what broke is fixed or written down in [HARDWARE.md](HARDWARE.md) |
-| 0.3 | **Say what is wrong, in plain words.** Empty requests to `/api/boms`, `/api/items` and `/api/reports/invoice` answer "Unknown item undefined". The four `/api/import` routes answer "rows is not iterable", and an unknown station answers "Cannot read properties of undefined". | S | Each names the missing field or the thing not found |
-| 0.4 | **A written shift.** One page that walks a person through a whole day on the sample 3PL: receive, put away, wave, pick, pack, load, count, return, invoice. Work it by hand once. | M | The page exists, and every step was done on the screens without the API |
+| 0.1 | **Check on real devices.** The bin handheld with no connection at all on a phone. The camera scanner with a real camera. A scanner gun on `/handheld`, `/keys` and the telnet terminal. A Zebra label printer on TCP 9100. | M | Each is tried, and what broke is fixed or written down in [HARDWARE.md](HARDWARE.md) |
+| 0.2 | **Say what is wrong, in plain words.** Empty requests to `/api/boms`, `/api/items` and `/api/reports/invoice` answer "Unknown item undefined". The four `/api/import` routes answer "rows is not iterable", and an unknown station answers "Cannot read properties of undefined". | S | Each names the missing field or the thing not found |
+| 0.3 | **A written shift.** One page that walks a person through a whole day on the sample 3PL: receive, put away, wave, pick, pack, load, count, return, invoice. Work it by hand once. | M | The page exists, and every step was done on the screens without the API |
 
 ## Phase 1: ready for a real warehouse
 
@@ -148,6 +147,7 @@ Only when one install is not enough.
 
 **Running it**
 - `./start.sh` with no Docker and no packages, daily backups and restore, sample warehouses, a journal that is both the audit trail and the way state is rebuilt.
+- JSON backups that keep module state, and a restore that signs everyone out.
 - Encrypted off-site backups: AES-256-GCM with a passphrase, a daily time or an interval in the warehouse timezone, retention of daily, weekly and monthly copies, and a folder, S3-compatible bucket or WebDAV target. A failure is journaled and, when Alerts is on, raised there. The file includes password hashes; the passphrase does not. See [BACKUPS.md](BACKUPS.md).
 - Versioned data upgrades on start and on backup import: core steps, then each module's own steps, a backup taken first, a log of every step, and a rollback if a step fails. See [UPGRADES.md](UPGRADES.md).
 - A module manifest per feature in `modules/`: id, dependencies, conflicts, permissions, routes, menu entries, settings and its own data upgrades. A third-party folder (`SORTED_MODULES`) is loaded the same way, with no network install. See [MODULES.md](MODULES.md).

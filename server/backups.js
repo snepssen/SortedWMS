@@ -74,15 +74,24 @@ function inspect(file) {
 function restore(file, dbFile, { now = Date.now() } = {}) {
   if (!fs.existsSync(file)) throw new Error(`No backup at ${file}`);
   const found = inspect(file);
-  let kept = null;
-  if (fs.existsSync(dbFile)) {
-    kept = `${dbFile}.before-restore-${stamp(now)}`;
-    fs.copyFileSync(dbFile, kept);
-  }
-  for (const side of ['-wal', '-shm']) fs.rmSync(dbFile + side, { force: true });
   fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  fs.copyFileSync(file, dbFile);
-  return { restored: file, into: dbFile, kept, ...found };
+  const scratch = fs.mkdtempSync(path.join(path.dirname(dbFile), '.sorted-restore-'));
+  try {
+    const staged = path.join(scratch, 'restore.db');
+    fs.copyFileSync(file, staged);
+    const db = new DatabaseSync(staged);
+    try { require('./backup-state').clearTransient(db); } finally { db.close(); }
+    let kept = null;
+    if (fs.existsSync(dbFile)) {
+      kept = `${dbFile}.before-restore-${stamp(now)}`;
+      fs.copyFileSync(dbFile, kept);
+    }
+    for (const side of ['-wal', '-shm']) fs.rmSync(dbFile + side, { force: true });
+    fs.copyFileSync(staged, dbFile);
+    return { restored: file, into: dbFile, kept, ...found };
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /**

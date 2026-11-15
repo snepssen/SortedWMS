@@ -858,6 +858,7 @@ function decodeXml(value) {
 }
 
 function copyDatabase(store, file) {
+  const { TRANSIENT } = require('./backup-state');
   const src = new DatabaseSync(file, { readOnly: true });
   const sourceTables = src.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
   const destinationTables = store.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
@@ -871,7 +872,7 @@ function copyDatabase(store, file) {
       const from = src.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
       if (!dest && from) db.exec(sourceTables.find((t) => t.name === name).sql);
       db.exec(`DELETE FROM ${quote(name)}`);
-      if (!from) continue;
+      if (!from || TRANSIENT.includes(name)) continue;
       const rows = src.prepare(`SELECT * FROM ${quote(name)}`).all();
       if (!rows.length) continue;
       const have = new Set(db.prepare(`PRAGMA table_info(${quote(name)})`).all().map((col) => col.name));
