@@ -177,6 +177,23 @@
       printers.flush(wh().printQueue);
       return result;
     };
+    /** The rows of an import: the body itself as a list, or its `rows`. Anything else is refused in words. */
+    const listOf = (b) => {
+      const rows = Array.isArray(b) ? b : b && b.rows;
+      if (!Array.isArray(rows)) throw new Error('rows is required: send a list of rows');
+      return rows;
+    };
+    /** A job number from the address. Anything that is not a number is refused as it was typed. */
+    const jobNo = (taskId) => {
+      const n = Number(taskId);
+      if (!Number.isInteger(n)) throw new Error(`No job #${taskId}`);
+      return n;
+    };
+    /** "Unknown item undefined" names nothing: say what was left out instead. */
+    const plain = (message) => {
+      const m = /^Unknown ([a-z][a-z -]*?) (?:undefined|null)$/i.exec(String(message || ''));
+      return m ? `No ${m[1]} given` : message;
+    };
     let currentActor = null;
     let rawBody = '';
     let webhookHeader = '';
@@ -411,9 +428,9 @@
     on('POST', '/api/recalls', (_, q, b, by) => run('placeBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
     on('POST', '/api/recalls/release', (_, q, b, by) => run('releaseBatchHold', { itemNo: b.itemNo, batch: b.batch, reason: b.reason }, by));
     on('POST', '/api/config', (_, q, b, by) => run('setConfig', { patch: b }, by));
-    on('POST', '/api/tasks/:taskId/urgent', ({ taskId }, q, b, by) => run('setUrgent', { taskId: Number(taskId), urgent: b.urgent !== false }, by));
-    on('POST', '/api/tasks/:taskId/cancel', ({ taskId }, q, b, by) => run('cancelTask', { taskId: Number(taskId) }, by));
-    on('POST', '/api/tasks/:taskId/release', ({ taskId }, q, b, by) => run('releaseTask', { taskId: Number(taskId) }, by));
+    on('POST', '/api/tasks/:taskId/urgent', ({ taskId }, q, b, by) => run('setUrgent', { taskId: jobNo(taskId), urgent: b.urgent !== false }, by));
+    on('POST', '/api/tasks/:taskId/cancel', ({ taskId }, q, b, by) => run('cancelTask', { taskId: jobNo(taskId) }, by));
+    on('POST', '/api/tasks/:taskId/release', ({ taskId }, q, b, by) => run('releaseTask', { taskId: jobNo(taskId) }, by));
     on('POST', '/api/transfer', (_, q, b, by) => run('transferPallet', b, by));
     on('POST', '/api/template/apply', (_, q, b, by) => {
       const r = run('applyTemplate', b, by);
@@ -446,11 +463,11 @@
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
-      return run('importItems', { rows: b.rows || b }, by);
+      return run('importItems', { rows: listOf(b) }, by);
     });
-    on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: b.rows || b }, by));
-    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: b.rows || b, planOnce: true }, by));
-    on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: b.rows || b }, by));
+    on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: listOf(b) }, by));
+    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: listOf(b), planOnce: true }, by));
+    on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: listOf(b) }, by));
 
     // Clients, items, locations, holders, labels, equipment, reports.
     const clientView = (c) => {
@@ -870,10 +887,10 @@
       try {
         const out = route.fn(url.pathname.match(route.re).groups || {}, Object.fromEntries(url.searchParams), body || {}, by);
         // Asking a printer goes over the network: those routes answer with a promise.
-        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: e.status || 400, body: { error: e.message } }));
+        if (out && typeof out.then === 'function') return out.then(answer, (e) => ({ status: e.status || 400, body: { error: plain(e.message) } }));
         return answer(out);
       } catch (e) {
-        return { status: e.status || 400, body: { error: e.message } };
+        return { status: e.status || 400, body: { error: plain(e.message) } };
       }
     }
 

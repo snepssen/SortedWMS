@@ -10,10 +10,11 @@ const site = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site.j
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'server', f), 'utf8');
 
 // A route that names something its file never declared answers with one of
-// these. A merge that drops a parameter or a helper shows up here. An empty
-// request that is refused in clumsy words ("rows is not iterable") is not
-// wiring, and is left to the routes' own tests.
+// these. A merge that drops a parameter or a helper shows up here.
 const BROKEN = /is not defined|is not a function|before initialization/;
+// An empty request is refused in words a person can act on, not in the
+// engine's own ("rows is not iterable", "Unknown item undefined").
+const CLUMSY = /is not iterable|Cannot read propert|Cannot destructure|\b(undefined|null|NaN|\[object Object\])\b/;
 
 /** The names in `function <fn>({ a, b = null })`, and in a call `<fn>({ a, b })`. */
 function names(text) {
@@ -28,7 +29,7 @@ function calls(source, fn) {
   return [...source.matchAll(new RegExp(`(?<!function )\\b${fn}\\(\\{([^}]*)\\}\\)`, 'g'))].map((m) => names(m[1]));
 }
 
-test('every route answers without naming something its file never declared', async () => {
+test('every route answers an empty request in plain words, and names nothing its file never declared', async () => {
   const store = new Store({ site });
   try {
     // No optional service is passed: a route for one says so, it does not fall over.
@@ -37,14 +38,17 @@ test('every route answers without naming something its file never declared', asy
     assert.ok(routes.length > 150, `the route list is whole (${routes.length})`);
     const actor = { username: 'admin', role: 'administrator', name: 'Administrator' };
     const broken = [];
+    const clumsy = [];
     for (const { method, pattern } of routes) {
       const url = pattern.replace(/:(\w+)/g, 'x');
       let out;
       try { out = await api.handle(method, url, {}, 'admin', null, actor); } catch (e) { out = { status: 500, body: { error: e.message } }; }
       const error = out && out.body && typeof out.body === 'object' ? String(out.body.error || '') : '';
       if ((out && out.status >= 500) || BROKEN.test(error)) broken.push(`${method} ${pattern}: ${out.status} ${error}`);
+      else if (CLUMSY.test(error)) clumsy.push(`${method} ${pattern}: ${error}`);
     }
     assert.deepEqual(broken, []);
+    assert.deepEqual(clumsy, [], 'an empty request is refused in plain words');
   } finally { store.close(); }
 });
 
