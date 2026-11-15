@@ -2516,9 +2516,15 @@
       return out;
     }
 
-    static restore(state, { clock } = {}) {
+    /**
+     * A warehouse from saved state. The state is copied first, so the caller's
+     * objects stay its own. A caller that has just parsed the state and keeps
+     * no other reference passes `owned` and saves that copy: on a large
+     * warehouse it is most of the time a restart takes.
+     */
+    static restore(state, { clock, owned = false } = {}) {
       const wh = Object.create(Warehouse.prototype);
-      Object.assign(wh, JSON.parse(JSON.stringify(state)));
+      Object.assign(wh, owned ? state : JSON.parse(JSON.stringify(state)));
       wh.clock = clock || (() => Date.now());
       wh.clients = wh.clients || {};
       wh.holders = wh.holders || {};

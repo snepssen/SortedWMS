@@ -1,5 +1,11 @@
 # Changelog
 
+## Faster restarts, and fewer snapshots kept
+
+Loading a snapshot made a second full copy of the state it had just parsed. That copy is gone. On the load test (14,000 locations, 3,000 orders) a restart from a snapshot goes from 92 ms to 37 ms, and a refused command, which reloads the warehouse, from 157 ms to 77 ms. At twice that size a restart takes 72 ms.
+
+Two snapshots are kept instead of five: only the newest was ever read, and each is a copy of the whole state, so the database and every backup of it get smaller. If the newest cannot be read, the one before it is used and the journal fills the gap; if neither can, the journal alone rebuilds the warehouse. Health figures say when a snapshot was passed over.
+
 ## Password rules
 
 An administrator sets a shortest password (8 to 64 characters), how many earlier passwords are refused (0 to 24), and after how many days a password must be changed (0 is never), under Users or at `/api/password-rules`. The rules apply to new users, to a password set for someone else, and to a change of one's own. A password older than the limit still signs in and must then be changed. Only hashes of earlier passwords are kept; they and the rules are in every kind of backup. A new install starts as before: 8 characters, no history, no expiry. See [ACCOUNTS.md](ACCOUNTS.md).
