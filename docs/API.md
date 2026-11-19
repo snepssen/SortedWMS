@@ -2,7 +2,7 @@
 
 Every route the server answers. This page is built from the route tables by `npm run api-reference`; a test fails when it is out of date. Do not edit it by hand.
 
-345 routes: 133 read, 212 change something. 9 need no sign-in.
+359 routes: 137 read, 222 change something. 9 need no sign-in.
 
 ## How to call it
 
@@ -124,6 +124,25 @@ Every route the server answers. This page is built from the route tables by `npm
 | GET | `/api/checks` | `stock.read` | every role |  | — | the handler's value |
 | POST | `/api/checks` | `stock.check` | administrator, manager, office, picker, stock |  | body loc*, itemNo, orderId, note, by | the command result |
 | POST | `/api/checks/:id/close` | `stock.adjust` | administrator, manager, stock |  | path id; body id*, outcome, note, by | the command result |
+
+## client-items
+
+| Method | Route | Permission | Roles | Module | Request | Response |
+| --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/client-items` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query q, status, flagged, client | single, ownerClient, photos, items |
+| POST | `/api/client-items` | `items.write` | administrator, manager, office, client | client-items | body clientId, status, overrideReason, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value, description | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body clientId, overrideReason, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, description, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo/archive` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body reason, overrideReason | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo/flag` | `client-items.flag` | administrator, manager, office, inbound, stock | client-items | path itemNo; body note | result of hideValue |
+| POST | `/api/client-items/:itemNo/remove` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body reason, overrideReason | file, bytes, sha256, targets, summary |
+| POST | `/api/client-items/:itemNo/resolve` | `items.write` | administrator, manager, office, client | client-items | path itemNo | result of hideValue |
+| GET | `/api/client-items/movers` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query from, to, client, pace | itemNo, name, clientId, unitsOut, orderLines, daysSince, lastMovement, pace, from, to, timeZone, asOf, rows |
+| GET | `/api/client-items/movers.csv` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query from, to, client, pace | csv |
+| GET | `/api/client-items/removals` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query client, status | the handler's value |
+| POST | `/api/client-items/removals` | `items.write` | administrator, manager, office, client | client-items | body itemNo, qty, kind, reason | the command result |
+| POST | `/api/client-items/removals/:id/cancel` | `items.write` | administrator, manager, office, client | client-items | path id | the command result |
+| POST | `/api/client-items/removals/:id/confirm` | `client-items.remove` | administrator, manager, office, stock | client-items | path id | the command result |
+| POST | `/api/client-items/removals/:id/start` | `client-items.remove` | administrator, manager, office, stock | client-items | path id | the command result |
 
 ## clients
 
@@ -291,7 +310,7 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/import/items` | `wms.write` | administrator, manager, office |  | — | the command result |
+| POST | `/api/import/items` | `wms.write` | administrator, manager, office |  | body reason | the command result |
 | POST | `/api/import/locations` | `wms.write` | administrator, manager, office |  | — | the command result |
 | POST | `/api/import/orders` | `wms.write` | administrator, manager, office |  | — | the command result |
 | POST | `/api/import/stock` | `wms.write` | administrator, manager, office |  | — | the command result |
@@ -313,14 +332,14 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/items` | `items.read` | administrator, manager, office, inbound, picker, stock, client |  | — | the handler's value |
-| POST | `/api/items` | `items.write` | administrator, manager, office, client |  | body clientId, status, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value | the command result |
-| POST | `/api/items/:itemNo` | `items.write` | administrator, manager, office, client |  | path itemNo; body clientId, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | the command result |
+| POST | `/api/items` | `items.write` | administrator, manager, office, client |  | body clientId, status, overrideReason, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value, description | the command result |
+| POST | `/api/items/:itemNo` | `items.write` | administrator, manager, office, client |  | path itemNo; body clientId, overrideReason, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, description, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | the command result |
 | POST | `/api/items/:itemNo/approve` | `items.approve` | administrator, manager, office |  | path itemNo | the command result |
-| POST | `/api/items/:itemNo/archive` | `items.write` | administrator, manager, office, client |  | path itemNo | the command result |
+| POST | `/api/items/:itemNo/archive` | `items.write` | administrator, manager, office, client |  | path itemNo; body reason, overrideReason | the command result |
 | POST | `/api/items/:itemNo/min-ship-days` | `wms.write` | administrator, manager, office | lots | path itemNo; body days | the command result |
 | POST | `/api/items/:itemNo/photos` | `photos.write` | administrator, manager, office, client | photos | path itemNo; body data, name | file, bytes, sha256, targets, summary |
 | GET | `/api/items/:itemNo/photos/:id` | `photos.read` | administrator, manager, office, client | photos | path itemNo, id | contentType, raw |
-| POST | `/api/items/:itemNo/remove` | `items.write` | administrator, manager, office, client |  | path itemNo | the command result |
+| POST | `/api/items/:itemNo/remove` | `items.write` | administrator, manager, office, client |  | path itemNo; body reason, overrideReason | the command result |
 | POST | `/api/items/:itemNo/serials` | `items.write` | administrator, manager, office, client | serials | path itemNo; body on | the command result |
 | POST | `/api/items/:itemNo/units` | `items.write` | administrator, manager, office, client |  | path itemNo; body itemNo*, base, unitWeightKg, packs | the command result |
 
