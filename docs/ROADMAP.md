@@ -33,7 +33,7 @@ The goal is one real site running on it for a month.
 | 1.4 | **The fields of each route.** [API.md](API.md) lists every route, its permission, roles and module, built from the route tables. It does not yet list what each body takes and each answer gives. | M | Each route in the page names its fields, still built by a test |
 | 1.5 | **Security review.** Session handling, permissions per route, uploads, CSV formulas, webhook signatures, the telnet terminal. | M | Findings are fixed or listed |
 | 1.6 | **Pilot.** One real warehouse, alongside what it uses now, for a month. | L | It ran the month, and every problem became an issue |
-| 1.7 | **Import from another system.** Items, locations, stock and open orders as CSV exist. Add a dry run that reports what would be refused, and a cut-over checklist. | M | A pilot site moves its data in one evening |
+| 1.7 | **Import from another system.** Done. `dryRun: true` or `?dry=1` on the four import routes reports what would be refused and changes nothing. The evening's order of work is [CUTOVER.md](CUTOVER.md). | M | A pilot site moves its data in one evening |
 
 ## Phase 2: the floor, further
 

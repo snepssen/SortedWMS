@@ -216,6 +216,10 @@ For a system that can only write files: put a `.json` or `.csv` file in the serv
 - **CSV files:** the file name says what it holds: `orders-….csv` or `asn-….csv`.
 - **Fixing a failed file:** fix it and drop it again. Documents it already took in answer `duplicate`.
 
+## Moving the item list, the locations, the stock and the open orders
+
+That is a one-time import, not the daily inbox. `POST /api/import/items`, `/api/import/locations`, `/api/import/stock` and `/api/import/orders` take `{ "rows": [ … ] }`. Send the same body with `"dryRun": true`, or add `?dry=1`, to be told what would be refused without changing the warehouse. The order of a real cut-over, and what to check afterwards, is [CUTOVER.md](CUTOVER.md).
+
 ## Pushed out: webhooks and the outbox folder
 
 A system that would rather be told than ask gets the same messages pushed to it.
