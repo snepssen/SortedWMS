@@ -106,6 +106,8 @@ A warehouse that has never chosen has every module on (`modules[id] !== false`).
 
 The core set includes ABC cycle counts (`abc`), Reports (`reports`) and the replenishment return move (`return-move`). Reports that belong to another module (best-before needs `lots`, count accuracy needs `abc`) are omitted while that module is off. A client login is scoped to that client. `return-move` only changes the split drop: the remainder becomes a task back to storage. With it off, the remainder is booked back at the drop.
 
+`client-items` is the client's own item list. It needs Clients. While it is on, the client keeps the descriptive fields (name, description, size, weight, barcodes and the like). Warehouse staff can read them. A manager or an administrator can change them, and the journal records the reason. With one client, that list is the owner's inventory and the reason can be left blank. Locations, holds and counts stay with the warehouse. Staff can flag an item; the note stays on the client's screen until the client resolves it. The mover list ranks items over a period in the warehouse timezone, with units out, order lines and days since the last movement, and a CSV export. A client asks for stock to be taken out (disposal, write-off or collected). That becomes a task staff start and confirm. The client can cancel until staff start, and never changes a quantity directly. The text terminal shows those tasks as plain lines. Switching the module off answers 404 on a read and 403 on a write, keeps the rows, and item editing works as it did before.
+
 ## Switching one on or off
 
 Administrators and managers open **Modules** in `/app`. The page lists the description, the version, what it needs and what it conflicts with.

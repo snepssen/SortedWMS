@@ -7,7 +7,7 @@ const registry = require('../modules/registry');
 const { Store } = require('../server/store');
 const { ALL, DEFAULTS } = require('../server/permissions');
 
-const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'bom', 'camera', 'clients', 'connections', 'demo', 'device-pairing', 'documents', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'photos', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'user-audit', 'waves', 'woocommerce'];
+const CORE = ['abc', 'alerts', 'backup-offsite', 'billing', 'bins', 'bom', 'camera', 'client-items', 'clients', 'connections', 'demo', 'device-pairing', 'documents', 'etsy', 'food', 'item-value', 'kitting', 'lots', 'photos', 'quarantine', 'reports', 'return-move', 'returns', 'sendcloud', 'serials', 'shopify', 'sites', 'stations', 'terminal', 'transfers', 'trucks', 'user-audit', 'waves', 'woocommerce'];
 
 test('core module permissions can be assigned and role defaults name known permissions', () => {
   for (const mod of registry.modules()) {
