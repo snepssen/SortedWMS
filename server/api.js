@@ -165,7 +165,14 @@
   }
 
   function csv(rows) {
-    return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    return rows.map((r) => r.map(csvCell).join(',')).join('\n');
+  }
+
+  /** Quote a cell, and lead a formula with a quote so a spreadsheet does not run it. A plain number is left as a number. */
+  function csvCell(value) {
+    let text = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(text) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
   }
 
   function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null, alerts = null }) {
@@ -198,6 +205,17 @@
     let rawBody = '';
     let webhookHeader = '';
     const ownClient = () => (currentActor && currentActor.role === 'client' ? String(currentActor.clientId || '').toUpperCase() : null);
+    /** A client always sees its own id, even if the query names another. */
+    const askedClient = (id) => {
+      const own = ownClient();
+      return own != null ? own : (id || null);
+    };
+    const itemMine = (itemNo) => {
+      const own = ownClient();
+      if (own == null) return true;
+      const item = wh().items[itemNo];
+      return Boolean(item) && item.clientId === own;
+    };
     const seesItemValue = () => {
       const w = wh();
       if (typeof w.module === 'function' && !w.module('item-value')) return false;
@@ -654,13 +672,15 @@
     on('GET', '/api/orders/:id/returnable', ({ id }) => wh().returnable(decodeURIComponent(id)));
     on('POST', '/api/returns', (_, q, b, by) => run('receiveReturn', b, by));
     on('POST', '/api/returns/:id/grade', ({ id }, q, b, by) => run('gradeReturn', { ...b, id: decodeURIComponent(id) }, by));
-    on('GET', '/api/reports/availability', () => wh().availability());
-    on('GET', '/api/reports/availability.json', () => wh().availability());
+    const availabilityMine = () => wh().availability().filter((r) => itemMine(r.sku));
+    on('GET', '/api/reports/availability', () => availabilityMine());
+    on('GET', '/api/reports/availability.json', () => availabilityMine());
     on('GET', '/api/reports/availability.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
+      raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...availabilityMine().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
     }));
-    on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    const lowStockMine = () => wh().lowStock().filter((r) => itemMine(r.sku));
+    on('GET', '/api/alerts/low-stock', () => lowStockMine());
     on('GET', '/api/shopify', () => (shopify ? { ...shopify.status(), mappings: null } : { status: 400, error: 'Shopify runs on the server' }));
     on('GET', '/api/shopify/map/:id', ({ id }) => (shopify ? shopify.mappings(id) : { status: 400, error: 'Shopify runs on the server' }));
     on('POST', '/api/shopify/shops', (_, q, b) => (shopify ? shopify.saveShop(b || {}) : { status: 400, error: 'Shopify runs on the server' }));
@@ -670,7 +690,7 @@
     on('POST', '/api/shopify/stock', () => (shopify ? shopify.flushStock() : { status: 400, error: 'Shopify runs on the server' }));
     on('GET', '/api/alerts/low-stock.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...wh().lowStock().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
+      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...lowStockMine().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
     }));
     on('GET', '/api/notify', () => (alerts ? alerts.status(currentActor) : { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' }));
     on('POST', '/api/notify/settings', (_, q, b) => {
@@ -685,10 +705,10 @@
       if (!alerts) return { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' };
       return alerts.subscribe(currentActor, b || {});
     });
-    on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: q.clientId || null }));
+    on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: askedClient(q.clientId) }));
     on('GET', '/api/reports/billing.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['client', 'name', 'palletDays', 'moves', 'storageRate', 'handlingRate', 'storage', 'handling', 'total'], ...wh().billingReport({ clientId: q.clientId || null }).map((r) => [r.clientId, r.name, r.palletDays, r.moves, r.storageRate, r.handlingRate, r.storage, r.handling, r.total])]),
+      raw: csv([['client', 'name', 'palletDays', 'moves', 'storageRate', 'handlingRate', 'storage', 'handling', 'total'], ...wh().billingReport({ clientId: askedClient(q.clientId) }).map((r) => [r.clientId, r.name, r.palletDays, r.moves, r.storageRate, r.handlingRate, r.storage, r.handling, r.total])]),
     }));
     on('GET', '/api/sites', () => ({ current: store.siteId || 'MAIN', sites: store.listSites ? store.listSites() : [{ id: 'MAIN', name: 'Main warehouse' }] }));
     on('POST', '/api/sites', (_, q, b) => store.createSite(b));
@@ -700,7 +720,8 @@
     on('POST', '/api/orders/:id/shipment/dispatch', ({ id }, q, b, by) => run('dispatchShipment', { orderId: decodeURIComponent(id) }, by));
     on('GET', '/api/orders/:id/shipment', ({ id }) => {
       const order = wh().orders[decodeURIComponent(id)];
-      if (!order) return { status: 404, error: `No order ${id}` };
+      const own = ownClient();
+      if (!order || (own != null && order.clientId !== own)) return { status: 404, error: `No order ${id}` };
       return order.shipment || { status: 404, error: 'No shipment' };
     });
     const orderDocument = (id, format) => {
@@ -723,11 +744,11 @@
     });
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
-    on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
-    on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: q.clientId, from: q.from || null, to: q.to || null }));
+    on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }));
     on('GET', '/api/reports/invoice.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: wh().invoiceCsv({ clientId: q.clientId, from: q.from || null, to: q.to || null }),
+      raw: wh().invoiceCsv({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }),
     }));
     on('GET', '/api/backup', () => store.exportBackup());
     on('GET', '/api/backups', () => (backups ? { dir: backups.dir, backups: backups.list().map(({ file, bytes, at }) => ({ file, bytes, at })) } : { dir: null, backups: [] }));
@@ -766,8 +787,8 @@
     on('POST', '/api/checks/:id/close', ({ id }, q, b, by) => run('closeCheck', { ...b, id: decodeURIComponent(id) }, by));
     on('GET', '/api/stock/at/:code', ({ code }) => wh()._stockAt(wh().resolve(decodeURIComponent(code))));
     on('POST', '/api/stock/correct', (_, q, b, by) => run('correctItem', b, by));
-    on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null }));
-    on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null, clientId: ownClient() }));
+    on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null, clientId: ownClient() }) }));
     on('GET', '/api/putaway/:sscc', ({ sscc }) => wh().putAwaySlot(decodeURIComponent(sscc)));
     on('POST', '/api/putaway', (_, q, b, by) => run('putAwayPallet', b, by));
     on('POST', '/api/stock/create', (_, q, b, by) => run('createStock', b, by));
@@ -798,12 +819,12 @@
       if (report.hidden) return { status: 404, error: report.reason };
       return report;
     });
-    on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
+    on('GET', '/api/reports/stock', () => wh().stockSummary().filter((r) => itemMine(r.item.itemNo)).map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
-      return wh()._livePallets().filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
+      return wh()._livePallets().filter((p) => itemMine(p.itemNo) && p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
     });
-    on('GET', '/api/reports/orders', () => Object.values(wh().orders).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
+    on('GET', '/api/reports/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
     on('POST', '/api/item-value/currency', (_, q, b, by) => run('setCurrency', { currency: b.currency }, by));
     on('GET', '/api/reports/stock-value', (_, q) => {
       if (!seesItemValue()) return valueDenied();
@@ -820,7 +841,7 @@
     });
     on('GET', '/api/reports/stock.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
+      raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().filter((r) => itemMine(r.item.itemNo)).map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
     }));
     on('GET', '/api/woocommerce', () => (woo ? { ...woo.status(), mappings: null } : { status: 400, error: 'WooCommerce runs on the server' }));
     on('GET', '/api/woocommerce/map/:id', ({ id }) => (woo ? woo.mappings(id) : { status: 400, error: 'WooCommerce runs on the server' }));

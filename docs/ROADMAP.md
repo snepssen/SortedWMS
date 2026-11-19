@@ -31,7 +31,7 @@ The goal is one real site running on it for a month.
 | 1.2 | **Order entry and replay at size.** At twice the load-test size, adding an order goes from 3.9 ms to 9.6 ms, and replaying the whole journal from 7 s to 42 s. Something in order entry looks at every open order. A restart never replays the whole journal while a snapshot can be read, but a refused command replays up to 200 rows. | M | Adding an order costs the same with 3,000 open orders as with 6,000 |
 | 1.3 | **Running it safely.** A page on HTTPS behind a reverse proxy, what to firewall, running as a service, and restoring on a new machine. | S | A stranger can follow it without asking |
 | 1.4 | **The fields of each route.** [API.md](API.md) lists every route, its permission, roles and module, built from the route tables. It does not yet list what each body takes and each answer gives. | M | Each route in the page names its fields, still built by a test |
-| 1.5 | **Security review.** Session handling, permissions per route, uploads, CSV formulas, webhook signatures, the telnet terminal. | M | Findings are fixed or listed |
+| 1.5 | **Security review.** Done. CSV exports no longer run a formula, and a client login can no longer read another client's reports or shipment. The rest, with severity, is [SECURITY-REVIEW.md](SECURITY-REVIEW.md). | M | Findings are fixed or listed |
 | 1.6 | **Pilot.** One real warehouse, alongside what it uses now, for a month. | L | It ran the month, and every problem became an issue |
 | 1.7 | **Import from another system.** Items, locations, stock and open orders as CSV exist. Add a dry run that reports what would be refused, and a cut-over checklist. | M | A pilot site moves its data in one evening |
 

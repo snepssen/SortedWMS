@@ -437,7 +437,12 @@
         const last = line.counts[line.counts.length - 1];
         rows.push([board.day, line.id, line.loc, line.itemNo, line.class, line.status, line.expected == null ? '' : line.expected, last ? last.qty : '', last ? (last.reason || '') : '', last ? last.by : '']);
       }
-      return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const cell = (c) => {
+        let text = c == null ? '' : String(c);
+        if (/^[=+\-@\t\r]/.test(text) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+      return rows.map((r) => r.map(cell).join(',')).join('\n');
     };
   }
 
