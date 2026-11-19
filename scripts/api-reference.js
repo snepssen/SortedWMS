@@ -18,6 +18,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const fields = require('./api-fields');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'docs', 'API.md');
@@ -56,6 +57,7 @@ function collect() {
     return { method, pattern, public: access.public, permission: access.permission || null, permissionName: permName[access.permission] || null, roles: who, allRoles: who.length === roles.length, module };
   });
   rows.sort((a, b) => a.pattern.localeCompare(b.pattern) || a.method.localeCompare(b.method));
+  fields.attach(rows);
   return { rows, roles };
 }
 
@@ -90,16 +92,18 @@ function build() {
     '',
     '- **Permission** is what the route needs. A role\'s permissions can be edited, so **Roles** shows a new install. An administrator always has every permission.',
     '- **Module** is the module that must be on. Empty means the route is always there.',
-    '- `:id` and the like are parts of the address you fill in.',
-    '- The fields of each body are not listed here yet. The screens in `server/public/` and the tests in `test/` show them in use.',
+    '- `:id` and the like are parts of the address you fill in. **Request** names them again under `path`.',
+    '- **Request** is read from the handler and from the command or function it calls. A star means the command refuses to run without that field (`req`). `query` is the query string. `body (whole)` means the handler accepts the JSON as it stands and names no keys. `each row` is a field of a row inside `rows`.',
+    '- **Response** is the JSON keys of a successful answer, read from the handler or from the function it returns directly. `the record\'s own fields` is a spread of the stored record. `the handler\'s value` means the code builds the answer without naming the keys in an object. `the command result` means the route returns whatever the command returns. A refusal is `{ "error" }` on every route and is not repeated here. `csv` and `pdf` are files, not JSON.',
     '',
   ];
   for (const g of [...groups.keys()].sort()) {
-    lines.push(`## ${g}`, '', '| Method | Route | Permission | Roles | Module |', '| --- | --- | --- | --- | --- |');
+    lines.push(`## ${g}`, '', '| Method | Route | Permission | Roles | Module | Request | Response |', '| --- | --- | --- | --- | --- | --- | --- |');
     for (const r of groups.get(g)) {
       const perm = r.public ? 'none, no sign-in' : `\`${r.permission}\``;
       const who = r.public ? 'anyone' : r.allRoles ? 'every role' : r.roles.join(', ') || 'administrator';
-      lines.push(`| ${r.method} | \`${r.pattern}\` | ${perm} | ${who} | ${r.module || ''} |`);
+      const cell = (text) => String(text || '—').replace(/\|/g, '/').replace(/\n/g, ' ');
+      lines.push(`| ${r.method} | \`${r.pattern}\` | ${perm} | ${who} | ${r.module || ''} | ${cell(r.request)} | ${cell(r.response)} |`);
     }
     lines.push('');
   }
@@ -112,4 +116,4 @@ if (require.main === module) {
   console.log(`Wrote ${path.relative(ROOT, OUT)} (${text.split('\n').filter((l) => /^\| (GET|POST) /.test(l)).length} routes)`);
 }
 
-module.exports = { build, collect, OUT };
+module.exports = { build, collect, OUT, fields };
