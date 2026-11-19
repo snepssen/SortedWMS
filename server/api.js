@@ -231,10 +231,13 @@
       const w = wh();
       return typeof w.module === 'function' && w.module('client-items');
     };
+    const activeClients = () => Object.values(wh().clients || {}).filter((c) => c.status !== 'archived');
     const singleOwnerId = () => {
-      const active = Object.values(wh().clients || {}).filter((c) => c.status !== 'archived');
+      const active = activeClients();
       return active.length === 1 ? active[0].id : null;
     };
+    // No clients, or one: the person running the warehouse is filling in their own list.
+    const ownerList = () => activeClients().length <= 1;
     const DESCRIPTIVE = new Set(['name', 'description', 'lengthMm', 'widthMm', 'heightMm', 'weightKg', 'barcodes', 'codes', 'gtin', 'unitGtin', 'unitsPerCase', 'uom', 'category', 'food', 'frozen', 'highValue', 'bestBefore', 'noBestBefore', 'clientId', 'status']);
     const OPERATIONAL = ['palletQty', 'storage', 'reorderPoint', 'minShipDays', 'value'];
     // While Client items is on, the client keeps the description. A manager
@@ -244,7 +247,6 @@
       const role = currentActor && currentActor.role;
       const manager = role === 'administrator' || role === 'manager' || (currentActor && currentActor.service);
       const reason = String((body && !Array.isArray(body) && (body.reason || body.overrideReason)) || '').trim();
-      const owner = singleOwnerId();
       if (role === 'client') {
         if (mode !== 'create' && body && !Array.isArray(body) && OPERATIONAL.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
           return { ok: false, status: 403, error: 'The warehouse keeps locations, holds and counts.' };
@@ -254,7 +256,7 @@
       }
       const writing = mode === 'create' || mode === 'archive' || mode === 'remove' || (body && !Array.isArray(body) && Object.keys(body).some((key) => DESCRIPTIVE.has(key)));
       if (!writing) return { ok: true };
-      if (manager && (owner || reason)) return { ok: true, overrideReason: reason || 'owner list' };
+      if (manager && (ownerList() || reason)) return { ok: true, overrideReason: reason || 'owner list' };
       const error = mode === 'create' || mode === 'archive' || mode === 'remove'
         ? 'The client keeps the item list. A manager can change it with a reason.'
         : 'Descriptive fields are kept by the client. A manager can change them with a reason.';

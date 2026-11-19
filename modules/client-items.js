@@ -11,10 +11,10 @@
   return {
     id: 'client-items',
     name: 'Client items',
-    description: 'The client keeps one item list: names, sizes, barcodes, fast and slow movers, and requests to take stock out. Warehouse staff see that list and flag a note. They do not rewrite the description. Locations, holds and counts stay with the warehouse. With one client, the same list is the owner\'s inventory. Switching this off keeps the rows and returns item editing to the warehouse.',
+    description: 'One item list: names, sizes, barcodes, fast and slow movers, and requests to take stock out. On a home warehouse or with one client, it is the owner\'s inventory. With several clients, each client keeps their own list and staff only read it. A manager can change a description, and the journal records the reason. Locations, holds and counts stay with the warehouse. Switching this off keeps the rows and returns item editing to the warehouse.',
     version: 1,
     defaultOn: false,
-    dependencies: ['clients'],
+    dependencies: [],
     conflicts: [],
     permissions: [
       { id: 'client-items.flag', label: 'Flag an item for the client' },
@@ -30,7 +30,7 @@
     ],
     handheld: [],
     settings: null,
-    presets: { 'chilled-dc': false, 'high-value': false, 'home-garage': false, 'small-maker': false, '3pl': true },
+    presets: { 'chilled-dc': true, 'high-value': false, 'home-garage': true, 'small-maker': true, '3pl': true },
     upgrades: [{
       version: 1,
       id: 'client-items-kept',

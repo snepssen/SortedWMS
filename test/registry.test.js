@@ -39,12 +39,18 @@ test('core modules declare the manifest fields and the presets agree with the or
   assert.equal(home.camera, true);
   const chilled = registry.presetModules('chilled-dc');
   for (const id of CORE) {
+    if (id === 'client-items') {
+      assert.equal(chilled[id], true, 'a chilled warehouse already has clients, so the item list is on');
+      continue;
+    }
     if (registry.get(id).defaultOn === false) {
       assert.equal(chilled[id], false, id);
       continue;
     }
     assert.equal(chilled[id], true, id);
   }
+  assert.equal(home['client-items'], true);
+  assert.equal(registry.presetModules('small-maker')['client-items'], true);
   const maker = registry.presetModules('small-maker');
   assert.equal(maker.kitting, true);
   assert.equal(registry.resolveChange(list, {}, { kitting: false }).kitting, false);

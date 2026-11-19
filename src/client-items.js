@@ -70,6 +70,10 @@
     return list.length === 1 ? list[0].id : null;
   }
 
+  function ownerWarehouse(wh) {
+    return activeClients(wh).length <= 1;
+  }
+
   function actorOf(actor) {
     if (!actor || typeof actor !== 'object') return null;
     return {
@@ -226,9 +230,10 @@
           return blob.includes(needle);
         });
       }
-      const owner = singleOwner(this);
+      const active = activeClients(this);
+      const owner = active.length === 1 ? active[0].id : null;
       return {
-        single: Boolean(owner),
+        single: active.length <= 1,
         ownerClient: owner,
         photos: typeof this.module !== 'function' || this.module('photos'),
         items: items.map((item) => this.clientItemView(item)),
@@ -254,7 +259,7 @@
       if (!item.staffFlag || item.staffFlag.resolvedAt) fail(`${item.itemNo} has no open flag`);
       if (who && !isClient(who)) {
         const owner = singleOwner(this);
-        if (!(isManager(who) && owner && (!item.clientId || item.clientId === owner))) fail('The client resolves the flag.', 403);
+        if (!(isManager(who) && ownerWarehouse(this) && (!item.clientId || !owner || item.clientId === owner))) fail('The client resolves the flag.', 403);
       }
       const person = by || this._actor || 'client';
       item.staffFlagHistory = item.staffFlagHistory || [];
@@ -447,7 +452,7 @@
       const who = actorOf(actor);
       if (isClient(who)) return;
       const owner = singleOwner(wh);
-      if (isManager(who) && owner && (!item.clientId || item.clientId === owner)) return;
+      if (isManager(who) && ownerWarehouse(wh) && (!item.clientId || !owner || item.clientId === owner)) return;
       fail('The client asks for stock to be taken out.', 403);
     }
 
@@ -480,7 +485,7 @@
       const who = actorOf(actor);
       if (who && !isClient(who)) {
         const owner = singleOwner(this);
-        if (!(isManager(who) && owner && (!row.clientId || row.clientId === owner))) fail('The client cancels the request until staff start it.', 403);
+        if (!(isManager(who) && ownerWarehouse(this) && (!row.clientId || !owner || row.clientId === owner))) fail('The client cancels the request until staff start it.', 403);
       }
       row.status = 'cancelled';
       row.cancelledBy = by || this._actor || 'client';

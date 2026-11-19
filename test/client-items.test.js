@@ -63,8 +63,12 @@ test('movers use the warehouse timezone, rank fast then slow, and stay inside on
   assert.equal(w.removeItem('SLOW').removed, 'SLOW');
   assert.equal(w.module('client-items'), false);
   assert.equal(registry.presetModules('3pl')['client-items'], true);
-  assert.equal(registry.presetModules('home-garage')['client-items'], false);
-  assert.deepEqual(registry.get('client-items').dependencies, ['clients']);
+  assert.equal(registry.presetModules('home-garage')['client-items'], true);
+  assert.equal(registry.presetModules('small-maker')['client-items'], true);
+  assert.equal(registry.presetModules('chilled-dc')['client-items'], true);
+  assert.equal(registry.presetModules('high-value')['client-items'], false);
+  assert.equal(registry.get('client-items').defaultOn, false);
+  assert.deepEqual(registry.get('client-items').dependencies, []);
 });
 
 test('the client keeps the description, staff carry out removals, and tenants stay apart', async () => {
@@ -92,6 +96,14 @@ test('the client keeps the description, staff carry out removals, and tenants st
     const renamed = await call('POST', '/api/items', { itemNo: 'HOUSE', name: 'House paint', category: 'GEN', palletQty: 4 }, { cookie: office });
     assert.equal(renamed.status, 200, renamed.body && renamed.body.error);
     assert.equal((await call('POST', '/api/items/HOUSE', { name: 'House white' }, { cookie: office })).status, 200);
+
+    const alone = await call('POST', '/api/setup/modules', { modules: { 'client-items': true } }, { cookie: admin });
+    assert.equal(alone.status, 200, alone.body && alone.body.error);
+    const ownName = await call('POST', '/api/items/HOUSE', { name: 'House tin' }, { cookie: admin });
+    assert.equal(ownName.status, 200, ownName.body && ownName.body.error);
+    assert.match(store.wh.events[0].text, /owner list/);
+    assert.equal((await call('POST', '/api/items/HOUSE', { name: 'Office name' }, { cookie: office })).status, 403);
+    assert.equal((await call('GET', '/api/client-items', null, { cookie: admin })).body.single, true);
 
     await call('POST', '/api/clients', { id: 'CL-A', name: 'Alpha' }, { cookie: admin });
     await call('POST', '/api/clients', { id: 'CL-B', name: 'Beta' }, { cookie: admin });
