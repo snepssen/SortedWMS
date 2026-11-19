@@ -65,7 +65,7 @@ test('movers use the warehouse timezone, rank fast then slow, and stay inside on
   assert.equal(registry.presetModules('3pl')['client-items'], true);
   assert.equal(registry.presetModules('home-garage')['client-items'], true);
   assert.equal(registry.presetModules('small-maker')['client-items'], true);
-  assert.equal(registry.presetModules('chilled-dc')['client-items'], true);
+  assert.equal(registry.presetModules('chilled-dc')['client-items'], false);
   assert.equal(registry.presetModules('high-value')['client-items'], false);
   assert.equal(registry.get('client-items').defaultOn, false);
   assert.deepEqual(registry.get('client-items').dependencies, []);

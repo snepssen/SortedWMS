@@ -30,7 +30,7 @@
     ],
     handheld: [],
     settings: null,
-    presets: { 'chilled-dc': true, 'high-value': false, 'home-garage': true, 'small-maker': true, '3pl': true },
+    presets: { 'chilled-dc': false, 'high-value': false, 'home-garage': true, 'small-maker': true, '3pl': true },
     upgrades: [{
       version: 1,
       id: 'client-items-kept',
