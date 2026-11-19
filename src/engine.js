@@ -598,6 +598,7 @@
       if (!Number.isInteger(days) || days < 0) throw new Error('Days must be a whole number, 0 or more');
       if (item.minShipDays === days) return;
       item.minShipDays = days;
+      this._touchStock();
       this.log(`${itemNo}: minimum ${days} days left to ship`);
       this._dropShortAllocations(itemNo);
       this.planGround();
@@ -742,6 +743,7 @@
       if (!['available', 'blocked'].includes(status)) throw new Error(`Unknown status ${status}`);
       pallet.status = status;
       pallet.blockReason = status === 'blocked' ? reason || 'Blocked' : null;
+      this._touchStock();
       this.log(`Pallet …${sscc.slice(-6)} ${status === 'blocked' ? `blocked: ${pallet.blockReason}` : 'released for use'}`);
       // A blocked pallet won't ship next: a planned move to ground level for it is dropped.
       const live = status === 'blocked' && this._liveTaskFor(sscc);
@@ -1492,6 +1494,11 @@
       return n;
     }
 
+    /** Stock moved or was allocated. planGround can skip until the next one. */
+    _touchStock() {
+      this._stockGen = (this._stockGen || 0) + 1;
+    }
+
     /**
      * Keep the next pallet(s) to ship of every item on ground level, so a pick
      * never waits on a high reach.
@@ -1499,6 +1506,10 @@
     planGround() {
       const want = this.config.groundNextPerItem;
       if (!want) return 0;
+      const key = `${want}:${this._stockGen || 0}`;
+      // A piece order does not move a pallet. Planning ground jobs again would
+      // walk every pallet for the same answer.
+      if (this._groundKey === key) return 0;
       let n = 0;
       // Shared by every item below: _fefo's lookups, and the ground slots by category (a slot only takes its own category).
       const ctx = this._fefoContext();
@@ -1521,6 +1532,7 @@
         }
       }
       if (n) this.log(`${n} next-out pallet(s) are up high — bring-down jobs created`);
+      this._groundKey = key;
       return n;
     }
 
@@ -2510,7 +2522,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live' || k === '_planLater') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live' || k === '_planLater' || k === '_stockGen' || k === '_groundKey') continue;
         out[k] = v;
       }
       return out;
@@ -3103,6 +3115,7 @@
       const live = this._liveTaskFor(pallet.sscc);
       if (live) this._cancelQuiet(live); // e.g. a bring-down shift that hadn't started
       pallet.orderId = order.id;
+      this._touchStock();
       line.allocated.push(pallet.sscc);
       let to = order.lane;
       if (line.process) {
@@ -3150,6 +3163,7 @@
         if (i !== -1) { line.allocated.splice(i, 1); line.short++; }
       }
       pallet.orderId = null;
+      this._touchStock();
     }
 
     /**
@@ -4196,6 +4210,7 @@
     // ---- Internals: helpers ---------------------------------------------------
 
     _place(pallet, code) {
+      this._touchStock();
       const loc = this.locations[code];
       if (!loc) throw new Error(`${code} is not a location`);
       if (loc.structural || loc.kind === 'zone' || loc.kind === 'aisle' || loc.kind === 'level' || loc.kind === 'frame') {
@@ -4208,6 +4223,7 @@
     }
 
     _remove(pallet) {
+      this._touchStock();
       const loc = pallet.loc && this.locations[pallet.loc];
       if (!loc) return;
       if (loc.kind === 'rack') loc.sscc = null;
