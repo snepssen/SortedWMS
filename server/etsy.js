@@ -16,11 +16,18 @@ const { createHash, createHmac, randomBytes, timingSafeEqual } = require('node:c
 
 const SCOPES = 'transactions_r transactions_w listings_r listings_w';
 
-function verifyWebhook(raw, header, secret) {
+function verifyWebhook(raw, header, secret, timestamp, now = Date.now()) {
   if (!secret || !header) return false;
-  const digest = createHmac('sha256', secret).update(raw, 'utf8').digest('hex');
+  const presented = String(header).trim().toLowerCase().replace(/^sha256=/, '');
+  let payload = raw;
+  if (timestamp != null && String(timestamp).trim() !== '') {
+    const { timestampFresh } = require('./signature');
+    if (!timestampFresh(timestamp, now)) return false;
+    payload = `${String(timestamp).trim()}.${raw}`;
+  }
+  const digest = createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
   const a = Buffer.from(digest);
-  const b = Buffer.from(String(header).trim().toLowerCase());
+  const b = Buffer.from(presented);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
@@ -500,19 +507,19 @@ function createEtsy({ store, secretsFile = undefined, transport = null, sleep = 
     return journal(shop.id, true, 'fulfil', `${data.orderId} tracking ${tracking}`);
   }
 
-  function acceptWebhook(shopId, raw, header) {
+  function acceptWebhook(shopId, raw, header, timestamp) {
     const shop = store.db.prepare('SELECT site FROM etsy_shops WHERE id = ?').get(String(shopId));
     if (!shop) throw new Error('Unknown shop');
     return store._withSite(shop.site, () => {
       if (!warehouse().module('etsy')) throw new Error('The shop connector is switched off');
-      return acceptWebhookHere(shopId, raw, header);
+      return acceptWebhookHere(shopId, raw, header, timestamp);
     });
   }
 
-  function acceptWebhookHere(shopId, raw, header) {
+  function acceptWebhookHere(shopId, raw, header, timestamp) {
     const shop = shopOrThrow(shopId);
     const sec = secretOf(shop.id);
-    if (!verifyWebhook(raw, header, sec.webhookSecret)) {
+    if (!verifyWebhook(raw, header, sec.webhookSecret, timestamp)) {
       journal(shop.id, false, 'webhook', 'Signature did not match');
       const err = new Error('Etsy signature did not match');
       err.status = 401;

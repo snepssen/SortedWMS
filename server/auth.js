@@ -830,11 +830,14 @@ function createAuth(db, { now = () => Date.now(), deviceIdleMs = DEVICE_IDLE_MS 
       if (created.length) record('bootstrap-demo', 'bootstrap', { users: created });
       return created;
     },
-    sessionCookie(token, maxAge) {
-      return `sorted_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+    sessionCookie(token, maxAge, secure = false) {
+      return `sorted_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
     },
-    clearCookie() {
-      return 'sorted_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
+    clearCookie(secure = false) {
+      return `sorted_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`;
+    },
+    deviceCookie(deviceId, maxAge, secure = false) {
+      return `sorted_device=${encodeURIComponent(deviceId)}; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
     },
     cookieToken(req) {
       return cookies(req).sorted_session || null;

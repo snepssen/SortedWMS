@@ -425,11 +425,13 @@ const RULES = [
   ['POST', '/api/etsy/catalog', 'etsy.manage'],
   ['POST', '/api/etsy/stock', 'etsy.manage'],
   ['POST', '/api/etsy/connect', 'etsy.manage'],
+  ['GET', '/api/etsy/callback', null],
   ['GET', '/api/sendcloud', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/account', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/webhook', null],
   ['GET', '/api/photos', 'photos.read'],
   ['GET', '/api/items/:itemNo/photos/:id', 'photos.read'],
   ['POST', '/api/items/:itemNo/photos', 'photos.write'],
@@ -448,6 +450,52 @@ const RULES = [
   ['POST', '/api/client-items/removals/:id/cancel', 'items.write'],
   ['POST', '/api/client-items/removals/:id/start', 'client-items.remove'],
   ['POST', '/api/client-items/removals/:id/confirm', 'client-items.remove'],
+  // Named here so they are not an accident of the old fallback. A route that is not in this list is refused.
+  ['GET', '/api/summary', 'wms.read'],
+  ['GET', '/api/devices', 'wms.read'],
+  ['GET', '/api/scan-commands', 'wms.read'],
+  ['GET', '/api/devices/:id', 'wms.read'],
+  ['GET', '/api/tasks', 'wms.read'],
+  ['GET', '/api/return-moves', 'wms.read'],
+  ['GET', '/api/orders/:id/loading', 'wms.read'],
+  ['GET', '/api/quality', 'wms.read'],
+  ['GET', '/api/recalls', 'wms.read'],
+  ['GET', '/api/recalls/preview', 'wms.read'],
+  ['GET', '/api/quarantine', 'wms.read'],
+  ['GET', '/api/lookup/:code', 'wms.read'],
+  ['GET', '/api/blocked', 'wms.read'],
+  ['GET', '/api/lost', 'wms.read'],
+  ['GET', '/api/counts', 'wms.read'],
+  ['GET', '/api/drivers', 'wms.read'],
+  ['GET', '/api/customers', 'wms.read'],
+  ['GET', '/api/transfers', 'wms.read'],
+  ['GET', '/api/trace/:batch', 'wms.read'],
+  ['GET', '/api/template/preview', 'wms.read'],
+  ['GET', '/api/stations', 'wms.read'],
+  ['GET', '/api/routes', 'wms.read'],
+  ['GET', '/api/stations/:id', 'wms.read'],
+  ['GET', '/api/process-log', 'wms.read'],
+  ['GET', '/api/events', 'wms.read'],
+  ['GET', '/api/printers', 'wms.read'],
+  ['GET', '/api/printers/:name/status', 'wms.read'],
+  ['GET', '/api/print-queue', 'wms.read'],
+  ['GET', '/api/equipment', 'wms.read'],
+  ['POST', '/api/template/apply', 'wms.write'],
+  ['POST', '/api/locations/:code/unblock', 'wms.write'],
+  ['POST', '/api/pallets/:sscc/process', 'wms.write'],
+  ['POST', '/api/items/:itemNo/min-ship-days', 'wms.write'],
+  ['POST', '/api/orders/:id/loading', 'wms.write'],
+  ['POST', '/api/orders/:id/loading/inspection', 'wms.write'],
+  ['POST', '/api/orders/:id/loading/release', 'wms.write'],
+  ['POST', '/api/plan/grouping', 'wms.write'],
+  ['POST', '/api/shift/start', 'wms.write'],
+  ['POST', '/api/customers', 'wms.write'],
+  ['POST', '/api/workload', 'wms.write'],
+  ['POST', '/api/plan/dig-out', 'wms.write'],
+  ['POST', '/api/import/items', 'wms.write'],
+  ['POST', '/api/import/locations', 'wms.write'],
+  ['POST', '/api/import/orders', 'wms.write'],
+  ['POST', '/api/import/stock', 'wms.write'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({
@@ -458,9 +506,9 @@ const compiled = RULES.map(([method, pattern, perm]) => ({
 
 function permissionFor(method, pathname) {
   const hit = compiled.find((r) => r.method === method && r.re.test(pathname));
-  if (hit) return { public: hit.perm == null, permission: hit.perm };
-  if (method === 'GET' || method === 'HEAD') return { public: false, permission: 'wms.read' };
-  return { public: false, permission: 'wms.write' };
+  if (hit) return { public: hit.perm == null, permission: hit.perm, mapped: true };
+  const read = method === 'GET' || method === 'HEAD';
+  return { public: false, permission: null, mapped: false, status: read ? 404 : 403 };
 }
 
 function roleLabel(id) {

@@ -2,7 +2,7 @@
 
 Every route the server answers. This page is built from the route tables by `npm run api-reference`; a test fails when it is out of date. Do not edit it by hand.
 
-359 routes: 137 read, 222 change something. 9 need no sign-in.
+359 routes: 137 read, 222 change something. 11 need no sign-in.
 
 ## How to call it
 
@@ -247,7 +247,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/etsy` | `etsy.manage` | administrator | etsy | — | the handler's value |
-| GET | `/api/etsy/callback` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock | etsy | query code, state | the handler's value |
+| GET | `/api/etsy/callback` | none, no sign-in | anyone | etsy | query code, state | the handler's value |
 | POST | `/api/etsy/catalog` | `etsy.manage` | administrator | etsy | body shopId | the handler's value |
 | POST | `/api/etsy/connect` | `etsy.manage` | administrator | etsy | body shopId | the handler's value |
 | POST | `/api/etsy/map` | `etsy.manage` | administrator | etsy | body shopId, sku, itemNo | the handler's value |
@@ -689,7 +689,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | POST | `/api/sendcloud/label` | `sendcloud.manage` | administrator | sendcloud | body orderId | orderId, tracking, trackingUrl, file, carrier, service, weightKg, lengthCm, widthCm, heightCm |
 | POST | `/api/sendcloud/return` | `sendcloud.manage` | administrator | sendcloud | body returnId, weightKg | returnId, tracking, file, carrier |
 | POST | `/api/sendcloud/rules` | `sendcloud.manage` | administrator | sendcloud | body clientId, country, minKg, maxKg, methodId, carrier, service | id, clientId, country, minKg, maxKg, methodId, carrier, service |
-| POST | `/api/sendcloud/webhook` | `wms.write` | administrator, manager, office | sendcloud | query token | the handler's value |
+| POST | `/api/sendcloud/webhook` | none, no sign-in | anyone | sendcloud | query token | the handler's value |
 
 ## serials
 
