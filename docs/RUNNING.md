@@ -25,6 +25,8 @@ SortedWMS speaks HTTP. Put Caddy or nginx in front of it and let that process ho
 
 The proxy must forward the original address so the logs and the pairing QR use the name people type. SortedWMS does not require a special header to work. Send `X-Forwarded-Proto: https` and `X-Forwarded-For` anyway, so anything that records the client sees the office machine rather than the proxy.
 
+The session cookie and the device cookie are marked `Secure` only when the request arrived over HTTPS. Set `SORTED_TRUST_PROXY` to the proxy's address (here `127.0.0.1`, or a CIDR such as `10.0.0.0/8`) so `X-Forwarded-Proto: https` from that proxy counts. Leave the variable unset and a client that sends the header itself is ignored, which keeps plain HTTP on the LAN working, including a pairing QR. Telnet does not use the cookie. The service examples below set the variable.
+
 ### Caddy
 
 `/etc/caddy/Caddyfile`:
@@ -94,6 +96,7 @@ WorkingDirectory=/opt/sortedwms
 Environment=PORT=8080
 Environment=SORTED_DB=/var/lib/sortedwms/sorted.db
 Environment=SORTED_BACKUP_DIR=/var/lib/sortedwms/backups
+Environment=SORTED_TRUST_PROXY=127.0.0.1
 EnvironmentFile=-/etc/sortedwms/env
 ExecStart=/usr/bin/node --no-warnings server/index.js
 Restart=on-failure
