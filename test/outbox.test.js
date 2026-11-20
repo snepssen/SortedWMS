@@ -48,7 +48,10 @@ test('webhooks: new messages POSTed in order and signed; a failure is tried agai
     assert.equal(rx.got.length, 1);
     const first = rx.got[0];
     assert.deepEqual(first.body.messages.map((m) => m.seq), [2, 3, 4]);
-    assert.equal(first.headers['x-sorted-signature'], sign(hook.secret, first.raw), 'the receiver can check it came from here');
+    assert.equal(first.headers['x-sorted-signature'], sign(hook.secret, first.raw), 'the body-only signature is still sent');
+    const { signTimestamped } = require('../server/signature');
+    assert.equal(first.headers['x-sorted-signature-v2'], signTimestamped(hook.secret, first.headers['x-sorted-timestamp'], first.raw));
+    assert.match(first.headers['x-sorted-timestamp'], /^\d+$/);
     assert.equal(box.list()[0].delivered, 4);
 
     rx.answer(500);

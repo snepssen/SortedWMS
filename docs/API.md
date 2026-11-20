@@ -2,7 +2,7 @@
 
 Every route the server answers. This page is built from the route tables by `npm run api-reference`; a test fails when it is out of date. Do not edit it by hand.
 
-345 routes: 133 read, 212 change something. 9 need no sign-in.
+345 routes: 133 read, 212 change something. 11 need no sign-in.
 
 ## How to call it
 
@@ -227,7 +227,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module |
 | --- | --- | --- | --- | --- |
 | GET | `/api/etsy` | `etsy.manage` | administrator | etsy |
-| GET | `/api/etsy/callback` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock | etsy |
+| GET | `/api/etsy/callback` | none, no sign-in | anyone | etsy |
 | POST | `/api/etsy/catalog` | `etsy.manage` | administrator | etsy |
 | POST | `/api/etsy/connect` | `etsy.manage` | administrator | etsy |
 | POST | `/api/etsy/map` | `etsy.manage` | administrator | etsy |
@@ -669,7 +669,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | POST | `/api/sendcloud/label` | `sendcloud.manage` | administrator | sendcloud |
 | POST | `/api/sendcloud/return` | `sendcloud.manage` | administrator | sendcloud |
 | POST | `/api/sendcloud/rules` | `sendcloud.manage` | administrator | sendcloud |
-| POST | `/api/sendcloud/webhook` | `wms.write` | administrator, manager, office | sendcloud |
+| POST | `/api/sendcloud/webhook` | none, no sign-in | anyone | sendcloud |
 
 ## serials
 

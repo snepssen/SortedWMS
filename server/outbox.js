@@ -16,14 +16,15 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { createHmac, randomBytes } = require('crypto');
+const { randomBytes } = require('crypto');
+const { signBody, signTimestamped, timestampSeconds } = require('./signature');
 
 const BATCH = 50;
 const MAX_WAIT = 15 * 60 * 1000;
 const TYPES = ['delivery.received', 'order.shipped', 'return.received', 'return.graded', 'stock.adjusted', 'stock.low', 'stock.recovered', 'stock.digest', 'backup.failed', 'alert.test'];
 
 function sign(secret, body) {
-  return `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+  return signBody(secret, body);
 }
 
 function createOutbox({ store, now = () => Date.now(), fetchImpl = (...a) => fetch(...a), timeoutMs = 10000, log = console } = {}) {
@@ -106,11 +107,20 @@ function createOutbox({ store, now = () => Date.now(), fetchImpl = (...a) => fet
       return { sent: 0 };
     }
     const body = JSON.stringify({ webhook: row.id, messages: page.messages, gap: page.gap });
+    const timestamp = timestampSeconds(now());
     let error = null;
     try {
       const res = await fetchImpl(row.url, {
         method: 'POST', body, signal: AbortSignal.timeout(timeoutMs),
-        headers: { 'content-type': 'application/json', 'user-agent': 'SortedWMS', 'x-sorted-signature': sign(row.secret, body), 'x-sorted-delivery': `${row.id}-${page.messages[0].seq}-${page.messages[page.messages.length - 1].seq}` },
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': 'SortedWMS',
+          // Body-only signature, kept until 1 March 2027 so a receiver that has not moved still checks.
+          'x-sorted-signature': sign(row.secret, body),
+          'x-sorted-timestamp': timestamp,
+          'x-sorted-signature-v2': signTimestamped(row.secret, timestamp, body),
+          'x-sorted-delivery': `${row.id}-${page.messages[0].seq}-${page.messages[page.messages.length - 1].seq}`,
+        },
       });
       if (res.status < 200 || res.status >= 300) error = `HTTP ${res.status}`;
     } catch (e) { error = e.name === 'TimeoutError' ? 'No answer in time' : e.message; }
@@ -170,4 +180,4 @@ function createOutbox({ store, now = () => Date.now(), fetchImpl = (...a) => fet
   return { list, add, remove, retry, pump, deliver, writeFolder, start, TYPES };
 }
 
-module.exports = { createOutbox, sign, TYPES };
+module.exports = { createOutbox, sign, signTimestamped, timestampSeconds, TYPES };
