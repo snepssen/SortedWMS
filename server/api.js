@@ -227,6 +227,48 @@
       return ['items', 'lines', 'pallets'].some((key) => Array.isArray(doc[key]) && doc[key].some(filled));
     };
     const deny = () => ({ status: 403, error: 'That belongs to another client' });
+    const clientItemsOn = () => {
+      const w = wh();
+      return typeof w.module === 'function' && w.module('client-items');
+    };
+    const activeClients = () => Object.values(wh().clients || {}).filter((c) => c.status !== 'archived');
+    const singleOwnerId = () => {
+      const active = activeClients();
+      return active.length === 1 ? active[0].id : null;
+    };
+    // No clients, or one: the person running the warehouse is filling in their own list.
+    const ownerList = () => activeClients().length <= 1;
+    const DESCRIPTIVE = new Set(['name', 'description', 'lengthMm', 'widthMm', 'heightMm', 'weightKg', 'barcodes', 'codes', 'gtin', 'unitGtin', 'unitsPerCase', 'uom', 'category', 'food', 'frozen', 'highValue', 'bestBefore', 'noBestBefore', 'clientId', 'status']);
+    const OPERATIONAL = ['palletQty', 'storage', 'reorderPoint', 'minShipDays', 'value'];
+    // While Client items is on, the client keeps the description. A manager
+    // override is journaled with a reason. One owner-client is that owner's list.
+    const descriptiveDecision = (body, mode) => {
+      if (!clientItemsOn()) return { ok: true };
+      const role = currentActor && currentActor.role;
+      const manager = role === 'administrator' || role === 'manager' || (currentActor && currentActor.service);
+      const reason = String((body && !Array.isArray(body) && (body.reason || body.overrideReason)) || '').trim();
+      if (role === 'client') {
+        if (mode !== 'create' && body && !Array.isArray(body) && OPERATIONAL.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+          return { ok: false, status: 403, error: 'The warehouse keeps locations, holds and counts.' };
+        }
+        if (mode === 'create' && body && !Array.isArray(body)) for (const key of OPERATIONAL) delete body[key];
+        return { ok: true };
+      }
+      const writing = mode === 'create' || mode === 'archive' || mode === 'remove' || (body && !Array.isArray(body) && Object.keys(body).some((key) => DESCRIPTIVE.has(key)));
+      if (!writing) return { ok: true };
+      if (manager && (ownerList() || reason)) return { ok: true, overrideReason: reason || 'owner list' };
+      const error = mode === 'create' || mode === 'archive' || mode === 'remove'
+        ? 'The client keeps the item list. A manager can change it with a reason.'
+        : 'Descriptive fields are kept by the client. A manager can change them with a reason.';
+      return { ok: false, status: 403, error };
+    };
+    const actorArg = () => (currentActor ? { role: currentActor.role, clientId: currentActor.clientId || null, service: Boolean(currentActor.service) } : null);
+    const hideValue = (row) => {
+      if (!row || typeof row !== 'object' || seesItemValue() || !Object.prototype.hasOwnProperty.call(row, 'value')) return row;
+      const copy = { ...row };
+      delete copy.value;
+      return copy;
+    };
 
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
@@ -278,7 +320,18 @@
         total: o.lines.reduce((n, l) => n + l.pallets, 0), loaded: pallets.filter((p) => o.loading && p.loc === o.loading.location).length, pallets };
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
-    on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own).map(presentItem); });
+    const clientMayTouch = (item) => {
+      const own = ownClient();
+      if (own == null) return true;
+      if (!own || !item) return false;
+      if (item.clientId === own) return true;
+      return clientItemsOn() && !item.clientId && singleOwnerId() === own;
+    };
+    on('GET', '/api/items', () => {
+      const own = ownClient();
+      const owner = clientItemsOn() && own ? singleOwnerId() : null;
+      return Object.values(wh().items).filter((i) => own == null || i.clientId === own || (owner === own && !i.clientId)).map(presentItem);
+    });
     const photoItem = (itemNo) => {
       const item = wh().items[itemNo];
       if (!item) return { status: 404, error: `Unknown item ${itemNo}` };
@@ -463,7 +516,18 @@
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
-      return run('importItems', { rows: listOf(b) }, by);
+      const rows = listOf(b);
+      let overrideReason = null;
+      if (clientItemsOn()) {
+        const own = ownClient();
+        if (own != null) for (const row of rows) if (row) row.clientId = own;
+        else {
+          const decision = descriptiveDecision({ name: 'import', reason: b && !Array.isArray(b) ? b.reason : null }, 'create');
+          if (!decision.ok) return { status: decision.status, error: decision.error };
+          overrideReason = decision.overrideReason || null;
+        }
+      }
+      return run('importItems', { rows, overrideReason }, by);
     });
     on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: listOf(b) }, by));
     on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: listOf(b), planOnce: true }, by));
@@ -489,34 +553,104 @@
     on('POST', '/api/clients/:id/restore', ({ id }, q, b, by) => run('restoreClient', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/items', (_, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const decision = descriptiveDecision(b, 'create');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
       const own = ownClient();
       const body = { ...b };
       if (own != null) {
         if (!own) return deny();
         body.clientId = own;
         if (wh().config && wh().config.itemApproval) body.status = 'pending';
-      }
+      } else if (clientItemsOn() && !body.clientId && singleOwnerId()) body.clientId = singleOwnerId();
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
       return run('addItem', body, by);
     });
     on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
       const key = decodeURIComponent(itemNo);
-      const own = ownClient();
       const item = wh().items[key];
-      if (own != null && (!item || item.clientId !== own)) return deny();
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      const decision = descriptiveDecision(b, 'update');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
       const body = { ...b, itemNo: key };
-      if (own != null) delete body.clientId;
+      if (ownClient() != null) delete body.clientId;
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
       return run('updateItem', body, by);
     });
     on('POST', '/api/items/:itemNo/archive', ({ itemNo }, q, b, by) => {
       const key = decodeURIComponent(itemNo);
-      const own = ownClient();
       const item = wh().items[key];
-      if (own != null && (!item || item.clientId !== own)) return deny();
-      return run('archiveItem', { itemNo: key }, by);
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      const decision = descriptiveDecision(b, 'archive');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      return run('archiveItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
     });
     on('POST', '/api/items/:itemNo/approve', ({ itemNo }, q, b, by) => run('approveItem', { itemNo: decodeURIComponent(itemNo) }, by));
-    on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => run('removeItem', { itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => {
+      const decision = descriptiveDecision(b, 'remove');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const key = decodeURIComponent(itemNo);
+      const item = wh().items[key];
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      return run('removeItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+    });
+    const itemActor = () => actorArg();
+    on('GET', '/api/client-items/movers.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().clientItemMoversCsv({ from: q.from || null, to: q.to || null, clientId: q.client || null, pace: q.pace || null, actor: itemActor() }) }));
+    on('GET', '/api/client-items/movers', (_, q) => wh().clientItemMovers({ from: q.from || null, to: q.to || null, clientId: q.client || null, pace: q.pace || null, actor: itemActor() }));
+    on('GET', '/api/client-items/removals', (_, q) => wh().clientRemovalsFor({ clientId: q.client || null, status: q.status || null, actor: itemActor() }));
+    on('GET', '/api/client-items', (_, q) => {
+      const list = wh().clientItemList({ q: q.q || '', status: q.status || '', flagged: q.flagged || null, clientId: q.client || null, actor: itemActor() });
+      list.items = list.items.map(hideValue);
+      return list;
+    });
+    on('POST', '/api/client-items/removals', (_, q, b, by) => run('requestClientRemoval', { itemNo: b && b.itemNo, qty: b && b.qty, kind: b && b.kind, reason: b && b.reason, actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/cancel', ({ id }, q, b, by) => run('cancelClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/start', ({ id }, q, b, by) => run('startClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/confirm', ({ id }, q, b, by) => run('confirmClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items', (_, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const decision = descriptiveDecision(b, 'create');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const own = ownClient();
+      const body = { ...(b || {}) };
+      if (own != null) {
+        if (!own) return deny();
+        body.clientId = own;
+        if (wh().config && wh().config.itemApproval) body.status = 'pending';
+      } else if (!body.clientId && singleOwnerId()) body.clientId = singleOwnerId();
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
+      const item = run('addItem', body, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo', ({ itemNo }, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'update');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const body = { ...(b || {}), itemNo: key };
+      if (ownClient() != null) delete body.clientId;
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
+      const item = run('updateItem', body, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo/archive', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'archive');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const item = run('archiveItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo/remove', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'remove');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      return run('removeItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+    });
+    on('POST', '/api/client-items/:itemNo/flag', ({ itemNo }, q, b, by) => hideValue(run('flagClientItem', { itemNo: decodeURIComponent(itemNo), note: b && b.note, actor: itemActor() }, by)));
+    on('POST', '/api/client-items/:itemNo/resolve', ({ itemNo }, q, b, by) => hideValue(run('resolveClientFlag', { itemNo: decodeURIComponent(itemNo), actor: itemActor() }, by)));
     on('GET', '/api/locations', (_, q) => {
       let list = Object.values(wh().locations);
       if (q.kind) list = list.filter((l) => l.kind === q.kind || (q.kind === 'rack' && l.structural));

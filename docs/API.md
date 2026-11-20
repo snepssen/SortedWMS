@@ -2,7 +2,7 @@
 
 Every route the server answers. This page is built from the route tables by `npm run api-reference`; a test fails when it is out of date. Do not edit it by hand.
 
-345 routes: 133 read, 212 change something. 9 need no sign-in.
+359 routes: 137 read, 222 change something. 9 need no sign-in.
 
 ## How to call it
 
@@ -124,6 +124,25 @@ Every route the server answers. This page is built from the route tables by `npm
 | GET | `/api/checks` | `stock.read` | every role |  | — | the handler's value |
 | POST | `/api/checks` | `stock.check` | administrator, manager, office, picker, stock |  | body loc*, itemNo, orderId, note, by | the command result |
 | POST | `/api/checks/:id/close` | `stock.adjust` | administrator, manager, stock |  | path id; body id*, outcome, note, by | the command result |
+
+## client-items
+
+| Method | Route | Permission | Roles | Module |
+| --- | --- | --- | --- | --- |
+| GET | `/api/client-items` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
+| POST | `/api/client-items` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/:itemNo` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/:itemNo/archive` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/:itemNo/flag` | `client-items.flag` | administrator, manager, office, inbound, stock | client-items |
+| POST | `/api/client-items/:itemNo/remove` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/:itemNo/resolve` | `items.write` | administrator, manager, office, client | client-items |
+| GET | `/api/client-items/movers` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
+| GET | `/api/client-items/movers.csv` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
+| GET | `/api/client-items/removals` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
+| POST | `/api/client-items/removals` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/removals/:id/cancel` | `items.write` | administrator, manager, office, client | client-items |
+| POST | `/api/client-items/removals/:id/confirm` | `client-items.remove` | administrator, manager, office, stock | client-items |
+| POST | `/api/client-items/removals/:id/start` | `client-items.remove` | administrator, manager, office, stock | client-items |
 
 ## clients
 
