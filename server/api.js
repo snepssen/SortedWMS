@@ -190,6 +190,46 @@
       if (!Array.isArray(rows)) throw new Error('rows is required: send a list of rows');
       return rows;
     };
+    const wantsDryRun = (q, b) => q.dry === '1' || q.dry === 'true' || Boolean(b && !Array.isArray(b) && b.dryRun === true);
+    /**
+     * Run an import on a copy of the warehouse and say what would be refused.
+     * The live warehouse and the journal are left as they were.
+     */
+    const dryImport = (op, rows) => {
+      let commands = null;
+      if (typeof require === 'function') { try { commands = require('./commands'); } catch (e) { commands = null; } }
+      if (!commands || !Engine.Warehouse || typeof Engine.Warehouse.restore !== 'function') {
+        return { status: 400, error: 'A dry run is available when SortedWMS is running on the server' };
+      }
+      const copy = Engine.Warehouse.restore(wh().toJSON(), { clock: wh().clock });
+      if (op === 'importItems') {
+        const errors = [];
+        let accepted = 0;
+        for (const r of rows) {
+          const itemNo = r && r.itemNo ? String(r.itemNo) : '';
+          if (!itemNo) { errors.push('A row without an item number'); continue; }
+          try {
+            if (copy.items[itemNo]) {
+              if (r.value != null && r.value !== '') { copy.updateItem(itemNo, { value: r.value }); accepted++; }
+              else errors.push(`${itemNo}: already exists`);
+            } else { copy.addItem(r); accepted++; }
+          } catch (e) { errors.push(`${itemNo}: ${e.message}`); }
+        }
+        return { dryRun: true, accepted, refused: errors.length, errors };
+      }
+      let result;
+      try {
+        result = commands.COMMANDS[op](copy, { rows, planOnce: op === 'importOrders' }, 'dry-run');
+      } catch (e) {
+        return { dryRun: true, accepted: 0, refused: rows.length, errors: [e.message] };
+      }
+      if (op === 'importLocations') {
+        const errors = (result.unknown || []).map((code) => `Unknown location ${code}`);
+        return { dryRun: true, accepted: result.updated || 0, refused: errors.length, errors };
+      }
+      const errors = result && result.errors ? result.errors : [];
+      return { dryRun: true, accepted: result && result.added ? result.added : 0, refused: errors.length, errors };
+    };
     /** A job number from the address. Anything that is not a number is refused as it was typed. */
     const jobNo = (taskId) => {
       const n = Number(taskId);
@@ -545,11 +585,24 @@
           overrideReason = decision.overrideReason || null;
         }
       }
+      if (wantsDryRun(q, b)) return dryImport('importItems', rows);
       return run('importItems', { rows, overrideReason }, by);
     });
-    on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: listOf(b) }, by));
-    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: listOf(b), planOnce: true }, by));
-    on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: listOf(b) }, by));
+    on('POST', '/api/import/locations', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importLocations', rows);
+      return run('importLocations', { rows }, by);
+    });
+    on('POST', '/api/import/orders', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importOrders', rows);
+      return run('importOrders', { rows, planOnce: true }, by);
+    });
+    on('POST', '/api/import/stock', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importStock', rows);
+      return run('importStock', { rows }, by);
+    });
 
     // Clients, items, locations, holders, labels, equipment, reports.
     const clientView = (c) => {
