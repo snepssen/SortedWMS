@@ -280,9 +280,18 @@
       };
       for (const task of this._openWaveTasks()) if (task.kind === 'bin') add(task.loc, task.orderId, task.qty);
       const stock = this._waveStock({ forDemand: true });
-      const queue = this._liveOrders().filter((o) => o.status !== 'shipped')
-        .sort((a, b) => a.createdAt - b.createdAt || String(a.id).localeCompare(String(b.id)))
-        .slice(0, this.waveSettings().maxOrders);
+      const limit = this.waveSettings().maxOrders;
+      const queue = [];
+      // The live list is already oldest-first. Keep only the wave's worth, so
+      // entry does not sort every open order.
+      for (const order of this._liveOrders()) {
+        if (order.status === 'shipped') continue;
+        let at = queue.findIndex((o) => order.createdAt < o.createdAt || (order.createdAt === o.createdAt && String(order.id).localeCompare(String(o.id)) < 0));
+        if (at < 0) at = queue.length;
+        if (at >= limit) continue;
+        queue.splice(at, 0, order);
+        if (queue.length > limit) queue.pop();
+      }
       for (const order of queue) {
         const trial = copyFor(stock, order);
         const plan = this._planOrder(order, trial);

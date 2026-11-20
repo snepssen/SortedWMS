@@ -28,7 +28,7 @@ The goal is one real site running on it for a month.
 | # | Item | Size | Done when |
 | --- | --- | --- | --- |
 | 1.1 | **Snapshots that do not rewrite what has not changed.** Measured on the load test: a snapshot is 11 MB and takes 67 ms, 120 ms at twice the size. Half of it is locations, which are not history, and no order in that test has shipped. Moving closed orders out would not help yet. Writing each record only when it changes would, and needs a way to know what a command touched. | L | A snapshot after 200 changes writes those changes, not the building |
-| 1.2 | **Order entry and replay at size.** At twice the load-test size, adding an order goes from 3.9 ms to 9.6 ms, and replaying the whole journal from 7 s to 42 s. Something in order entry looks at every open order. A restart never replays the whole journal while a snapshot can be read, but a refused command replays up to 200 rows. | M | Adding an order costs the same with 3,000 open orders as with 6,000 |
+| 1.2 | **Order entry and replay at size.** Done. A piece order no longer plans ground jobs again when no pallet has moved, and replenishment demand keeps only the oldest orders in a wave instead of sorting every open order. On 1,500 items and 1,500 pallets, adding an order was 0.37 ms with 3,000 open and 0.30 ms with 6,000; after the change, 0.12 ms and 0.04 ms. Replaying that journal went from 1.4 s to 0.29 s. | M | Adding an order costs the same with 3,000 open orders as with 6,000 |
 | 1.3 | **Running it safely.** Done. [RUNNING.md](RUNNING.md) covers HTTPS behind Caddy and nginx, what to firewall (including telnet on 2323, LAN only), systemd and macOS launchd, and restoring onto a new machine from a local or off-site backup. | S | A stranger can follow it without asking |
 | 1.4 | **The fields of each route.** [API.md](API.md) lists every route, its permission, roles and module, built from the route tables. It does not yet list what each body takes and each answer gives. | M | Each route in the page names its fields, still built by a test |
 | 1.5 | **Security review.** Session handling, permissions per route, uploads, CSV formulas, webhook signatures, the telnet terminal. | M | Findings are fixed or listed |
@@ -133,6 +133,7 @@ Only when one install is not enough.
 **The office and the building**
 - Guided location setup, presets, and switchable modules with simple screens.
 - Clients, items, orders, ASNs, cartons and packing slips, delivery notes, kits, replenishment, more warehouses per install with transfers, available-to-sell, 3PL rate cards and invoices, client logins.
+- Client items: one item list per client (or the owner's list when there is a single client). The client keeps names, sizes and barcodes. Staff see them, flag a note, and carry out a request to take stock out. Fast and slow movers rank in the warehouse timezone and export to CSV. Off, item editing is unchanged and the rows stay.
 - Bills of materials: a kitting task consumes the components and produces the kit.
 - Delivery notes, pick lists, packing lists and client statements as A4 PDFs, written by the program itself.
 - Low-stock alerts that go out when available stock reaches the reorder point: one alert until it recovers, a reminder if it stays low, webhooks, SMTP email, and the bell. A client only gets its own items. A daily digest uses the warehouse timezone. See [ALERTS.md](ALERTS.md).
@@ -167,6 +168,7 @@ Only when one install is not enough.
 - Password rules: a shortest length, earlier passwords refused, and an optional age limit. See [ACCOUNTS.md](ACCOUNTS.md).
 - Every route written down with its permission, roles and module, built from the route tables and kept current by a test. See [API.md](API.md).
 - Restarts that load a snapshot without copying it twice, two snapshots kept, and a fallback when the newest cannot be read.
+- Order entry stays flat as open orders grow. A piece order does not plan ground jobs again until a pallet moves, and the replenishment look-ahead only keeps the oldest orders in the wave.
 
 **Connections** ([CONNECTIONS.md](CONNECTIONS.md))
 - API keys per system, with a role, for one client or all; revoked at once.
