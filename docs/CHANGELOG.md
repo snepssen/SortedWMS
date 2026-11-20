@@ -1,5 +1,13 @@
 # Changelog
 
+## HTTPS cookies, unmapped routes, and webhook time
+
+The session cookie and the device-pairing cookie are marked `Secure` when the request came in over HTTPS. A reverse proxy's `X-Forwarded-Proto: https` counts only if that proxy's address is listed in `SORTED_TRUST_PROXY` (an IP or an IPv4 CIDR). Plain HTTP on the LAN is unchanged, so telnet and a pairing QR still work. See [ACCOUNTS.md](ACCOUNTS.md).
+
+A route with no row in the permission table is refused: 404 on a read, 403 on a change. It no longer falls through to `wms.read` or `wms.write`. The routes that used that fall-through are named in the table. A test fails when a registered route has no row.
+
+Outgoing webhooks send `X-Sorted-Timestamp` and `X-Sorted-Signature-V2` (HMAC-SHA256 of `timestamp + "." + body`). Receivers should allow five minutes of clock skew. `X-Sorted-Signature` is still the older body-only HMAC, so a receiver that has not moved keeps working, and `X-Sorted-Delivery` is unchanged. The body-only header stops on 1 March 2027. An Etsy webhook that SortedWMS signs itself follows the same timestamp rule; Shopify, WooCommerce and Sendcloud are unchanged. See [CONNECTIONS.md](CONNECTIONS.md).
+
 ## Faster restarts, and fewer snapshots kept
 
 Loading a snapshot made a second full copy of the state it had just parsed. That copy is gone. On the load test (14,000 locations, 3,000 orders) a restart from a snapshot goes from 92 ms to 37 ms, and a refused command, which reloads the warehouse, from 157 ms to 77 ms. At twice that size a restart takes 72 ms.

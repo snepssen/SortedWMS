@@ -240,7 +240,9 @@ An administrator adds a webhook under **Connections**, or with `POST /api/webhoo
   { "webhook": 3, "messages": [ { "seq": 128, "type": "order.shipped", … }, … ], "gap": false }
   ```
 
-  - **`X-Sorted-Signature`:** `sha256=` and the HMAC-SHA256 of the raw body, keyed with the webhook's secret. The secret is shown once, when the webhook is added.
+  - **`X-Sorted-Timestamp`:** Unix seconds when this delivery was sent.
+  - **`X-Sorted-Signature-V2`:** `sha256=` and the HMAC-SHA256 of `timestamp + "." + raw body`, keyed with the webhook's secret. Refuse it when the timestamp is more than five minutes off your clock, either way. The secret is shown once, when the webhook is added.
+  - **`X-Sorted-Signature`:** the older signature, HMAC-SHA256 of the raw body only, still sent so a receiver that has not moved keeps working. It stops on 1 March 2027. A captured body can be replayed against this header; check v2 instead.
   - **`X-Sorted-Delivery`:** names the batch (`webhook-first-last`), so a receiver can tell a batch it has already handled.
 - **Only a 2xx answer moves it on.** Anything else, or no answer within 10 seconds, is tried again later. The wait grows from 5 seconds to 15 minutes, so nothing is skipped while the other side is down. **Try now** on the Connections screen (`POST /api/webhooks/:id/retry`) skips the wait.
 - **After a restart:** where each webhook has got to is kept in the database, so it carries on from there.
@@ -250,8 +252,11 @@ Checking the signature, in Node:
 
 ```js
 const { createHmac, timingSafeEqual } = require('crypto');
-const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-const ok = timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers['x-sorted-signature']));
+const timestamp = req.headers['x-sorted-timestamp'];
+const age = Math.abs(Date.now() - Number(timestamp) * 1000);
+const expected = 'sha256=' + createHmac('sha256', secret).update(timestamp + '.' + rawBody).digest('hex');
+const got = Buffer.from(String(req.headers['x-sorted-signature-v2'] || ''));
+const ok = age <= 5 * 60 * 1000 && got.length === Buffer.from(expected).length && timingSafeEqual(Buffer.from(expected), got);
 ```
 
 A batch can arrive twice: the receiver answered, but the answer was lost on the way back. Use `seq` to skip messages you have already handled.

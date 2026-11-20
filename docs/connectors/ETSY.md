@@ -16,7 +16,7 @@ The keystring, shared secret, access token and refresh token are saved on this m
 
 Polling, every few minutes, reads paid receipts that have not shipped (`was_paid` and not `was_shipped`). The same receipt sent twice is the same warehouse order.
 
-Etsy does not publish a signature for order webhooks. Polling is the import. If you set a webhook secret, SortedWMS will also accept a POST to `https://<your-wms>/api/etsy/webhook/<shop-id>` whose `X-Etsy-Signature` header is the hex HMAC-SHA256 of the raw body. That header is not an official Etsy header. A body that does not match is refused. With no secret saved, every webhook is refused.
+Etsy does not publish a signature for order webhooks. Polling is the import. If you set a webhook secret, SortedWMS will also accept a POST to `https://<your-wms>/api/etsy/webhook/<shop-id>`. That check is SortedWMS's own, not an Etsy header. Send `X-Sorted-Timestamp` (Unix seconds) and set `X-Etsy-Signature` to the hex HMAC-SHA256 of `timestamp + "." + raw body`. A timestamp more than five minutes off is refused. Until 1 March 2027 a post with no timestamp is still accepted when `X-Etsy-Signature` is the hex HMAC-SHA256 of the raw body alone. A body that does not match is refused. With no secret saved, every webhook is refused. Shopify, WooCommerce and Sendcloud keep the signatures those services define.
 
 ## SKUs
 

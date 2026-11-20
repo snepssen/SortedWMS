@@ -35,8 +35,9 @@ Open `http://localhost:8080/login`. On your own warehouse the admin starts on `s
 | `SORTED_ADMIN_PASSWORD` | `sorted-admin` | At least 8 characters. Set it before the first start and the admin keeps it; left at the default, the admin must change it at the first sign-in. |
 | `SORTED_DEMO_USERS` | on | `0` skips the sample accounts below. |
 | `SORTED_TOKEN` | unset | Optional. A request with header `x-token` is a service administrator and does not need a cookie. |
+| `SORTED_TRUST_PROXY` | unset | Comma-separated IPs or IPv4 CIDRs of reverse proxies that may set `X-Forwarded-Proto`. When the immediate peer is on this list and that header is `https`, the session cookie and the device cookie are marked `Secure`. A client that sets the header itself is ignored. Leave it unset on a plain HTTP LAN. |
 
-Passwords are stored as scrypt hashes (`scrypt$N$r$p$salt$hash`). The session cookie is `sorted_session`, HttpOnly, 12 hours. The database stores the SHA-256 of the token, not the token.
+Passwords are stored as scrypt hashes (`scrypt$N$r$p$salt$hash`). The session cookie is `sorted_session`, HttpOnly, 12 hours. It is marked `Secure` only when the request arrived over HTTPS: the socket itself, or `X-Forwarded-Proto: https` from a proxy listed in `SORTED_TRUST_PROXY`. Plain HTTP, including a scanner on the LAN and a pairing QR, does not get `Secure`, or the browser would drop the cookie. The device cookie `sorted_device` follows the same rule. The database stores the SHA-256 of the token, not the token.
 
 ## Sample accounts
 

@@ -16,6 +16,7 @@ const { createApi } = require('./api');
 const { createAuth } = require('./auth');
 const { createHardware } = require('./hardware');
 const { permissionFor } = require('./permissions');
+const { requestIsSecure } = require('./trust-proxy');
 const { createHealth } = require('./health');
 const registry = require('../modules/registry');
 
@@ -84,7 +85,7 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       }
       if (etsy && req.method === 'POST' && url.pathname.startsWith('/api/etsy/webhook/')) {
         const id = decodeURIComponent(url.pathname.split('/')[4] || '');
-        try { return send(200, etsy.acceptWebhook(id, raw, String(req.headers['x-etsy-signature'] || ''))); }
+        try { return send(200, etsy.acceptWebhook(id, raw, String(req.headers['x-etsy-signature'] || ''), String(req.headers['x-sorted-timestamp'] || ''))); }
         catch (e) { return send(e.status || 400, { error: e.message }); }
       }
       if (sendcloud && req.method === 'POST' && url.pathname === '/api/sendcloud/webhook') {
@@ -94,23 +95,25 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
       const sharedOk = Boolean(token) && (req.headers['x-token'] === token || url.searchParams.get('token') === token);
       const sessionUser = auth ? auth.userFromRequest(req) : null;
       const access = permissionFor(req.method, url.pathname);
+      if (!access.mapped) return send(access.status, { error: access.status === 404 ? 'Not found' : 'That route is not available' });
+      const secureCookie = requestIsSecure(req);
 
       if (auth && access.public && req.method === 'POST' && url.pathname === '/api/login') {
         const signed = auth.login(body.username, body.password);
         if (signed && signed.locked) return send(429, { error: 'Too many sign-in attempts. Try again later.', until: signed.until });
         if (!signed) return send(401, { error: 'Unknown username or password' });
         if (signed.mfaRequired) return send(200, { mfaRequired: true, mfaToken: signed.mfaToken });
-        return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge) });
+        return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge, secureCookie) });
       }
       if (auth && access.public && req.method === 'POST' && url.pathname === '/api/login/totp') {
         try {
           const signed = auth.loginTotp(body.mfaToken, body.code);
-          return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge) });
+          return send(200, { user: signed.user }, 'application/json; charset=utf-8', { 'set-cookie': auth.sessionCookie(signed.token, signed.maxAge, secureCookie) });
         } catch (e) { return send(401, { error: e.message }); }
       }
       if (auth && access.public && req.method === 'POST' && url.pathname === '/api/logout') {
         auth.logout(auth.cookieToken(req));
-        return send(200, { ok: true }, 'application/json; charset=utf-8', { 'set-cookie': auth.clearCookie() });
+        return send(200, { ok: true }, 'application/json; charset=utf-8', { 'set-cookie': auth.clearCookie(secureCookie) });
       }
       if (access.public && req.method === 'GET' && url.pathname === '/api/health') return send(200, { ok: true, auth: Boolean(auth) });
       if (auth && access.public && req.method === 'GET' && url.pathname === '/api/login/info') {
@@ -262,8 +265,8 @@ function createServer({ store, printers, token = process.env.SORTED_TOKEN || nul
           const claimed = auth.claimPair({ token: body.token, code: body.code, secret: body.secret, userAgent: req.headers['user-agent'], ip });
           try { store.exec('deviceEvent', { device: claimed.deviceId, text: `${claimed.user.username} paired a device` }, claimed.user.username); } catch (e) { /* account record already written */ }
           const cookies = [
-            auth.sessionCookie(claimed.token, claimed.maxAge),
-            `sorted_device=${encodeURIComponent(claimed.deviceId)}; Path=/; SameSite=Lax; Max-Age=${claimed.maxAge}`,
+            auth.sessionCookie(claimed.token, claimed.maxAge, secureCookie),
+            auth.deviceCookie(claimed.deviceId, claimed.maxAge, secureCookie),
           ];
           return send(200, { user: claimed.user, deviceId: claimed.deviceId, idleHours: Math.round(auth.deviceIdleMs / 36e5 * 10) / 10 }, 'application/json; charset=utf-8', { 'set-cookie': cookies });
         } catch (e) { return send(e.status === 429 ? 429 : 400, { error: e.message }); }

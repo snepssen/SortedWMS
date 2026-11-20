@@ -18,7 +18,7 @@ A client only ever gets the items that belong to them.
 
 ## Channels
 
-- **Webhooks and the outbox.** The events are `stock.low`, `stock.recovered` and `stock.digest`. They are signed the same way as goods received and orders shipped. A webhook for one client only gets that client's messages.
+- **Webhooks and the outbox.** The events are `stock.low`, `stock.recovered` and `stock.digest`. They are signed the same way as goods received and orders shipped, including the timestamp. A webhook for one client only gets that client's messages. See [CONNECTIONS.md](CONNECTIONS.md).
 - **Email.** SMTP with no extra packages: STARTTLS or SMTPS, and AUTH PLAIN or AUTH LOGIN. The password is saved beside the database in `alert-secrets.json` (or `SORTED_SMTP_PASSWORD`) and is never shown again, logged, or put in an export.
 - **The bell.** Users with “See low-stock alerts” get an in-app note. A client login only sees its own.
 

@@ -425,11 +425,13 @@ const RULES = [
   ['POST', '/api/etsy/catalog', 'etsy.manage'],
   ['POST', '/api/etsy/stock', 'etsy.manage'],
   ['POST', '/api/etsy/connect', 'etsy.manage'],
+  ['GET', '/api/etsy/callback', null],
   ['GET', '/api/sendcloud', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/account', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/rules', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/label', 'sendcloud.manage'],
   ['POST', '/api/sendcloud/return', 'sendcloud.manage'],
+  ['POST', '/api/sendcloud/webhook', null],
   ['GET', '/api/photos', 'photos.read'],
   ['GET', '/api/items/:itemNo/photos/:id', 'photos.read'],
   ['POST', '/api/items/:itemNo/photos', 'photos.write'],
@@ -458,9 +460,9 @@ const compiled = RULES.map(([method, pattern, perm]) => ({
 
 function permissionFor(method, pathname) {
   const hit = compiled.find((r) => r.method === method && r.re.test(pathname));
-  if (hit) return { public: hit.perm == null, permission: hit.perm };
-  if (method === 'GET' || method === 'HEAD') return { public: false, permission: 'wms.read' };
-  return { public: false, permission: 'wms.write' };
+  if (hit) return { public: hit.perm == null, permission: hit.perm, mapped: true };
+  const read = method === 'GET' || method === 'HEAD';
+  return { public: false, permission: null, mapped: false, status: read ? 404 : 403 };
 }
 
 function roleLabel(id) {
