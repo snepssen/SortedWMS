@@ -37,6 +37,8 @@
     enquiry: '8 Enquiry',
     more: '9 More',
     kit: '1 Kitting',
+    takeout: '2 Take out',
+    takeoutHelp: 'Type the id to start. Type ok and the id to confirm.',
     out: '9 Sign out',
     scan: 'Scan',
     qty: 'Quantity',
@@ -71,6 +73,8 @@
     enquiry: '8 Opzoeken',
     more: '9 Meer',
     kit: '1 Kitting',
+    takeout: '2 Uitnemen',
+    takeoutHelp: 'Typ het nummer om te starten. Typ ok en het nummer om te bevestigen.',
     out: '9 Afmelden',
     scan: 'Scan',
     qty: 'Aantal',
@@ -283,10 +287,23 @@
       paint('kit', stations.length ? [stations[0], say(session.lang, 'scan')] : [say(session.lang, 'none')]);
     }
 
+    function removalAllowed() {
+      const w = wh();
+      return Boolean(w.module && w.module('client-items') && (can(session.user, 'client-items.remove') || can(session.user, 'stock.adjust')));
+    }
+
+    function openTakeout() {
+      session.step = 'takeout';
+      note('take out');
+      const rows = typeof wh().clientRemovalLines === 'function' ? wh().clientRemovalLines() : [];
+      paint('takeout', [say(session.lang, 'takeoutHelp'), ...(rows.length ? rows : [say(session.lang, 'none')])]);
+    }
+
     function openMore() {
       session.step = 'more';
       const rows = [];
       if (can(session.user, 'val.execute') && wh().module('kitting')) rows.push(say(session.lang, 'kit'));
+      if (removalAllowed()) rows.push(say(session.lang, 'takeout'));
       rows.push(say(session.lang, 'out'));
       rows.push(say(session.lang, 'back'));
       paint('more', rows);
@@ -346,6 +363,15 @@
           paint('plates', [issued.id || issued.plate || series]);
           return;
         }
+        if (session.step === 'takeout') {
+          const ok = /^ok\s+(\S+)$/i.exec(code);
+          const actor = { role: session.user.role, clientId: session.user.clientId || null };
+          if (ok) store.exec('confirmClientRemoval', { id: ok[1], actor }, session.user.username);
+          else store.exec('startClientRemoval', { id: code, actor }, session.user.username);
+          const rows = typeof wh().clientRemovalLines === 'function' ? wh().clientRemovalLines() : [];
+          paint('takeout', [ok ? 'OK' : 'Started', ...rows]);
+          return;
+        }
         if (session.step === 'kitting') {
           const stationId = Object.keys(wh().valStations || {})[0];
           if (!stationId) return paint('kit', [say(session.lang, 'none')]);
@@ -363,6 +389,7 @@
       if (n === '9' && session.step === 'menu') return openMore();
       if (n === '9' && session.step === 'more') { note('sign out'); session.user = null; session.step = 'user'; return paint('user', []); }
       if (n === '1' && session.step === 'more') return openKit();
+      if (n === '2' && session.step === 'more' && removalAllowed()) return openTakeout();
       const items = menuRows();
       const picked = items.find((row) => row.startsWith(`${n} `));
       if (!picked) return showMenu();

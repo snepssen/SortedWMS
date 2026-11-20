@@ -80,7 +80,11 @@
     addDelivery: (wh, a) => wh.addDelivery({ id: String(req(a.id, 'id')), supplier: req(a.supplier, 'supplier'), category: req(a.category, 'category'), pallets: a.pallets, list: a.list || null, at: a.at || 'dock', asn: a.asn || null, clientId: a.clientId || null, expectedAt: a.expectedAt || null }),
 
     // Master data and imports
-    addItem: (wh, a) => wh.addItem(a),
+    addItem: (wh, a) => {
+      const item = wh.addItem(a);
+      if (a.overrideReason && wh.noteItemOverride) wh.noteItemOverride(item.itemNo, a.overrideReason);
+      return item;
+    },
     addItemPhoto: (wh, a) => wh.addItemPhoto(a),
     approveItem: (wh, a) => wh.approveItem(req(a.itemNo, 'itemNo')),
     importItems: (wh, a) => {
@@ -93,6 +97,7 @@
         } else wh.addItem(r);
         n++;
       }
+      if (a.overrideReason && wh.noteItemOverride) wh.noteItemOverride('import', a.overrideReason);
       return n;
     },
     importLocations: (wh, a) => wh.importLocations(a.rows || []),
@@ -151,9 +156,28 @@
     updateClient: (wh, a) => wh.updateClient(req(a.id, 'id'), a),
     archiveClient: (wh, a) => wh.archiveClient(req(a.id, 'id')),
     restoreClient: (wh, a) => wh.restoreClient(req(a.id, 'id')),
-    updateItem: (wh, a) => wh.updateItem(req(a.itemNo, 'itemNo'), a),
-    archiveItem: (wh, a) => wh.archiveItem(req(a.itemNo, 'itemNo')),
-    removeItem: (wh, a) => wh.removeItem(req(a.itemNo, 'itemNo')),
+    updateItem: (wh, a) => {
+      const item = wh.updateItem(req(a.itemNo, 'itemNo'), a);
+      if (a.overrideReason && wh.noteItemOverride) wh.noteItemOverride(a.itemNo, a.overrideReason);
+      return item;
+    },
+    archiveItem: (wh, a) => {
+      const item = wh.archiveItem(req(a.itemNo, 'itemNo'));
+      if (a.overrideReason && wh.noteItemOverride) wh.noteItemOverride(a.itemNo, a.overrideReason);
+      return item;
+    },
+    removeItem: (wh, a) => {
+      const itemNo = req(a.itemNo, 'itemNo');
+      const out = wh.removeItem(itemNo);
+      if (a.overrideReason && wh.noteItemOverride) wh.noteItemOverride(itemNo, a.overrideReason);
+      return out;
+    },
+    flagClientItem: (wh, a, by) => wh.flagClientItem({ itemNo: req(a.itemNo, 'itemNo'), note: a.note, by, actor: a.actor || null }),
+    resolveClientFlag: (wh, a, by) => wh.resolveClientFlag({ itemNo: req(a.itemNo, 'itemNo'), by, actor: a.actor || null }),
+    requestClientRemoval: (wh, a, by) => wh.requestClientRemoval({ itemNo: req(a.itemNo, 'itemNo'), qty: a.qty, kind: a.kind, reason: a.reason, by, actor: a.actor || null }),
+    cancelClientRemoval: (wh, a, by) => wh.cancelClientRemoval({ id: req(a.id, 'id'), by, actor: a.actor || null }),
+    startClientRemoval: (wh, a, by) => wh.startClientRemoval({ id: req(a.id, 'id'), by, actor: a.actor || null }),
+    confirmClientRemoval: (wh, a, by) => wh.confirmClientRemoval({ id: req(a.id, 'id'), by, actor: a.actor || null }),
     createLocation: (wh, a) => wh.createLocation(a),
     deleteLocation: (wh, a) => wh.deleteLocation(req(a.code, 'code')),
     setLocationCapacity: (wh, a) => wh.setLocationCapacity(req(a.code, 'code'), a),

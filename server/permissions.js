@@ -76,6 +76,8 @@ const PERMISSIONS = [
   ['photos.read', 'See item photos'],
   ['photos.write', 'Upload item photos'],
   ['user-audit.read', 'Export the user audit'],
+  ['client-items.flag', 'Flag an item for the client'],
+  ['client-items.remove', 'Carry out a client stock removal'],
 ];
 
 const ALL = PERMISSIONS.map(([id]) => id);
@@ -104,6 +106,7 @@ const DEFAULTS = {
     'outbound.read', 'outbound.write', 'reports.read', 'labels.print',
     'stock.read', 'holders.read', 'locations.read', 'tasks.read',
     'wms.read', 'wms.write', 'scans.execute', 'settings.read', 'sites.switch', 'stock.check', 'messages.read', 'intake.write', 'alerts.read', 'documents.read', 'bom.write', 'photos.read', 'photos.write',
+    'client-items.flag', 'client-items.remove',
   ],
   technician: [
     'technical.write', 'locations.read', 'locations.write', 'settings.read',
@@ -115,7 +118,7 @@ const DEFAULTS = {
   // and locations, transfers, replenishes and runs Auto-Shift.
   inbound: [
     'inbound.read', 'inbound.write', 'putaway.execute', 'scans.execute', 'holders.read', 'holders.write',
-    'labels.print', 'stock.read', 'items.read', 'locations.read', 'tasks.read', 'wms.read', 'sites.switch',
+    'labels.print', 'stock.read', 'items.read', 'locations.read', 'tasks.read', 'wms.read', 'sites.switch', 'client-items.flag',
   ],
   picker: [
     'picks.execute', 'orders.read', 'outbound.write', 'val.execute', 'scans.execute', 'holders.read', 'stock.check',
@@ -124,7 +127,7 @@ const DEFAULTS = {
   stock: [
     'counts.execute', 'moves.execute', 'stock.adjust', 'stock.create', 'stock.delete', 'stock.check', 'replenish.execute', 'reports.read',
     'stock.read', 'locations.read', 'items.read', 'holders.read', 'holders.write', 'movements.read',
-    'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch', 'alerts.read',
+    'scans.execute', 'labels.print', 'tasks.read', 'wms.read', 'sites.switch', 'alerts.read', 'client-items.flag', 'client-items.remove',
   ],
   client: ['items.read', 'items.write', 'stock.read', 'orders.read', 'clients.read', 'messages.read', 'intake.write', 'reports.read', 'alerts.read', 'documents.read', 'photos.read', 'photos.write'],
 };
@@ -431,6 +434,20 @@ const RULES = [
   ['GET', '/api/items/:itemNo/photos/:id', 'photos.read'],
   ['POST', '/api/items/:itemNo/photos', 'photos.write'],
   ['GET', '/api/user-audit.csv', 'user-audit.read'],
+  ['GET', '/api/client-items', 'items.read'],
+  ['GET', '/api/client-items/movers', 'items.read'],
+  ['GET', '/api/client-items/movers.csv', 'items.read'],
+  ['GET', '/api/client-items/removals', 'items.read'],
+  ['POST', '/api/client-items', 'items.write'],
+  ['POST', '/api/client-items/:itemNo', 'items.write'],
+  ['POST', '/api/client-items/:itemNo/archive', 'items.write'],
+  ['POST', '/api/client-items/:itemNo/remove', 'items.write'],
+  ['POST', '/api/client-items/:itemNo/flag', 'client-items.flag'],
+  ['POST', '/api/client-items/:itemNo/resolve', 'items.write'],
+  ['POST', '/api/client-items/removals', 'items.write'],
+  ['POST', '/api/client-items/removals/:id/cancel', 'items.write'],
+  ['POST', '/api/client-items/removals/:id/start', 'client-items.remove'],
+  ['POST', '/api/client-items/removals/:id/confirm', 'client-items.remove'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({

@@ -123,14 +123,14 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const HOME = { administrator: window.SORTED_DEMO ? 'master' : 'users', manager: 'floor', office: 'floor', technician: 'sort', inbound: 'receive', picker: 'cases', stock: 'stockctl', client: 'items' };
   const NAV = {
-    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['shopify', 'Shopify'], ['woocommerce', 'WooCommerce'], ['etsy', 'Etsy'], ['sendcloud', 'Sendcloud'], ['documents', 'Documents'], ['audit', 'Audit'], ['user-audit', 'User audit'], ['master', 'Master data']],
-    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules'], ['user-audit', 'User audit']],
-    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['photos', 'Item photos'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels'], ['bom', 'Bills of materials'], ['documents', 'Documents']],
+    administrator: [['users', 'Users'], ['roles', 'Roles'], ['connections', 'Connections'], ['sites', 'Warehouses'], ['modules', 'Modules'], ['settings', 'Settings'], ['offsite', 'Backups'], ['shopify', 'Shopify'], ['woocommerce', 'WooCommerce'], ['etsy', 'Etsy'], ['sendcloud', 'Sendcloud'], ['documents', 'Documents'], ['audit', 'Audit'], ['user-audit', 'User audit'], ['master', 'Master data'], ['client-items', 'Item list'], ['client-movers', 'Movers'], ['client-removals', 'Stock removal']],
+    manager: [['floor', 'Floor'], ['tasks', 'Tasks'], ['client-items', 'Item list'], ['client-movers', 'Movers'], ['client-removals', 'Stock removal'], ['exceptions', 'Exceptions'], ['abc', 'Cycle counts'], ['reports', 'Reports'], ['tariff', 'Tariff'], ['history', 'History'], ['locations', 'Locations'], ['bins', 'Bins'], ['waves', 'Pick waves'], ['holders', 'Holders'], ['modules', 'Modules'], ['user-audit', 'User audit']],
+    office: [['floor', 'Office'], ['clients', 'Clients'], ['tariff', 'Tariff'], ['items', 'Items'], ['photos', 'Item photos'], ['bins', 'Bins'], ['inbound', 'Inbound'], ['outbound', 'Outbound'], ['waves', 'Pick waves'], ['stockctl', 'Stock checks'], ['pack', 'Packing'], ['returns', 'Returns'], ['reports', 'Reports'], ['labels', 'Labels'], ['bom', 'Bills of materials'], ['documents', 'Documents'], ['client-movers', 'Movers'], ['client-removals', 'Stock removal']],
     technician: [['sort', 'Auto-sort'], ['profiles', 'Profiles'], ['locations', 'Locations'], ['defaults', 'Location defaults'], ['series', 'Label series'], ['hardware', 'Hardware']],
     inbound: [['receive', 'Receiving'], ['moves', 'Put-away'], ['bins', 'Bins'], ['returns', 'Returns']],
     picker: [['cases', 'Pallet and box picks'], ['bins', 'Bin picks'], ['moves', 'Truck'], ['mezzanine', 'Mezzanine'], ['kitting', 'Kitting']],
-    stock: [['stockctl', 'Stock control'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
-    client: [['items', 'Items'], ['photos', 'Item photos'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['documents', 'Documents']],
+    stock: [['stockctl', 'Stock control'], ['client-items', 'Item list'], ['client-removals', 'Stock removal'], ['abc', 'Cycle counts'], ['bins', 'Bins'], ['moves', 'Auto-Shift and counts'], ['replenish', 'Replenish'], ['holders', 'License plates'], ['history', 'History'], ['alerts', 'Alerts']],
+    client: [['items', 'Items'], ['photos', 'Item photos'], ['stock', 'Stock'], ['orders', 'Orders'], ['reports', 'Reports'], ['alerts', 'Alerts'], ['documents', 'Documents'], ['client-movers', 'Movers'], ['client-removals', 'Stock removal']],
   };
   const TITLES = { administrator: 'Administrator', manager: 'Manager / supervisor', office: 'Office', technician: 'Technical', inbound: 'Inbound', picker: 'Picker', stock: 'Stock / inventory', client: 'Client' };
   const DUTY = { inbound: 'Inbound', picking: 'Picking', inventory: 'Stock and inventory' };
@@ -901,7 +901,60 @@
       }
       return PANELS.reports();
     },
+    async clientItems() {
+      const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+      const q = new URLSearchParams();
+      for (const key of ['q', 'status', 'flagged', 'client']) if (params.get(key)) q.set(key, params.get(key));
+      const data = await api('GET', '/api/client-items' + (q.toString() ? '?' + q.toString() : ''));
+      const clientUser = me.role === 'client';
+      const manager = me.role === 'administrator' || me.role === 'manager';
+      const title = clientUser || data.single ? 'Your items' : 'Item list';
+      const showPhotos = data.photos && modOn('photos');
+      const rows = data.items.map((i) => {
+        const pics = showPhotos && i.photos && i.photos.length ? i.photos.map((p) => `<img alt="${esc(p.name || i.name)}" src="/api/items/${encodeURIComponent(i.itemNo)}/photos/${encodeURIComponent(p.id)}" style="height:40px;width:40px;object-fit:cover">`).join(' ') : '';
+        const flag = i.flag ? `<span class="tag bad">${esc(i.flag.note)}</span>` : '';
+        const dims = [i.lengthMm, i.widthMm, i.heightMm].filter((n) => n != null).join('×');
+        return `<tr><td>${esc(i.itemNo)}</td><td>${esc(i.name)}<div class="dim">${esc(i.description || '')}</div>${pics ? `<div>${pics}</div>` : ''}</td><td>${esc(i.clientId || '')}</td><td>${esc(dims)}${i.weightKg == null ? '' : ` ${esc(i.weightKg)} kg`}</td><td>${esc(i.status)}</td><td>${esc(i.onHand)}</td><td>${flag}</td><td>${i.flag && (clientUser || (manager && data.single)) ? `<button type="button" data-act="client-flag-resolve" data-id="${esc(i.itemNo)}">Resolve flag</button>` : ''}${clientUser && i.status !== 'archived' ? ` <button type="button" data-act="item-archive" data-id="${esc(i.itemNo)}">Archive</button>` : ''}</td></tr>`;
+      });
+      const edit = clientUser || manager;
+      const reason = manager && !data.single ? '<label>Reason<input name="reason" required placeholder="Why this override"></label>' : (manager ? '<label>Reason<input name="reason" placeholder="Optional on your own list"></label>' : '');
+      const fields = `<label>Name<input name="name" required></label><label>Description<input name="description"></label><label>Unit<input name="uom" value="case"></label><label>Category<select name="category">${catOptions()}</select></label><label>Barcode<input name="codes" placeholder="text under the barcode"></label><label>L mm<input name="lengthMm" type="number"></label><label>W mm<input name="widthMm" type="number"></label><label>H mm<input name="heightMm" type="number"></label><label>kg<input name="weightKg" type="number" step="0.1"></label>`;
+      const create = edit ? `<form class="form" data-act="client-item-add"><label>Item<input name="itemNo" required></label>${fields}${clientUser ? '' : '<label>Client<input name="clientId" placeholder="blank uses the only client"></label>'}${reason}<button class="primary">Add item</button></form>` : '';
+      const change = edit ? `<form class="form" data-act="client-item-edit"><label>Item<select name="itemNo">${data.items.filter((i) => i.status !== 'archived').map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} ${esc(i.name)}</option>`).join('')}</select></label>${fields}${reason}<button>Save description</button></form>` : '';
+      const flagForm = !clientUser && can('client-items.flag') ? `<form class="form" data-act="client-item-flag"><label>Item<select name="itemNo">${data.items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)}</option>`).join('')}</select></label><label>Note<input name="note" required placeholder="What should the client correct?"></label><button>Flag for the client</button></form>` : '';
+      const ops = !clientUser && can('items.write') ? `<form class="form" data-act="item-ops"><label>Item<select name="itemNo">${data.items.map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)}</option>`).join('')}</select></label><label>Pallet qty<input name="palletQty" type="number" min="1"></label><label>Reorder point<input name="reorderPoint" type="number" min="0"></label><button>Save warehouse fields</button></form>` : '';
+      return `<section><h2>${title}</h2><p class="hint">The client keeps the names, sizes and barcodes. The warehouse keeps locations, holds and counts.</p>
+        <form class="form" data-act="client-item-search"><label>Search items<input name="q" value="${esc(params.get('q') || '')}"></label><label>Status<select name="status"><option value="">Open</option><option value="active" ${params.get('status') === 'active' ? 'selected' : ''}>Active</option><option value="pending" ${params.get('status') === 'pending' ? 'selected' : ''}>Pending</option><option value="archived" ${params.get('status') === 'archived' ? 'selected' : ''}>Archived</option><option value="all" ${params.get('status') === 'all' ? 'selected' : ''}>All</option></select></label><label><input type="checkbox" name="flagged" ${params.get('flagged') === '1' ? 'checked' : ''}> Open flag</label><button>Search</button></form>
+        ${table(['Item', 'Name', 'Client', 'Size', 'Status', 'On hand', 'Flag', ''], rows)}
+        ${create}${change}${flagForm}${ops}
+        <p class="hint">A manager can change a description with a reason.</p></section>`;
+    },
+    async clientMovers() {
+      const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+      const q = new URLSearchParams();
+      for (const key of ['from', 'to', 'pace', 'client']) if (params.get(key)) q.set(key, params.get(key));
+      const data = await api('GET', '/api/client-items/movers' + (q.toString() ? '?' + q.toString() : ''));
+      const csv = '/api/client-items/movers.csv?' + q.toString();
+      return `<section><h2>Fast and slow movers</h2><p class="hint">${esc(data.from)} to ${esc(data.to)}, ${esc(data.timeZone)}. Rank 1 moved the most.</p>
+        <form class="form" data-act="client-mover-search"><label>From<input name="from" type="date" value="${esc(data.from)}"></label><label>To<input name="to" type="date" value="${esc(data.to)}"></label><label>Pace<select name="pace"><option value="">All</option><option value="fast" ${params.get('pace') === 'fast' ? 'selected' : ''}>Fast</option><option value="slow" ${params.get('pace') === 'slow' ? 'selected' : ''}>Slow</option></select></label><button>Show</button></form>
+        <p><a href="${esc(csv)}">Export CSV</a></p>
+        ${table(['Rank', 'Item', 'Name', 'Client', 'Units out', 'Order lines', 'Days since last movement', 'Pace'], data.rows.map((r) => `<tr><td>${esc(r.rank)}</td><td>${esc(r.itemNo)}</td><td>${esc(r.name)}</td><td>${esc(r.clientId || '')}</td><td>${esc(r.unitsOut)}</td><td>${esc(r.orderLines)}</td><td>${r.daysSince == null ? '' : esc(r.daysSince)}</td><td>${esc(r.pace)}</td></tr>`))}</section>`;
+    },
+    async clientRemovals() {
+      const rows = await api('GET', '/api/client-items/removals');
+      const items = me.role === 'client' || me.role === 'administrator' || me.role === 'manager' || can('items.read') ? await api('GET', '/api/client-items?status=active') : { items: [] };
+      const ask = me.role === 'client' || ((me.role === 'administrator' || me.role === 'manager') && items.single);
+      const staff = can('client-items.remove');
+      const request = ask ? `<form class="form" data-act="client-removal-ask"><label>Item<select name="itemNo">${(items.items || []).map((i) => `<option value="${esc(i.itemNo)}">${esc(i.itemNo)} (${esc(i.available)} free)</option>`).join('')}</select></label><label>Quantity<input name="qty" type="number" min="1" required></label><label>Kind<select name="kind"><option value="disposal">Disposal</option><option value="write-off">Write-off</option><option value="collected">Collected by the client</option></select></label><label>Reason<input name="reason" required></label><button class="primary">Request stock removal</button></form>` : '';
+      return `<section><h2>Stock removal</h2><p class="hint">The request becomes a warehouse task. Staff take the stock out and confirm it. You can cancel until they start.</p>
+        ${request}
+        ${table(['Request', 'Item', 'Qty', 'Kind', 'Status', 'Reason', ''], rows.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.itemNo)}</td><td>${esc(r.qty)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td><td>${esc(r.reason)}</td><td>${r.status === 'requested' && (me.role === 'client' || me.role === 'administrator' || me.role === 'manager') ? `<button type="button" data-act="client-removal-cancel" data-id="${esc(r.id)}">Cancel request</button>` : ''}${r.status === 'requested' && staff ? ` <button type="button" data-act="client-removal-start" data-id="${esc(r.id)}">Start removal</button>` : ''}${r.status === 'started' && staff ? ` <button type="button" data-act="client-removal-confirm" data-id="${esc(r.id)}">Confirm removal</button>` : ''}</td></tr>`))}</section>`;
+    },
+    'client-items'() { return PANELS.clientItems(); },
+    'client-movers'() { return PANELS.clientMovers(); },
+    'client-removals'() { return PANELS.clientRemovals(); },
     async items() {
+      if (modOn('client-items')) return PANELS.clientItems();
       if (me.role === 'client') {
         const items = await api('GET', '/api/items');
         const features = me.features || {};
@@ -1313,6 +1366,10 @@
       if (act === 'offsite-clear') { await api('POST', '/api/offsite/settings', { clearPassphrase: true }); return draw(); }
       if (act === 'offsite-prune-plain') { if (!confirm('Remove the plain database copies in the backup folder? Encrypted files stay.')) return; await api('POST', '/api/offsite/prune-plain', { confirm: true }); return draw(); }
       if (act === 'item-archive') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/archive', {}); return draw(); }
+      if (act === 'client-flag-resolve') { await api('POST', '/api/client-items/' + encodeURIComponent(b.dataset.id) + '/resolve', {}); return draw(); }
+      if (act === 'client-removal-cancel') { await api('POST', '/api/client-items/removals/' + encodeURIComponent(b.dataset.id) + '/cancel', {}); return draw(); }
+      if (act === 'client-removal-start') { await api('POST', '/api/client-items/removals/' + encodeURIComponent(b.dataset.id) + '/start', {}); return draw(); }
+      if (act === 'client-removal-confirm') { await api('POST', '/api/client-items/removals/' + encodeURIComponent(b.dataset.id) + '/confirm', {}); return draw(); }
       if (act === 'item-approve') { await api('POST', '/api/items/' + encodeURIComponent(b.dataset.id) + '/approve', {}); return draw(); }
       if (act === 'alias-drop') { await api('POST', '/api/locations/aliases/drop', { code: b.dataset.id }); return draw(); }
       if (act === 'alias-drop-all') { if (!confirm('Old labels will no longer find anything. Drop every old code?')) return; await api('POST', '/api/locations/aliases/drop', { all: true }); return draw(); }
@@ -1625,6 +1682,32 @@
     if (name === 'place') return api('POST', '/api/config', { country: data.country, timeZone: data.timeZone });
     if (name === 'warehouse-language') return api('POST', '/api/config', { language: data.language });
     if (name === 'approval') return api('POST', '/api/config', { itemApproval: data.itemApproval === 'on' });
+    if (name === 'client-item-search' || name === 'client-mover-search') {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(data)) if (v && v !== 'off') q.set(k, v);
+      if (data.flagged === 'on') q.set('flagged', '1');
+      const next = name === 'client-mover-search' ? 'client-movers' : (me.role === 'client' || me.role === 'office' ? 'items' : 'client-items');
+      history.replaceState(null, '', '#' + next + (q.toString() ? '?' + q.toString() : ''));
+      panel = next;
+      return;
+    }
+    if (name === 'client-item-add' || name === 'client-item-edit') {
+      const body = { name: data.name, description: data.description || '', uom: data.uom || 'case', category: data.category, codes: data.codes || '' };
+      for (const key of ['lengthMm', 'widthMm', 'heightMm', 'weightKg']) if (data[key] !== '' && data[key] != null) body[key] = Number(data[key]);
+      if (data.reason) body.reason = data.reason;
+      if (data.clientId) body.clientId = data.clientId;
+      if (name === 'client-item-add') return api('POST', '/api/client-items', { ...body, itemNo: data.itemNo });
+      return api('POST', '/api/client-items/' + encodeURIComponent(data.itemNo), body);
+    }
+    if (name === 'client-item-flag') return api('POST', '/api/client-items/' + encodeURIComponent(data.itemNo) + '/flag', { note: data.note });
+    if (name === 'item-ops') {
+      const body = {};
+      if (data.palletQty) body.palletQty = Number(data.palletQty);
+      if (data.reorderPoint !== '' && data.reorderPoint != null) body.reorderPoint = Number(data.reorderPoint);
+      if (!Object.keys(body).length) return;
+      return api('POST', '/api/items/' + encodeURIComponent(data.itemNo), body);
+    }
+    if (name === 'client-removal-ask') return api('POST', '/api/client-items/removals', { itemNo: data.itemNo, qty: Number(data.qty), kind: data.kind, reason: data.reason });
     if (name === 'client-item') {
       const body = { ...data, bestBefore: data.noBestBefore !== 'on', palletQty: 1, food: data.food === 'on', frozen: data.frozen === 'on', highValue: data.highValue === 'on', lengthMm: num(data.lengthMm), widthMm: num(data.widthMm), heightMm: num(data.heightMm), weightKg: num(data.weightKg), codes: data.codes || '' };
       if (data.value === '' || data.value == null) delete body.value;
