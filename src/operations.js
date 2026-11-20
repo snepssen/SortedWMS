@@ -617,7 +617,9 @@
   }
 
   function csvCell(value) {
-    return `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+    let text = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(text) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
   }
 
   function install(Warehouse, deps) {

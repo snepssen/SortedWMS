@@ -210,7 +210,7 @@
      * Every stock change by hand in a period: counts, corrections, created and
      * deleted stock. One row per change, plus the net per item.
      */
-    proto.stockChanges = function ({ from = null, to = null } = {}) {
+    proto.stockChanges = function ({ from = null, to = null, clientId = null } = {}) {
       const tz = typeof this.localDay === 'function';
       const start = from ? (tz ? this.zonedMidnight(from) : Date.parse(from)) : -Infinity;
       const end = to ? (tz ? this.zonedMidnight(to) : Date.parse(to)) + DAY : Infinity;
@@ -223,6 +223,7 @@
           sscc: a.sscc || null, plate: a.plate || null, by: a.by, correctionId: a.correctionId || null,
         }))
         .filter((r) => r.change !== 0)
+        .filter((r) => !clientId || (this.items[r.itemNo] && this.items[r.itemNo].clientId === clientId))
         .sort((a, b) => a.t - b.t);
       const net = {};
       for (const r of rows) net[r.itemNo] = (net[r.itemNo] || 0) + r.change;
@@ -231,7 +232,11 @@
 
     proto.stockChangesCsv = function (opts) {
       const out = this.stockChanges(opts);
-      const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const cell = (v) => {
+        let s = v == null ? '' : String(v);
+        if (/^[=+\-@\t\r]/.test(s) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(s)) s = `'${s}`;
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
       const lines = [['day', 'item', 'name', 'change', 'reason', 'location', 'pallet', 'plate', 'by', 'correction']];
       for (const r of out.rows) lines.push([r.day, r.itemNo, r.name, r.change > 0 ? `+${r.change}` : r.change, r.reason, r.loc, r.sscc, r.plate, r.by, r.correctionId]);
       return lines.map((l) => l.map(cell).join(',')).join('\n');
