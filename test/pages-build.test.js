@@ -48,6 +48,7 @@ for (const page of ['app.html', 'demo/app.html']) {
     assert.equal(stock.filter((row) => row.itemNo === 'PART').reduce((n, row) => n + row.qty, 0), 0);
     assert.equal(stock.find((row) => row.itemNo === 'KIT').qty, 1);
     assert.equal(typeof again.wh.addItemPhoto, 'function');
+    assert.equal(typeof again.wh.clientItemMovers, 'function');
   });
 }
 

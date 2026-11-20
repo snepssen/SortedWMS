@@ -245,6 +245,7 @@
           item.unitsPerCase = units;
         }
       }
+      if ('description' in patch) item.description = String(patch.description || '').trim().slice(0, 500);
       if (patch.codes != null) item.codes = (Array.isArray(patch.codes) ? patch.codes : String(patch.codes).split(/[\s,;]+/)).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
       if (patch.barcodes != null) {
         item.barcodes = (Array.isArray(patch.barcodes) ? patch.barcodes : []).map((b) => (typeof b === 'string' ? { type: 'CODE128', value: b } : { type: b.type || 'CODE128', value: String(b.value || '').trim() })).filter((b) => b.value);
@@ -293,6 +294,7 @@
       if (Object.values(this.orders).some((o) => o.lines.some((l) => l.itemNo === itemNo))) throw new Error('Item is on an order');
       if (Object.values(this.holders || {}).some((h) => (h.contents || []).some((c) => c.itemNo === itemNo))) throw new Error('Item is on a holder');
       if (Object.values(this.deliveries).some((d) => d.list && Object.values(d.list).some((l) => l.itemNo === itemNo))) throw new Error('Item is on a delivery');
+      if (typeof this.module === 'function' && this.module('client-items') && typeof this.clientItemHasHistory === 'function' && this.clientItemHasHistory(itemNo)) throw new Error('Item has history; archive it instead');
       delete this.items[itemNo];
       this.log(`Item ${itemNo} removed`);
       return { removed: itemNo };
@@ -1348,6 +1350,13 @@
       return globalThis.SortedPhotos;
     }
 
+    function loadClientItems() {
+      if (typeof require === 'function') {
+        try { return require('./client-items'); } catch (e) { /* browser */ }
+      }
+      return globalThis.SortedClientItems;
+    }
+
     function loadBom() {
       if (typeof require === 'function') {
         try { return require('./bom'); } catch (e) { /* browser */ }
@@ -1651,6 +1660,8 @@
     if (bom && bom.install) bom.install(Warehouse);
     const photos = loadPhotos();
     if (photos && photos.install) photos.install(Warehouse);
+    const clientItems = loadClientItems();
+    if (clientItems && clientItems.install) clientItems.install(Warehouse);
 
     proto.search = function (q) {
       const s = String(q || '').trim().toLowerCase();
