@@ -2,7 +2,7 @@
 
 Every route the server answers. This page is built from the route tables by `npm run api-reference`; a test fails when it is out of date. Do not edit it by hand.
 
-359 routes: 137 read, 222 change something. 9 need no sign-in.
+359 routes: 137 read, 222 change something. 11 need no sign-in.
 
 ## How to call it
 
@@ -47,7 +47,7 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/alerts/low-stock` | `reports.read` | administrator, manager, office, stock, client |  | — | the handler's value |
+| GET | `/api/alerts/low-stock` | `reports.read` | administrator, manager, office, stock, client |  | — | result of lowStockMine |
 | GET | `/api/alerts/low-stock.csv` | `reports.read` | administrator, manager, office, stock, client |  | — | csv |
 
 ## auth-log
@@ -127,22 +127,22 @@ Every route the server answers. This page is built from the route tables by `npm
 
 ## client-items
 
-| Method | Route | Permission | Roles | Module |
-| --- | --- | --- | --- | --- |
-| GET | `/api/client-items` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
-| POST | `/api/client-items` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/:itemNo` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/:itemNo/archive` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/:itemNo/flag` | `client-items.flag` | administrator, manager, office, inbound, stock | client-items |
-| POST | `/api/client-items/:itemNo/remove` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/:itemNo/resolve` | `items.write` | administrator, manager, office, client | client-items |
-| GET | `/api/client-items/movers` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
-| GET | `/api/client-items/movers.csv` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
-| GET | `/api/client-items/removals` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items |
-| POST | `/api/client-items/removals` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/removals/:id/cancel` | `items.write` | administrator, manager, office, client | client-items |
-| POST | `/api/client-items/removals/:id/confirm` | `client-items.remove` | administrator, manager, office, stock | client-items |
-| POST | `/api/client-items/removals/:id/start` | `client-items.remove` | administrator, manager, office, stock | client-items |
+| Method | Route | Permission | Roles | Module | Request | Response |
+| --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/client-items` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query q, status, flagged, client | single, ownerClient, photos, items |
+| POST | `/api/client-items` | `items.write` | administrator, manager, office, client | client-items | body clientId, status, overrideReason, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value, description | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body clientId, overrideReason, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, description, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo/archive` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body reason, overrideReason | itemNo, name, description, clientId, category, uom, lengthMm, widthMm, heightMm, weightKg, gtin, unitGtin, unitsPerCase, codes, barcodes, palletQty, storage, reorderPoint, value, flags, bestBefore, flag, onHand, available, photos |
+| POST | `/api/client-items/:itemNo/flag` | `client-items.flag` | administrator, manager, office, inbound, stock | client-items | path itemNo; body note | result of hideValue |
+| POST | `/api/client-items/:itemNo/remove` | `items.write` | administrator, manager, office, client | client-items | path itemNo; body reason, overrideReason | file, bytes, sha256, targets, summary |
+| POST | `/api/client-items/:itemNo/resolve` | `items.write` | administrator, manager, office, client | client-items | path itemNo | result of hideValue |
+| GET | `/api/client-items/movers` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query from, to, client, pace | itemNo, name, clientId, unitsOut, orderLines, daysSince, lastMovement, pace, from, to, timeZone, asOf, rows |
+| GET | `/api/client-items/movers.csv` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query from, to, client, pace | csv |
+| GET | `/api/client-items/removals` | `items.read` | administrator, manager, office, inbound, picker, stock, client | client-items | query client, status | the handler's value |
+| POST | `/api/client-items/removals` | `items.write` | administrator, manager, office, client | client-items | body itemNo, qty, kind, reason | the command result |
+| POST | `/api/client-items/removals/:id/cancel` | `items.write` | administrator, manager, office, client | client-items | path id | the command result |
+| POST | `/api/client-items/removals/:id/confirm` | `client-items.remove` | administrator, manager, office, stock | client-items | path id | the command result |
+| POST | `/api/client-items/removals/:id/start` | `client-items.remove` | administrator, manager, office, stock | client-items | path id | the command result |
 
 ## clients
 
@@ -247,7 +247,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/etsy` | `etsy.manage` | administrator | etsy | — | the handler's value |
-| GET | `/api/etsy/callback` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock | etsy | query code, state | the handler's value |
+| GET | `/api/etsy/callback` | none, no sign-in | anyone | etsy | query code, state | the handler's value |
 | POST | `/api/etsy/catalog` | `etsy.manage` | administrator | etsy | body shopId | the handler's value |
 | POST | `/api/etsy/connect` | `etsy.manage` | administrator | etsy | body shopId | the handler's value |
 | POST | `/api/etsy/map` | `etsy.manage` | administrator | etsy | body shopId, sku, itemNo | the handler's value |
@@ -310,10 +310,10 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/import/items` | `wms.write` | administrator, manager, office |  | body rows; each row itemNo, value | the command result |
-| POST | `/api/import/locations` | `wms.write` | administrator, manager, office |  | body rows | the command result |
-| POST | `/api/import/orders` | `wms.write` | administrator, manager, office |  | body rows; each row orderId, order, customer, lane, verifyLoading, minDays, units, itemNo, item, pallets, process | the command result |
-| POST | `/api/import/stock` | `wms.write` | administrator, manager, office |  | body rows; each row code, sscc | the command result |
+| POST | `/api/import/items` | `wms.write` | administrator, manager, office |  | body reason | the command result |
+| POST | `/api/import/locations` | `wms.write` | administrator, manager, office |  | — | the command result |
+| POST | `/api/import/orders` | `orders.write` | administrator, manager, office |  | — | the command result |
+| POST | `/api/import/stock` | `wms.write` | administrator, manager, office |  | — | the command result |
 
 ## inbox
 
@@ -332,14 +332,14 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/items` | `items.read` | administrator, manager, office, inbound, picker, stock, client |  | — | the handler's value |
-| POST | `/api/items` | `items.write` | administrator, manager, office, client |  | body clientId, status, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value | the command result |
-| POST | `/api/items/:itemNo` | `items.write` | administrator, manager, office, client |  | path itemNo; body clientId, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | the command result |
+| POST | `/api/items` | `items.write` | administrator, manager, office, client |  | body clientId, status, overrideReason, itemNo, gtin, name, category, palletQty, minShipDays, storage, unitGtin, unitsPerCase, codes, uom, lengthMm, widthMm, heightMm, weightKg, barcodes, food, frozen, highValue, bestBefore, value, description | the command result |
+| POST | `/api/items/:itemNo` | `items.write` | administrator, manager, office, client |  | path itemNo; body clientId, overrideReason, itemNo*, name, uom, bestBefore, storage, category, palletQty, reorderPoint, gtin, unitGtin, unitsPerCase, description, codes, barcodes, value, minShipDays, status, rack, lengthMm, widthMm, heightMm, weightKg | the command result |
 | POST | `/api/items/:itemNo/approve` | `items.approve` | administrator, manager, office |  | path itemNo | the command result |
-| POST | `/api/items/:itemNo/archive` | `items.write` | administrator, manager, office, client |  | path itemNo | the command result |
+| POST | `/api/items/:itemNo/archive` | `items.write` | administrator, manager, office, client |  | path itemNo; body reason, overrideReason | the command result |
 | POST | `/api/items/:itemNo/min-ship-days` | `wms.write` | administrator, manager, office | lots | path itemNo; body days | the command result |
 | POST | `/api/items/:itemNo/photos` | `photos.write` | administrator, manager, office, client | photos | path itemNo; body data, name | file, bytes, sha256, targets, summary |
 | GET | `/api/items/:itemNo/photos/:id` | `photos.read` | administrator, manager, office, client | photos | path itemNo, id | contentType, raw |
-| POST | `/api/items/:itemNo/remove` | `items.write` | administrator, manager, office, client |  | path itemNo | the command result |
+| POST | `/api/items/:itemNo/remove` | `items.write` | administrator, manager, office, client |  | path itemNo; body reason, overrideReason | the command result |
 | POST | `/api/items/:itemNo/serials` | `items.write` | administrator, manager, office, client | serials | path itemNo; body on | the command result |
 | POST | `/api/items/:itemNo/units` | `items.write` | administrator, manager, office, client |  | path itemNo; body itemNo*, base, unitWeightKg, packs | the command result |
 
@@ -488,9 +488,9 @@ Every route the server answers. This page is built from the route tables by `npm
 | GET | `/api/orders/:id/delivery-note` | `orders.read` | administrator, manager, office, picker, client |  | path id | contentType, raw |
 | POST | `/api/orders/:id/dispatch-cartons` | `outbound.write` | administrator, manager, office, picker |  | path id | the command result |
 | GET | `/api/orders/:id/loading` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock |  | path id | id, customer, lane, verifyLoading, loading, trailerReadiness, total, loaded, pallets |
-| POST | `/api/orders/:id/loading` | `wms.write` | administrator, manager, office |  | path id; body trailer, inspectionPolicy | the command result |
-| POST | `/api/orders/:id/loading/inspection` | `wms.write` | administrator, manager, office | food | path id; body id*, temperature, refrigerationOn, clean, dry, odorFree, damageFree, reason | the command result |
-| POST | `/api/orders/:id/loading/release` | `wms.write` | administrator, manager, office | food | path id; body reason | the command result |
+| POST | `/api/orders/:id/loading` | `outbound.write` | administrator, manager, office, picker |  | path id; body trailer, inspectionPolicy | the command result |
+| POST | `/api/orders/:id/loading/inspection` | `outbound.write` | administrator, manager, office, picker | food | path id; body id*, temperature, refrigerationOn, clean, dry, odorFree, damageFree, reason | the command result |
+| POST | `/api/orders/:id/loading/release` | `outbound.write` | administrator, manager, office, picker | food | path id; body reason | the command result |
 | POST | `/api/orders/:id/loading/scan` | `scans.execute` | administrator, manager, office, inbound, picker, stock |  | path id; body id*, device*, code*, unload | the command result |
 | POST | `/api/orders/:id/pack` | `outbound.write` | administrator, manager, office, picker |  | path id; body note | the command result |
 | GET | `/api/orders/:id/returnable` | `inbound.read` | administrator, manager, office, inbound | returns | path id | orderId, customer, shipped, lines, itemNo, name, uom, returned, left, serialized, serials |
@@ -624,9 +624,9 @@ Every route the server answers. This page is built from the route tables by `npm
 | GET | `/api/reports/area` | `reports.read` | administrator, manager, office, stock, client | reports | — | timeZone, asOf, filters, catalog, reports |
 | GET | `/api/reports/area/:name` | `reports.read` | administrator, manager, office, stock, client | reports | path name | the record's own fields, id, title, hidden, reason, columns, rows, filters, timeZone, asOf |
 | GET | `/api/reports/area/:name.csv` | `reports.read` | administrator, manager, office, stock, client | reports | path name | csv |
-| GET | `/api/reports/availability` | `reports.read` | administrator, manager, office, stock, client |  | — | the handler's value |
+| GET | `/api/reports/availability` | `reports.read` | administrator, manager, office, stock, client |  | — | result of availabilityMine |
 | GET | `/api/reports/availability.csv` | `reports.read` | administrator, manager, office, stock, client |  | — | csv |
-| GET | `/api/reports/availability.json` | `reports.read` | administrator, manager, office, stock, client |  | — | the handler's value |
+| GET | `/api/reports/availability.json` | `reports.read` | administrator, manager, office, stock, client |  | — | result of availabilityMine |
 | GET | `/api/reports/billing` | `reports.read` | administrator, manager, office, stock, client | billing | query clientId | clientId, name, palletDays, moves, storageRate, handlingRate, storage, handling, total |
 | GET | `/api/reports/billing.csv` | `reports.read` | administrator, manager, office, stock, client | billing | query clientId | csv |
 | GET | `/api/reports/billing.html` | `reports.read` | administrator, manager, office, stock, client | billing | query clientId, from, to | contentType, raw |
@@ -645,7 +645,7 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/return-moves` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock | return-move | — | tasks |
+| GET | `/api/return-moves` | `tasks.read` | administrator, manager, office, inbound, picker, stock | return-move | — | tasks |
 
 ## returns
 
@@ -672,7 +672,7 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/scan-commands` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock |  | — | code, label, group, confirm |
+| GET | `/api/scan-commands` | `scans.execute` | administrator, manager, office, inbound, picker, stock |  | — | code, label, group, confirm |
 
 ## search
 
@@ -689,7 +689,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | POST | `/api/sendcloud/label` | `sendcloud.manage` | administrator | sendcloud | body orderId | orderId, tracking, trackingUrl, file, carrier, service, weightKg, lengthCm, widthCm, heightCm |
 | POST | `/api/sendcloud/return` | `sendcloud.manage` | administrator | sendcloud | body returnId, weightKg | returnId, tracking, file, carrier |
 | POST | `/api/sendcloud/rules` | `sendcloud.manage` | administrator | sendcloud | body clientId, country, minKg, maxKg, methodId, carrier, service | id, clientId, country, minKg, maxKg, methodId, carrier, service |
-| POST | `/api/sendcloud/webhook` | `wms.write` | administrator, manager, office | sendcloud | query token | the handler's value |
+| POST | `/api/sendcloud/webhook` | none, no sign-in | anyone | sendcloud | query token | the handler's value |
 
 ## serials
 
@@ -772,7 +772,7 @@ Every route the server answers. This page is built from the route tables by `npm
 
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/tasks` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock |  | query status | planning, id, type, typeLabel, category, reason, sscc, from, fromName, to, toName, step, orderId, deliveryId, truckId, urgent, why, labelCode, alert, heldReason, createdAt |
+| GET | `/api/tasks` | `tasks.read` | administrator, manager, office, inbound, picker, stock |  | query status | planning, id, type, typeLabel, category, reason, sscc, from, fromName, to, toName, step, orderId, deliveryId, truckId, urgent, why, labelCode, alert, heldReason, createdAt |
 | POST | `/api/tasks/:taskId/cancel` | `tasks.assign` | administrator, manager |  | path taskId | the command result |
 | POST | `/api/tasks/:taskId/release` | `approvals.write` | administrator, manager |  | path taskId | the command result |
 | POST | `/api/tasks/:taskId/urgent` | `tasks.assign` | administrator, manager |  | path taskId; body urgent | the command result |
@@ -789,7 +789,7 @@ Every route the server answers. This page is built from the route tables by `npm
 | Method | Route | Permission | Roles | Module | Request | Response |
 | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/template/apply` | `wms.write` | administrator, manager, office |  | body from*, to*, category | the record's own fields, moves |
-| GET | `/api/template/preview` | `wms.read` | administrator, manager, office, technician, inbound, picker, stock |  | query from, to, category | the record's own fields, first, last |
+| GET | `/api/template/preview` | `locations.read` | administrator, manager, office, technician, inbound, picker, stock |  | query from, to, category | the record's own fields, first, last |
 
 ## totp
 

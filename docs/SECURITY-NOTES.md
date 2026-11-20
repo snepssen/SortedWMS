@@ -1,6 +1,6 @@
 # Security notes
 
-Three follow-ups to the security review. This page is the record until [SECURITY-REVIEW.md](SECURITY-REVIEW.md) is on `main`. Fold these three rows into that page (they were the medium findings) and keep the proxy paragraph in [RUNNING.md](RUNNING.md) beside the Caddy and nginx examples.
+The three medium findings are fixed. The summary is in [SECURITY-REVIEW.md](SECURITY-REVIEW.md). The proxy setting is also in [RUNNING.md](RUNNING.md).
 
 ## Session cookie
 

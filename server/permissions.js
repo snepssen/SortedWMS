@@ -3,9 +3,8 @@
  *
  * Administrator always has every permission. Other roles start from the
  * defaults below; an administrator can replace a role's list. A route that
- * is not listed falls through: reads need wms.read, changes need wms.write.
- * Operator and machine operator do not have wms.write, so their posts have
- * to be listed here.
+ * is not listed is refused: 404 on a read, 403 on a change. wms.write is only
+ * for a warehouse change that has no finer permission the office already holds.
  */
 'use strict';
 
@@ -450,6 +449,52 @@ const RULES = [
   ['POST', '/api/client-items/removals/:id/cancel', 'items.write'],
   ['POST', '/api/client-items/removals/:id/start', 'client-items.remove'],
   ['POST', '/api/client-items/removals/:id/confirm', 'client-items.remove'],
+  // Screens the office and the floor already open. Each permission is one the role that uses the screen holds.
+  ['GET', '/api/summary', 'wms.read'],
+  ['GET', '/api/devices', 'wms.read'],
+  ['GET', '/api/devices/:id', 'wms.read'],
+  ['GET', '/api/scan-commands', 'scans.execute'],
+  ['GET', '/api/tasks', 'tasks.read'],
+  ['GET', '/api/return-moves', 'tasks.read'],
+  ['GET', '/api/orders/:id/loading', 'wms.read'],
+  ['GET', '/api/quality', 'wms.read'],
+  ['GET', '/api/recalls', 'wms.read'],
+  ['GET', '/api/recalls/preview', 'wms.read'],
+  ['GET', '/api/quarantine', 'wms.read'],
+  ['GET', '/api/lookup/:code', 'wms.read'],
+  ['GET', '/api/blocked', 'wms.read'],
+  ['GET', '/api/lost', 'wms.read'],
+  ['GET', '/api/counts', 'wms.read'],
+  ['GET', '/api/drivers', 'wms.read'],
+  ['GET', '/api/customers', 'wms.read'],
+  ['GET', '/api/transfers', 'wms.read'],
+  ['GET', '/api/trace/:batch', 'wms.read'],
+  ['GET', '/api/template/preview', 'locations.read'],
+  ['GET', '/api/stations', 'wms.read'],
+  ['GET', '/api/routes', 'wms.read'],
+  ['GET', '/api/stations/:id', 'wms.read'],
+  ['GET', '/api/process-log', 'wms.read'],
+  ['GET', '/api/events', 'wms.read'],
+  ['GET', '/api/printers', 'wms.read'],
+  ['GET', '/api/printers/:name/status', 'wms.read'],
+  ['GET', '/api/print-queue', 'wms.read'],
+  ['GET', '/api/equipment', 'wms.read'],
+  ['POST', '/api/template/apply', 'wms.write'],
+  ['POST', '/api/locations/:code/unblock', 'wms.write'],
+  ['POST', '/api/pallets/:sscc/process', 'wms.write'],
+  ['POST', '/api/items/:itemNo/min-ship-days', 'wms.write'],
+  ['POST', '/api/orders/:id/loading', 'outbound.write'],
+  ['POST', '/api/orders/:id/loading/inspection', 'outbound.write'],
+  ['POST', '/api/orders/:id/loading/release', 'outbound.write'],
+  ['POST', '/api/plan/grouping', 'wms.write'],
+  ['POST', '/api/shift/start', 'wms.write'],
+  ['POST', '/api/customers', 'wms.write'],
+  ['POST', '/api/workload', 'wms.write'],
+  ['POST', '/api/plan/dig-out', 'wms.write'],
+  ['POST', '/api/import/items', 'wms.write'],
+  ['POST', '/api/import/locations', 'wms.write'],
+  ['POST', '/api/import/orders', 'orders.write'],
+  ['POST', '/api/import/stock', 'wms.write'],
 ];
 
 const compiled = RULES.map(([method, pattern, perm]) => ({
