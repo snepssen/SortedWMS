@@ -6,7 +6,9 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const SECRET = /password|passphrase|secret|token|pin|badge/i;
 
 function cell(value) {
-  return `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+  let text = value == null ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(text) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function range(from, to) {

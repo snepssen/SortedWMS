@@ -70,6 +70,25 @@ test('a client only sees and edits their own items, and approval is off unless t
     assert.equal(stock.status, 200);
     assert.ok(stock.body.every((r) => r.item.clientId === 'CL-PAINT'));
 
+    const named = await call('POST', '/api/items', { itemNo: 'EQ', name: '=cmd|calc', category: 'GEN', palletQty: 10 }, { cookie: admin });
+    assert.equal(named.status, 200, named.body && named.body.error);
+    const csv = await call('GET', '/api/reports/stock.csv', null, { cookie: admin });
+    assert.match(String(csv.body), /"'=cmd\|calc"/);
+
+    assert.equal((await call('POST', '/api/items', { itemNo: 'GD-1', name: 'Garden only', category: 'GEN', palletQty: 10, clientId: 'CL-GARDEN' }, { cookie: admin })).status, 200);
+    const garden = await call('POST', '/api/orders', { id: 'G-1', customer: 'Garden', lane: 'OUT-01', clientId: 'CL-GARDEN', lines: [{ itemNo: 'GD-1', pallets: 1 }] }, { cookie: admin });
+    assert.equal(garden.status, 200, garden.body && garden.body.error);
+    const seen = await call('GET', '/api/reports/orders', null, { cookie: paints });
+    assert.equal(seen.status, 200);
+    assert.ok(seen.body.every((o) => o.clientId === 'CL-PAINT'));
+    assert.equal(seen.body.some((o) => o.id === 'G-1'), false);
+    assert.equal((await call('GET', '/api/orders/G-1/shipment', null, { cookie: paints })).status, 404);
+    const stockReport = await call('GET', '/api/reports/stock', null, { cookie: paints });
+    assert.ok(stockReport.body.every((r) => r.clientId === 'CL-PAINT'));
+    const bill = await call('GET', '/api/reports/billing?clientId=CL-GARDEN', null, { cookie: paints });
+    assert.equal(bill.status, 200);
+    assert.ok(bill.body.every((r) => r.clientId === 'CL-PAINT'));
+
     await call('POST', '/api/config', { itemApproval: true }, { cookie: admin });
     const waiting = await call('POST', '/api/items', { itemNo: 'DY-2', name: 'Waiting filler', category: 'GEN', uom: 'pot' }, { cookie: paints });
     assert.equal(waiting.body.status, 'pending');

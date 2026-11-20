@@ -91,3 +91,12 @@ test('a bin line booked under the wrong item is corrected without touching the o
   assert.equal(w.binsFor('845359').total, 33);
   assert.equal(w.binTake({ loc: 'Mezz-Bin1', itemNo: '845359', qty: 33 }).qty, 33, 'the check closed with the correction');
 });
+
+test('a stock-change name that looks like a formula is not run by a spreadsheet', () => {
+  const { w } = wh();
+  w.updateItem('845356', { name: '=cmd|calc' });
+  const p = w.stockPallet('01-01-1-10', { itemNo: '845356', qty: 10, receivedAt: 1 });
+  w.adjustQuantity(p.sscc, 9, 'other', 'sam');
+  assert.match(w.stockChangesCsv({}), /'=cmd\|calc/);
+  assert.match(w.stockChangesCsv({}), /-1,/);
+});

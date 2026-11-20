@@ -165,7 +165,14 @@
   }
 
   function csv(rows) {
-    return rows.map((r) => r.map((c) => `"${String(c == null ? '' : c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    return rows.map((r) => r.map(csvCell).join(',')).join('\n');
+  }
+
+  /** Quote a cell, and lead a formula with a quote so a spreadsheet does not run it. A plain number is left as a number. */
+  function csvCell(value) {
+    let text = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(text) && !/^[+\-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
   }
 
   function createApi({ store, printers, hardware, backups = null, offsite = null, shopify = null, woo = null, etsy = null, sendcloud = null, alerts = null }) {
@@ -183,6 +190,46 @@
       if (!Array.isArray(rows)) throw new Error('rows is required: send a list of rows');
       return rows;
     };
+    const wantsDryRun = (q, b) => q.dry === '1' || q.dry === 'true' || Boolean(b && !Array.isArray(b) && b.dryRun === true);
+    /**
+     * Run an import on a copy of the warehouse and say what would be refused.
+     * The live warehouse and the journal are left as they were.
+     */
+    const dryImport = (op, rows) => {
+      let commands = null;
+      if (typeof require === 'function') { try { commands = require('./commands'); } catch (e) { commands = null; } }
+      if (!commands || !Engine.Warehouse || typeof Engine.Warehouse.restore !== 'function') {
+        return { status: 400, error: 'A dry run is available when SortedWMS is running on the server' };
+      }
+      const copy = Engine.Warehouse.restore(wh().toJSON(), { clock: wh().clock });
+      if (op === 'importItems') {
+        const errors = [];
+        let accepted = 0;
+        for (const r of rows) {
+          const itemNo = r && r.itemNo ? String(r.itemNo) : '';
+          if (!itemNo) { errors.push('A row without an item number'); continue; }
+          try {
+            if (copy.items[itemNo]) {
+              if (r.value != null && r.value !== '') { copy.updateItem(itemNo, { value: r.value }); accepted++; }
+              else errors.push(`${itemNo}: already exists`);
+            } else { copy.addItem(r); accepted++; }
+          } catch (e) { errors.push(`${itemNo}: ${e.message}`); }
+        }
+        return { dryRun: true, accepted, refused: errors.length, errors };
+      }
+      let result;
+      try {
+        result = commands.COMMANDS[op](copy, { rows, planOnce: op === 'importOrders' }, 'dry-run');
+      } catch (e) {
+        return { dryRun: true, accepted: 0, refused: rows.length, errors: [e.message] };
+      }
+      if (op === 'importLocations') {
+        const errors = (result.unknown || []).map((code) => `Unknown location ${code}`);
+        return { dryRun: true, accepted: result.updated || 0, refused: errors.length, errors };
+      }
+      const errors = result && result.errors ? result.errors : [];
+      return { dryRun: true, accepted: result && result.added ? result.added : 0, refused: errors.length, errors };
+    };
     /** A job number from the address. Anything that is not a number is refused as it was typed. */
     const jobNo = (taskId) => {
       const n = Number(taskId);
@@ -198,6 +245,17 @@
     let rawBody = '';
     let webhookHeader = '';
     const ownClient = () => (currentActor && currentActor.role === 'client' ? String(currentActor.clientId || '').toUpperCase() : null);
+    /** A client always sees its own id, even if the query names another. */
+    const askedClient = (id) => {
+      const own = ownClient();
+      return own != null ? own : (id || null);
+    };
+    const itemMine = (itemNo) => {
+      const own = ownClient();
+      if (own == null) return true;
+      const item = wh().items[itemNo];
+      return Boolean(item) && item.clientId === own;
+    };
     const seesItemValue = () => {
       const w = wh();
       if (typeof w.module === 'function' && !w.module('item-value')) return false;
@@ -227,6 +285,48 @@
       return ['items', 'lines', 'pallets'].some((key) => Array.isArray(doc[key]) && doc[key].some(filled));
     };
     const deny = () => ({ status: 403, error: 'That belongs to another client' });
+    const clientItemsOn = () => {
+      const w = wh();
+      return typeof w.module === 'function' && w.module('client-items');
+    };
+    const activeClients = () => Object.values(wh().clients || {}).filter((c) => c.status !== 'archived');
+    const singleOwnerId = () => {
+      const active = activeClients();
+      return active.length === 1 ? active[0].id : null;
+    };
+    // No clients, or one: the person running the warehouse is filling in their own list.
+    const ownerList = () => activeClients().length <= 1;
+    const DESCRIPTIVE = new Set(['name', 'description', 'lengthMm', 'widthMm', 'heightMm', 'weightKg', 'barcodes', 'codes', 'gtin', 'unitGtin', 'unitsPerCase', 'uom', 'category', 'food', 'frozen', 'highValue', 'bestBefore', 'noBestBefore', 'clientId', 'status']);
+    const OPERATIONAL = ['palletQty', 'storage', 'reorderPoint', 'minShipDays', 'value'];
+    // While Client items is on, the client keeps the description. A manager
+    // override is journaled with a reason. One owner-client is that owner's list.
+    const descriptiveDecision = (body, mode) => {
+      if (!clientItemsOn()) return { ok: true };
+      const role = currentActor && currentActor.role;
+      const manager = role === 'administrator' || role === 'manager' || (currentActor && currentActor.service);
+      const reason = String((body && !Array.isArray(body) && (body.reason || body.overrideReason)) || '').trim();
+      if (role === 'client') {
+        if (mode !== 'create' && body && !Array.isArray(body) && OPERATIONAL.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+          return { ok: false, status: 403, error: 'The warehouse keeps locations, holds and counts.' };
+        }
+        if (mode === 'create' && body && !Array.isArray(body)) for (const key of OPERATIONAL) delete body[key];
+        return { ok: true };
+      }
+      const writing = mode === 'create' || mode === 'archive' || mode === 'remove' || (body && !Array.isArray(body) && Object.keys(body).some((key) => DESCRIPTIVE.has(key)));
+      if (!writing) return { ok: true };
+      if (manager && (ownerList() || reason)) return { ok: true, overrideReason: reason || 'owner list' };
+      const error = mode === 'create' || mode === 'archive' || mode === 'remove'
+        ? 'The client keeps the item list. A manager can change it with a reason.'
+        : 'Descriptive fields are kept by the client. A manager can change them with a reason.';
+      return { ok: false, status: 403, error };
+    };
+    const actorArg = () => (currentActor ? { role: currentActor.role, clientId: currentActor.clientId || null, service: Boolean(currentActor.service) } : null);
+    const hideValue = (row) => {
+      if (!row || typeof row !== 'object' || seesItemValue() || !Object.prototype.hasOwnProperty.call(row, 'value')) return row;
+      const copy = { ...row };
+      delete copy.value;
+      return copy;
+    };
 
     // Reads
     on('GET', '/api/summary', () => summary(wh()));
@@ -278,7 +378,18 @@
         total: o.lines.reduce((n, l) => n + l.pallets, 0), loaded: pallets.filter((p) => o.loading && p.loc === o.loading.location).length, pallets };
     });
     on('GET', '/api/deliveries', () => Object.values(wh().deliveries).map((d) => ({ ...d, list: undefined, hasList: Boolean(d.list) })));
-    on('GET', '/api/items', () => { const own = ownClient(); return Object.values(wh().items).filter((i) => own == null || i.clientId === own).map(presentItem); });
+    const clientMayTouch = (item) => {
+      const own = ownClient();
+      if (own == null) return true;
+      if (!own || !item) return false;
+      if (item.clientId === own) return true;
+      return clientItemsOn() && !item.clientId && singleOwnerId() === own;
+    };
+    on('GET', '/api/items', () => {
+      const own = ownClient();
+      const owner = clientItemsOn() && own ? singleOwnerId() : null;
+      return Object.values(wh().items).filter((i) => own == null || i.clientId === own || (owner === own && !i.clientId)).map(presentItem);
+    });
     const photoItem = (itemNo) => {
       const item = wh().items[itemNo];
       if (!item) return { status: 404, error: `Unknown item ${itemNo}` };
@@ -463,11 +574,35 @@
     on('POST', '/api/plan/dig-out', (_, q, b, by) => run('planDigOut', {}, by));
     on('POST', '/api/import/items', (_, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
-      return run('importItems', { rows: listOf(b) }, by);
+      const rows = listOf(b);
+      let overrideReason = null;
+      if (clientItemsOn()) {
+        const own = ownClient();
+        if (own != null) for (const row of rows) if (row) row.clientId = own;
+        else {
+          const decision = descriptiveDecision({ name: 'import', reason: b && !Array.isArray(b) ? b.reason : null }, 'create');
+          if (!decision.ok) return { status: decision.status, error: decision.error };
+          overrideReason = decision.overrideReason || null;
+        }
+      }
+      if (wantsDryRun(q, b)) return dryImport('importItems', rows);
+      return run('importItems', { rows, overrideReason }, by);
     });
-    on('POST', '/api/import/locations', (_, q, b, by) => run('importLocations', { rows: listOf(b) }, by));
-    on('POST', '/api/import/orders', (_, q, b, by) => run('importOrders', { rows: listOf(b), planOnce: true }, by));
-    on('POST', '/api/import/stock', (_, q, b, by) => run('importStock', { rows: listOf(b) }, by));
+    on('POST', '/api/import/locations', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importLocations', rows);
+      return run('importLocations', { rows }, by);
+    });
+    on('POST', '/api/import/orders', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importOrders', rows);
+      return run('importOrders', { rows, planOnce: true }, by);
+    });
+    on('POST', '/api/import/stock', (_, q, b, by) => {
+      const rows = listOf(b);
+      if (wantsDryRun(q, b)) return dryImport('importStock', rows);
+      return run('importStock', { rows }, by);
+    });
 
     // Clients, items, locations, holders, labels, equipment, reports.
     const clientView = (c) => {
@@ -489,34 +624,104 @@
     on('POST', '/api/clients/:id/restore', ({ id }, q, b, by) => run('restoreClient', { id: decodeURIComponent(id) }, by));
     on('POST', '/api/items', (_, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const decision = descriptiveDecision(b, 'create');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
       const own = ownClient();
       const body = { ...b };
       if (own != null) {
         if (!own) return deny();
         body.clientId = own;
         if (wh().config && wh().config.itemApproval) body.status = 'pending';
-      }
+      } else if (clientItemsOn() && !body.clientId && singleOwnerId()) body.clientId = singleOwnerId();
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
       return run('addItem', body, by);
     });
     on('POST', '/api/items/:itemNo', ({ itemNo }, q, b, by) => {
       if (mentionsValue(b) && !seesItemValue()) return valueDenied();
       const key = decodeURIComponent(itemNo);
-      const own = ownClient();
       const item = wh().items[key];
-      if (own != null && (!item || item.clientId !== own)) return deny();
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      const decision = descriptiveDecision(b, 'update');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
       const body = { ...b, itemNo: key };
-      if (own != null) delete body.clientId;
+      if (ownClient() != null) delete body.clientId;
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
       return run('updateItem', body, by);
     });
     on('POST', '/api/items/:itemNo/archive', ({ itemNo }, q, b, by) => {
       const key = decodeURIComponent(itemNo);
-      const own = ownClient();
       const item = wh().items[key];
-      if (own != null && (!item || item.clientId !== own)) return deny();
-      return run('archiveItem', { itemNo: key }, by);
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      const decision = descriptiveDecision(b, 'archive');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      return run('archiveItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
     });
     on('POST', '/api/items/:itemNo/approve', ({ itemNo }, q, b, by) => run('approveItem', { itemNo: decodeURIComponent(itemNo) }, by));
-    on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => run('removeItem', { itemNo: decodeURIComponent(itemNo) }, by));
+    on('POST', '/api/items/:itemNo/remove', ({ itemNo }, q, b, by) => {
+      const decision = descriptiveDecision(b, 'remove');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const key = decodeURIComponent(itemNo);
+      const item = wh().items[key];
+      if (ownClient() != null && !clientMayTouch(item)) return deny();
+      return run('removeItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+    });
+    const itemActor = () => actorArg();
+    on('GET', '/api/client-items/movers.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().clientItemMoversCsv({ from: q.from || null, to: q.to || null, clientId: q.client || null, pace: q.pace || null, actor: itemActor() }) }));
+    on('GET', '/api/client-items/movers', (_, q) => wh().clientItemMovers({ from: q.from || null, to: q.to || null, clientId: q.client || null, pace: q.pace || null, actor: itemActor() }));
+    on('GET', '/api/client-items/removals', (_, q) => wh().clientRemovalsFor({ clientId: q.client || null, status: q.status || null, actor: itemActor() }));
+    on('GET', '/api/client-items', (_, q) => {
+      const list = wh().clientItemList({ q: q.q || '', status: q.status || '', flagged: q.flagged || null, clientId: q.client || null, actor: itemActor() });
+      list.items = list.items.map(hideValue);
+      return list;
+    });
+    on('POST', '/api/client-items/removals', (_, q, b, by) => run('requestClientRemoval', { itemNo: b && b.itemNo, qty: b && b.qty, kind: b && b.kind, reason: b && b.reason, actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/cancel', ({ id }, q, b, by) => run('cancelClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/start', ({ id }, q, b, by) => run('startClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items/removals/:id/confirm', ({ id }, q, b, by) => run('confirmClientRemoval', { id: decodeURIComponent(id), actor: itemActor() }, by));
+    on('POST', '/api/client-items', (_, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const decision = descriptiveDecision(b, 'create');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const own = ownClient();
+      const body = { ...(b || {}) };
+      if (own != null) {
+        if (!own) return deny();
+        body.clientId = own;
+        if (wh().config && wh().config.itemApproval) body.status = 'pending';
+      } else if (!body.clientId && singleOwnerId()) body.clientId = singleOwnerId();
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
+      const item = run('addItem', body, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo', ({ itemNo }, q, b, by) => {
+      if (mentionsValue(b) && !seesItemValue()) return valueDenied();
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'update');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const body = { ...(b || {}), itemNo: key };
+      if (ownClient() != null) delete body.clientId;
+      if (decision.overrideReason) body.overrideReason = decision.overrideReason;
+      const item = run('updateItem', body, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo/archive', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'archive');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      const item = run('archiveItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+      return hideValue(wh().clientItemView(item));
+    });
+    on('POST', '/api/client-items/:itemNo/remove', ({ itemNo }, q, b, by) => {
+      const key = decodeURIComponent(itemNo);
+      if (ownClient() != null && !clientMayTouch(wh().items[key])) return { status: 404, error: `Unknown item ${key}` };
+      const decision = descriptiveDecision(b, 'remove');
+      if (!decision.ok) return { status: decision.status, error: decision.error };
+      return run('removeItem', { itemNo: key, overrideReason: decision.overrideReason || null }, by);
+    });
+    on('POST', '/api/client-items/:itemNo/flag', ({ itemNo }, q, b, by) => hideValue(run('flagClientItem', { itemNo: decodeURIComponent(itemNo), note: b && b.note, actor: itemActor() }, by)));
+    on('POST', '/api/client-items/:itemNo/resolve', ({ itemNo }, q, b, by) => hideValue(run('resolveClientFlag', { itemNo: decodeURIComponent(itemNo), actor: itemActor() }, by)));
     on('GET', '/api/locations', (_, q) => {
       let list = Object.values(wh().locations);
       if (q.kind) list = list.filter((l) => l.kind === q.kind || (q.kind === 'rack' && l.structural));
@@ -654,13 +859,15 @@
     on('GET', '/api/orders/:id/returnable', ({ id }) => wh().returnable(decodeURIComponent(id)));
     on('POST', '/api/returns', (_, q, b, by) => run('receiveReturn', b, by));
     on('POST', '/api/returns/:id/grade', ({ id }, q, b, by) => run('gradeReturn', { ...b, id: decodeURIComponent(id) }, by));
-    on('GET', '/api/reports/availability', () => wh().availability());
-    on('GET', '/api/reports/availability.json', () => wh().availability());
+    const availabilityMine = () => wh().availability().filter((r) => itemMine(r.sku));
+    on('GET', '/api/reports/availability', () => availabilityMine());
+    on('GET', '/api/reports/availability.json', () => availabilityMine());
     on('GET', '/api/reports/availability.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...wh().availability().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
+      raw: csv([['sku', 'name', 'onHand', 'allocated', 'held', 'reserved', 'available', 'reorderPoint', 'low'], ...availabilityMine().map((r) => [r.sku, r.name, r.onHand, r.allocated, r.held, r.reserved, r.available, r.reorderPoint == null ? '' : r.reorderPoint, r.low ? 'yes' : 'no'])]),
     }));
-    on('GET', '/api/alerts/low-stock', () => wh().lowStock());
+    const lowStockMine = () => wh().lowStock().filter((r) => itemMine(r.sku));
+    on('GET', '/api/alerts/low-stock', () => lowStockMine());
     on('GET', '/api/shopify', () => (shopify ? { ...shopify.status(), mappings: null } : { status: 400, error: 'Shopify runs on the server' }));
     on('GET', '/api/shopify/map/:id', ({ id }) => (shopify ? shopify.mappings(id) : { status: 400, error: 'Shopify runs on the server' }));
     on('POST', '/api/shopify/shops', (_, q, b) => (shopify ? shopify.saveShop(b || {}) : { status: 400, error: 'Shopify runs on the server' }));
@@ -670,7 +877,7 @@
     on('POST', '/api/shopify/stock', () => (shopify ? shopify.flushStock() : { status: 400, error: 'Shopify runs on the server' }));
     on('GET', '/api/alerts/low-stock.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...wh().lowStock().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
+      raw: csv([['sku', 'name', 'onHand', 'available', 'reorderPoint'], ...lowStockMine().map((r) => [r.sku, r.name, r.onHand, r.available, r.reorderPoint == null ? '' : r.reorderPoint])]),
     }));
     on('GET', '/api/notify', () => (alerts ? alerts.status(currentActor) : { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' }));
     on('POST', '/api/notify/settings', (_, q, b) => {
@@ -685,10 +892,10 @@
       if (!alerts) return { status: 400, error: 'Alerts run on the server. Start it with ./start.sh' };
       return alerts.subscribe(currentActor, b || {});
     });
-    on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: q.clientId || null }));
+    on('GET', '/api/reports/billing', (_, q) => wh().billingReport({ clientId: askedClient(q.clientId) }));
     on('GET', '/api/reports/billing.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['client', 'name', 'palletDays', 'moves', 'storageRate', 'handlingRate', 'storage', 'handling', 'total'], ...wh().billingReport({ clientId: q.clientId || null }).map((r) => [r.clientId, r.name, r.palletDays, r.moves, r.storageRate, r.handlingRate, r.storage, r.handling, r.total])]),
+      raw: csv([['client', 'name', 'palletDays', 'moves', 'storageRate', 'handlingRate', 'storage', 'handling', 'total'], ...wh().billingReport({ clientId: askedClient(q.clientId) }).map((r) => [r.clientId, r.name, r.palletDays, r.moves, r.storageRate, r.handlingRate, r.storage, r.handling, r.total])]),
     }));
     on('GET', '/api/sites', () => ({ current: store.siteId || 'MAIN', sites: store.listSites ? store.listSites() : [{ id: 'MAIN', name: 'Main warehouse' }] }));
     on('POST', '/api/sites', (_, q, b) => store.createSite(b));
@@ -700,7 +907,8 @@
     on('POST', '/api/orders/:id/shipment/dispatch', ({ id }, q, b, by) => run('dispatchShipment', { orderId: decodeURIComponent(id) }, by));
     on('GET', '/api/orders/:id/shipment', ({ id }) => {
       const order = wh().orders[decodeURIComponent(id)];
-      if (!order) return { status: 404, error: `No order ${id}` };
+      const own = ownClient();
+      if (!order || (own != null && order.clientId !== own)) return { status: 404, error: `No order ${id}` };
       return order.shipment || { status: 404, error: 'No shipment' };
     });
     const orderDocument = (id, format) => {
@@ -723,11 +931,11 @@
     });
     on('POST', '/api/clients/:id/tariff', ({ id }, q, b, by) => run('setTariff', { clientId: decodeURIComponent(id), tariff: b }, by));
     on('POST', '/api/clients/:id/space', ({ id }, q, b, by) => run('setSpaces', { clientId: decodeURIComponent(id), spaces: b.spaces || [] }, by));
-    on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: q.clientId, from: q.from || null, to: q.to || null }) }));
-    on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: q.clientId, from: q.from || null, to: q.to || null }));
+    on('GET', '/api/reports/billing.html', (_, q) => ({ contentType: 'text/html; charset=utf-8', raw: wh().invoiceHtml({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/reports/invoice', (_, q) => wh().invoice({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }));
     on('GET', '/api/reports/invoice.csv', (_, q) => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: wh().invoiceCsv({ clientId: q.clientId, from: q.from || null, to: q.to || null }),
+      raw: wh().invoiceCsv({ clientId: askedClient(q.clientId), from: q.from || null, to: q.to || null }),
     }));
     on('GET', '/api/backup', () => store.exportBackup());
     on('GET', '/api/backups', () => (backups ? { dir: backups.dir, backups: backups.list().map(({ file, bytes, at }) => ({ file, bytes, at })) } : { dir: null, backups: [] }));
@@ -766,8 +974,8 @@
     on('POST', '/api/checks/:id/close', ({ id }, q, b, by) => run('closeCheck', { ...b, id: decodeURIComponent(id) }, by));
     on('GET', '/api/stock/at/:code', ({ code }) => wh()._stockAt(wh().resolve(decodeURIComponent(code))));
     on('POST', '/api/stock/correct', (_, q, b, by) => run('correctItem', b, by));
-    on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null }));
-    on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null }) }));
+    on('GET', '/api/reports/stock-changes', (_, q) => wh().stockChanges({ from: q.from || null, to: q.to || null, clientId: ownClient() }));
+    on('GET', '/api/reports/stock-changes.csv', (_, q) => ({ contentType: 'text/csv; charset=utf-8', raw: wh().stockChangesCsv({ from: q.from || null, to: q.to || null, clientId: ownClient() }) }));
     on('GET', '/api/putaway/:sscc', ({ sscc }) => wh().putAwaySlot(decodeURIComponent(sscc)));
     on('POST', '/api/putaway', (_, q, b, by) => run('putAwayPallet', b, by));
     on('POST', '/api/stock/create', (_, q, b, by) => run('createStock', b, by));
@@ -798,12 +1006,12 @@
       if (report.hidden) return { status: 404, error: report.reason };
       return report;
     });
-    on('GET', '/api/reports/stock', () => wh().stockSummary().map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
+    on('GET', '/api/reports/stock', () => wh().stockSummary().filter((r) => itemMine(r.item.itemNo)).map((r) => ({ itemNo: r.item.itemNo, name: r.item.name, clientId: r.item.clientId || null, category: r.item.category, available: r.available, short: r.short, blocked: r.blocked, qty: r.qty, batches: r.batches, nextExpiry: r.next && r.next.expiry })));
     on('GET', '/api/reports/expiry', (_, q) => {
       const days = Math.min(Math.max(Number(q.days) || 30, 0), 3650);
-      return wh()._livePallets().filter((p) => p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
+      return wh()._livePallets().filter((p) => itemMine(p.itemNo) && p.loc && p.status !== 'shipped' && wh().daysLeft(p) <= days).sort((a, b) => (a.expiry < b.expiry ? -1 : 1)).slice(0, 500).map((p) => ({ ...palletView(wh(), p), daysLeft: wh().daysLeft(p) }));
     });
-    on('GET', '/api/reports/orders', () => Object.values(wh().orders).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
+    on('GET', '/api/reports/orders', () => Object.values(wh().orders).filter((o) => { const own = ownClient(); return own == null || o.clientId === own; }).map((o) => ({ id: o.id, customer: o.customer, clientId: o.clientId || null, status: o.status, lane: o.lane, pallets: o.lines.reduce((n, l) => n + l.allocated.length, 0), short: o.lines.reduce((n, l) => n + l.short, 0) })));
     on('POST', '/api/item-value/currency', (_, q, b, by) => run('setCurrency', { currency: b.currency }, by));
     on('GET', '/api/reports/stock-value', (_, q) => {
       if (!seesItemValue()) return valueDenied();
@@ -820,7 +1028,7 @@
     });
     on('GET', '/api/reports/stock.csv', () => ({
       contentType: 'text/csv; charset=utf-8',
-      raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
+      raw: csv([['item', 'name', 'client', 'category', 'available', 'short', 'blocked', 'qty', 'batches'], ...wh().stockSummary().filter((r) => itemMine(r.item.itemNo)).map((r) => [r.item.itemNo, r.item.name, r.item.clientId || '', r.item.category, r.available, r.short, r.blocked, r.qty, r.batches])]),
     }));
     on('GET', '/api/woocommerce', () => (woo ? { ...woo.status(), mappings: null } : { status: 400, error: 'WooCommerce runs on the server' }));
     on('GET', '/api/woocommerce/map/:id', ({ id }) => (woo ? woo.mappings(id) : { status: 400, error: 'WooCommerce runs on the server' }));
