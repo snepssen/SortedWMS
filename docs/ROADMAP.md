@@ -133,6 +133,7 @@ Only when one install is not enough.
 **The office and the building**
 - Guided location setup, presets, and switchable modules with simple screens.
 - Clients, items, orders, ASNs, cartons and packing slips, delivery notes, kits, replenishment, more warehouses per install with transfers, available-to-sell, 3PL rate cards and invoices, client logins.
+- Client items: one item list per client (or the owner's list when there is a single client). The client keeps names, sizes and barcodes. Staff see them, flag a note, and carry out a request to take stock out. Fast and slow movers rank in the warehouse timezone and export to CSV. Off, item editing is unchanged and the rows stay.
 - Bills of materials: a kitting task consumes the components and produces the kit.
 - Delivery notes, pick lists, packing lists and client statements as A4 PDFs, written by the program itself.
 - Low-stock alerts that go out when available stock reaches the reorder point: one alert until it recovers, a reminder if it stays low, webhooks, SMTP email, and the bell. A client only gets its own items. A daily digest uses the warehouse timezone. See [ALERTS.md](ALERTS.md).
