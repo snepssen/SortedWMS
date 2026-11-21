@@ -1,5 +1,11 @@
 # Changelog
 
+## Bring-down jobs after a hold is released
+
+Since piece orders stopped planning ground jobs every time, a pallet freed without moving stayed up high. That covered releasing a quality or recall hold, letting a short-dated pallet ship, and cancelling a bring-down job. A restart also planned jobs the running warehouse had skipped, so the same journal could give two different warehouses.
+
+Each of those actions brings the pallet down again. Only order entry still skips the plan, and only when nothing else has been logged since the last plan, on the same day, and the order took no whole pallet. What it needs to decide is saved with the warehouse, so a reload decides the same way. Order entry on the load test is unchanged at 0.34 ms.
+
 ## HTTPS cookies, unmapped routes, and webhook time
 
 The session cookie and the device-pairing cookie are marked `Secure` when the request came in over HTTPS. A reverse proxy's `X-Forwarded-Proto: https` counts only if that proxy's address is listed in `SORTED_TRUST_PROXY` (an IP or an IPv4 CIDR). Plain HTTP on the LAN is unchanged, so telnet and a pairing QR still work. See [ACCOUNTS.md](ACCOUNTS.md).

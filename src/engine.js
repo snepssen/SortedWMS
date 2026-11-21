@@ -335,6 +335,7 @@
     today() { return isoDay(this.now()); }
 
     log(text, extra = {}) {
+      this._touchStock(); // anything worth a line may change what ground planning would find
       this.events.unshift({ t: this.now(), text, ...extra });
       if (this.events.length > 300) this.events.length = 300;
     }
@@ -1210,6 +1211,7 @@
         if (client.status === 'archived') throw new Error(`Client ${client.name} is archived`);
       }
       const order = { id, customer, lane, lines: [], createdAt: this.now(), status: 'open', labels: 0, verifyLoading, clientId: clientId || null, minDays: minDays == null || minDays === '' ? null : Number(minDays) };
+      const before = this._stockGen || 0;
       this.orders[id] = order;
       this._liveAdd('orders', order);
       for (const line of lines) {
@@ -1232,7 +1234,7 @@
       }
       this.log(`Order ${id} for ${customer}: ${order.lines.reduce((s, l) => s + l.allocated.length, 0)} pallets to ${lane}`);
       if (!this._planLater) {
-        this.planGround();
+        this._planGroundAfterOrder(order, before);
         this.dispatch();
       }
       if (this.replenishmentVersion === 1 && this.planReplenishment) this.planReplenishment();
@@ -1495,9 +1497,31 @@
       return n;
     }
 
-    /** Stock moved or was allocated. planGround can skip until the next one. */
+    /**
+     * Something changed: a pallet moved or was allocated, or a line was logged.
+     * Order entry may skip ground planning only while this count stands still.
+     * It is saved with the warehouse, so a reload makes the same choice as the
+     * live run did.
+     */
     _touchStock() {
       this._stockGen = (this._stockGen || 0) + 1;
+    }
+
+    /**
+     * Ground planning at the end of order entry. `before` is the count when the
+     * order came in. A piece order allocates no pallet; when nothing else has
+     * happened since the last plan on the same day, planning again would walk
+     * every pallet for the same answer, so it is skipped.
+     */
+    _planGroundAfterOrder(order, before) {
+      const want = this.config.groundNextPerItem;
+      if (!want) return 0;
+      const quiet = this._groundAt === before
+        && this._groundFor === `${want}:${this.today()}`
+        && !order.lines.some((l) => l.allocated.length);
+      const n = quiet ? 0 : this.planGround();
+      this._groundAt = this._stockGen || 0;
+      return n;
     }
 
     /**
@@ -1507,10 +1531,6 @@
     planGround() {
       const want = this.config.groundNextPerItem;
       if (!want) return 0;
-      const key = `${want}:${this._stockGen || 0}`;
-      // A piece order does not move a pallet. Planning ground jobs again would
-      // walk every pallet for the same answer.
-      if (this._groundKey === key) return 0;
       let n = 0;
       // Shared by every item below: _fefo's lookups, and the ground slots by category (a slot only takes its own category).
       const ctx = this._fefoContext();
@@ -1533,7 +1553,8 @@
         }
       }
       if (n) this.log(`${n} next-out pallet(s) are up high — bring-down jobs created`);
-      this._groundKey = key;
+      this._groundAt = this._stockGen || 0;
+      this._groundFor = `${want}:${this.today()}`;
       return n;
     }
 
@@ -2523,7 +2544,7 @@
     toJSON() {
       const out = {};
       for (const [k, v] of Object.entries(this)) {
-        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live' || k === '_planLater' || k === '_stockGen' || k === '_groundKey') continue;
+        if (k === 'clock' || k === '_actor' || k === '_rackList' || k === '_blockIndex' || k === '_bayCache' || k === '_windowMemo' || k === '_clockFmt' || k === '_faceCache' || k === '_live' || k === '_planLater') continue;
         out[k] = v;
       }
       return out;
